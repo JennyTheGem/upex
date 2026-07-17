@@ -1,6 +1,6 @@
 {
   "name": "upex",
-  "version": "1.0.0",
+  "version": "1.2.0",
   "description": "A personal file shortcut manager — register named aliases for folder paths and instantly open them.",
   "type": "module",
   "main": "src/index.js",
@@ -8,7 +8,7 @@
     "upex": "./bin/upex.js"
   },
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "node test/smoke.mjs"
   },
   "keywords": [
     "cli",

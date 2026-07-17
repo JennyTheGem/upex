@@ -97,6 +97,98 @@ export function linkExists(name) {
   return name in links;
 }
 
+/**
+ * Bump usage stats for a shortcut (drives frecency sorting).
+ */
+export function recordUse(name) {
+  const links = loadLinks();
+  if (!(name in links)) return;
+  const entry = links[name];
+  entry.uses = (entry.uses || 0) + 1;
+  entry.lastUsed = Date.now();
+  saveLinks(links);
+}
+
+/**
+ * Frecency score: usage count plus a recency bonus that decays over days.
+ */
+export function frecency(entry) {
+  const uses = entry.uses || 0;
+  const last = entry.lastUsed || 0;
+  if (!last) return uses;
+  const days = (Date.now() - last) / 86400000;
+  return uses + 4 / (1 + days);
+}
+
+/**
+ * Split links into the ones to keep and the broken folder shortcuts to drop.
+ * An entry with both a dead path and an app keeps the app (path cleared).
+ * `exists` is injectable for testing.
+ */
+export function pruneBroken(links, exists = (p) => fs.existsSync(p)) {
+  const kept = {};
+  const removed = [];
+  for (const [name, entry] of Object.entries(links)) {
+    if (entry.path && !exists(entry.path)) {
+      if (entry.app) {
+        const { path: _dead, ...rest } = entry;
+        kept[name] = rest;
+      } else {
+        removed.push(name);
+      }
+    } else {
+      kept[name] = entry;
+    }
+  }
+  return { kept, removed };
+}
+
+/**
+ * Name of the most recently used shortcut, or null if none has a lastUsed stamp.
+ */
+export function lastUsedName(links = loadLinks()) {
+  let best = null;
+  let bestTime = 0;
+  for (const [name, entry] of Object.entries(links)) {
+    if (entry.lastUsed && entry.lastUsed > bestTime) {
+      bestTime = entry.lastUsed;
+      best = name;
+    }
+  }
+  return best;
+}
+
+/**
+ * Merge incoming shortcuts into current ones (for import).
+ * replace=true swaps the whole set; otherwise incoming overwrites on name clash.
+ */
+export function mergeLinks(current, incoming, { replace = false } = {}) {
+  if (replace) {
+    return { merged: { ...incoming }, added: Object.keys(incoming), updated: [] };
+  }
+  const merged = { ...current };
+  const added = [];
+  const updated = [];
+  for (const [name, entry] of Object.entries(incoming)) {
+    (name in merged ? updated : added).push(name);
+    merged[name] = entry;
+  }
+  return { merged, added, updated };
+}
+
+/**
+ * Workspaces live in config.json under `workspaces`: { dev: [{ shortcut, app }] }.
+ */
+export function loadWorkspaces() {
+  const { workspaces } = loadConfig();
+  return workspaces && typeof workspaces === 'object' ? workspaces : {};
+}
+
+export function saveWorkspaces(workspaces) {
+  const config = loadConfig();
+  saveConfig({ ...config, workspaces });
+}
+
 export function loadConfig() {
   ensureStore();
   try {

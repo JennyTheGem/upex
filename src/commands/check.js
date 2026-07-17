@@ -5,14 +5,15 @@
 
 import fs from 'node:fs';
 import chalk from 'chalk';
-import { loadLinks } from '../store.js';
+import { loadLinks, saveLinks, pruneBroken } from '../store.js';
 import * as ui from '../ui.js';
 
 export function registerCheck(program) {
   program
     .command('check')
     .description('Scan all shortcuts and report broken paths')
-    .action(() => {
+    .option('--prune', 'Remove shortcuts whose folder path no longer exists')
+    .action((options) => {
       const links = loadLinks();
       const entries = Object.entries(links);
 
@@ -53,11 +54,16 @@ export function registerCheck(program) {
 
       if (brokenCount === 0) {
         ui.success(`All ${entries.length} shortcut${entries.length === 1 ? '' : 's'} valid.`);
+      } else if (options.prune) {
+        const { kept, removed } = pruneBroken(links);
+        saveLinks(kept);
+        ui.warn(`Pruned ${removed.length} broken shortcut${removed.length === 1 ? '' : 's'}.`);
+        if (removed.length) ui.dim(`Removed: ${removed.join(', ')}`);
       } else {
         ui.warn(
           `${brokenCount} broken / ${entries.length} total.`
         );
-        ui.dim(`Use "upex edit <name> <path>" to fix or "upex remove <name>" to delete.`);
+        ui.dim(`Use "upex check --prune" to remove them, or "upex edit <name> <path>" to fix.`);
       }
       ui.blank();
     });

@@ -2,7 +2,7 @@
  * launcher.js — Opens folders in supported apps
  */
 
-import { execSync, spawn } from 'node:child_process';
+import { execSync, spawn, spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
@@ -33,26 +33,6 @@ const APP_MAP = {
     displayName: 'WebStorm',
     installHint: 'Install WebStorm and ensure the CLI launcher is in your PATH.\nhttps://www.jetbrains.com/webstorm/',
   },
-  cursor: {
-    cmd: () => 'cursor',
-    displayName: 'Cursor',
-    installHint: 'Install Cursor and add it to your PATH.\nhttps://cursor.sh/',
-  },
-  zed: {
-    cmd: () => 'zed',
-    displayName: 'Zed',
-    installHint: 'Install Zed editor.\nhttps://zed.dev/',
-  },
-  sublime: {
-    cmd: () => 'subl',
-    displayName: 'Sublime Text',
-    installHint: 'Install Sublime Text and add "subl" to your PATH.\nhttps://www.sublimetext.com/',
-  },
-  subl: {
-    cmd: () => 'subl',
-    displayName: 'Sublime Text',
-    installHint: 'Install Sublime Text and add "subl" to your PATH.\nhttps://www.sublimetext.com/',
-  },
   finder: {
     cmd: () => {
       if (platform === 'darwin') return 'open';
@@ -71,10 +51,19 @@ const APP_MAP = {
     displayName: platform === 'win32' ? 'Explorer' : platform === 'darwin' ? 'Finder' : 'File Manager',
     installHint: 'This is a system app and should be available by default.',
   },
-  nautilus: {
-    cmd: () => 'nautilus',
-    displayName: 'Nautilus',
-    installHint: 'Install Nautilus (GNOME Files): sudo apt install nautilus',
+  copy: {
+    cmd: () => 'copy',
+    displayName: 'Copy path',
+    installHint: 'This is a built-in action and should always be available.',
+  },
+  open: {
+    cmd: () => {
+      if (platform === 'win32') return 'start';
+      if (platform === 'darwin') return 'open';
+      return 'xdg-open';
+    },
+    displayName: 'Default App',
+    installHint: 'System default handler; always available.',
   },
   cmd: {
     cmd: () => {
@@ -91,12 +80,32 @@ const INTERACTIVE_APP_KEYS = [
   'explorer',
   'vscode',
   'webstorm',
-  'cursor',
-  'zed',
-  'sublime',
   'cmd',
-  'nautilus',
+  'copy',
 ];
+
+// User-defined openers from ~/.upex/config.json { "apps": { "cursor": "cursor" } }.
+function customApps() {
+  const { apps } = loadConfig();
+  const out = {};
+  if (apps && typeof apps === 'object') {
+    for (const [name, command] of Object.entries(apps)) {
+      if (typeof command === 'string' && command.trim()) {
+        out[name.toLowerCase()] = {
+          cmd: () => command,
+          displayName: name,
+          installHint: `Custom app "${name}" from ~/.upex/config.json (command: ${command}).`,
+        };
+      }
+    }
+  }
+  return out;
+}
+
+// Built-in apps plus any user-defined ones (custom wins on name clash).
+function getAppMap() {
+  return { ...APP_MAP, ...customApps() };
+}
 
 /**
  * Check if a command exists on the system.
@@ -119,6 +128,14 @@ function fileExists(filePath) {
   }
 }
 
+// Copy text to the system clipboard via the native platform utility.
+function copyToClipboard(text) {
+  const cmd = platform === 'win32' ? 'clip'
+    : platform === 'darwin' ? 'pbcopy'
+    : commandExists('wl-copy') ? 'wl-copy' : 'xclip -selection clipboard';
+  execSync(cmd, { input: text, stdio: ['pipe', 'ignore', 'ignore'], shell: true });
+}
+
 function quoteIfNeeded(cmd) {
   if (cmd.includes(' ') && !cmd.startsWith('"')) {
     return `"${cmd}"`;
@@ -130,42 +147,53 @@ function findFirstExistingFile(paths) {
   return paths.find(fileExists) || null;
 }
 
+// Immediate subdirectories of `dir`, newest-named first. Optional name-prefix filter.
+function versionDirs(dir, prefix = '') {
+  try {
+    return fs.readdirSync(dir)
+      .filter(name => !prefix || name.toLowerCase().startsWith(prefix.toLowerCase()))
+      .map(name => path.join(dir, name))
+      .filter(p => {
+        try {
+          return fs.statSync(p).isDirectory();
+        } catch {
+          return false;
+        }
+      })
+      .sort((a, b) => b.localeCompare(a));
+  } catch {
+    return [];
+  }
+}
+
+// First bin/webstorm(64).exe found across the given version directories.
+function webStormBinIn(dirs) {
+  for (const dir of dirs) {
+    const found = findFirstExistingFile([
+      path.join(dir, 'bin', 'webstorm64.exe'),
+      path.join(dir, 'bin', 'webstorm.exe'),
+    ]);
+    if (found) return found;
+  }
+  return null;
+}
+
 // Find WebStorm binary inside JetBrains Toolbox versioned directories.
 function findToolboxWebStormExe(localAppData) {
   const toolboxRoot = path.join(localAppData, 'JetBrains', 'Toolbox', 'apps', 'WebStorm');
-  if (!fileExists(toolboxRoot)) return null;
-
-  const channelDirs = ['ch-0', 'ch-1'];
-  for (const channel of channelDirs) {
-    const channelPath = path.join(toolboxRoot, channel);
-    if (!fileExists(channelPath)) continue;
-
-    let versions = [];
-    try {
-      versions = fs.readdirSync(channelPath)
-        .map(name => path.join(channelPath, name))
-        .filter(p => {
-          try {
-            return fs.statSync(p).isDirectory();
-          } catch {
-            return false;
-          }
-        })
-        .sort((a, b) => b.localeCompare(a));
-    } catch {
-      versions = [];
-    }
-
-    for (const versionDir of versions) {
-      const candidates = [
-        path.join(versionDir, 'bin', 'webstorm64.exe'),
-        path.join(versionDir, 'bin', 'webstorm.exe'),
-      ];
-      const found = findFirstExistingFile(candidates);
-      if (found) return found;
-    }
+  for (const channel of ['ch-0', 'ch-1']) {
+    const found = webStormBinIn(versionDirs(path.join(toolboxRoot, channel)));
+    if (found) return found;
   }
+  return null;
+}
 
+// Find WebStorm inside versioned JetBrains install folders (e.g. "WebStorm 2026.1.3").
+function findInstalledWebStormExe(roots) {
+  for (const root of roots) {
+    const found = webStormBinIn(versionDirs(path.join(root, 'JetBrains'), 'WebStorm'));
+    if (found) return found;
+  }
   return null;
 }
 
@@ -192,6 +220,10 @@ function resolveWindowsWebStormCommand() {
   const toolboxExe = localAppData ? findToolboxWebStormExe(localAppData) : null;
   if (toolboxExe) return quoteIfNeeded(toolboxExe);
 
+  // Standard installer puts it in a versioned folder like "JetBrains\WebStorm 2026.1.3".
+  const installedExe = findInstalledWebStormExe([programFiles, programFilesX86]);
+  if (installedExe) return quoteIfNeeded(installedExe);
+
   const diskCandidates = [
     path.join(localAppData, 'JetBrains', 'Toolbox', 'scripts', 'webstorm.cmd'),
     path.join(localAppData, 'Programs', 'WebStorm', 'bin', 'webstorm64.exe'),
@@ -208,22 +240,41 @@ function resolveWindowsWebStormCommand() {
 
 /**
  * Launch a folder in the specified app.
+ * @param {number} [count] - how many windows to open (only honored for the terminal opener)
  * @returns {{ ok: boolean, message?: string }}
  */
-export function launchApp(appName, folderPath) {
+export function launchApp(appName, folderPath, count = 1, startCmd = '') {
   const key = appName.toLowerCase();
-  const app = APP_MAP[key];
+  const appMap = getAppMap();
+  const app = appMap[key];
 
   if (!app) {
-    const supported = [...new Set(Object.keys(APP_MAP))].join(', ');
+    const supported = [...new Set(Object.keys(appMap))].join(', ');
     return {
       ok: false,
       message: `Unknown app "${appName}". Supported: ${supported}`,
     };
   }
 
+  const targetIsFile = fileExists(folderPath) && (() => {
+    try { return fs.statSync(folderPath).isFile(); } catch { return false; }
+  })();
+
+  // Copy action: put the path on the clipboard instead of launching an app.
+  if (key === 'copy') {
+    try {
+      copyToClipboard(folderPath);
+      return { ok: true, displayName: app.displayName, message: `Copied --> ${folderPath}` };
+    } catch (err) {
+      return { ok: false, message: `Failed to copy path: ${err.message}` };
+    }
+  }
+
   let cmdBase = app.cmd();
   let skipCommandCheck = false;
+
+  // `start` is a cmd.exe builtin, not a resolvable executable.
+  if (platform === 'win32' && key === 'open') skipCommandCheck = true;
 
   if (platform === 'win32' && key === 'webstorm') {
     const resolved = resolveWindowsWebStormCommand();
@@ -253,20 +304,47 @@ export function launchApp(appName, folderPath) {
 
   // Some apps (e.g. explorer.exe on Windows) return non-zero exit codes
   // even on success. We need special handling for system file managers.
-  const isSystemFileManager = ['explorer', 'finder'].includes(key) ||
-    (cmdBin === 'explorer' || cmdBin === 'open' || cmdBin === 'xdg-open');
+  const isSystemFileManager = key !== 'open' && (['explorer', 'finder'].includes(key) ||
+    (cmdBin === 'explorer' || cmdBin === 'open' || cmdBin === 'xdg-open'));
 
   const isTerminal = key === 'cmd';
+  const repeat = isTerminal ? Math.min(9, Math.max(1, Math.floor(count) || 1)) : 1;
+  // A terminal at a file means "sit in that file's folder".
+  const terminalCwd = targetIsFile ? path.dirname(folderPath) : folderPath;
 
   try {
     if (platform === 'win32' && isTerminal) {
-      // Open a new Command Prompt window with cwd set to the target path.
-      // Using cwd option avoids all path-escaping issues.
-      spawn('cmd.exe', ['/c', 'start', '""', 'cmd'], {
-        cwd: folderPath,
-        detached: true,
-        stdio: 'ignore',
-      }).unref();
+      // Open N independent Command Prompt windows at the target path.
+      // `start` gives each its own console and returns immediately, so the
+      // window outlives upex. Run it synchronously (no `detached`) to avoid
+      // CREATE_NEW_PROCESS_GROUP, which would disable Ctrl+C inside the window.
+      // `cmd /k <start>` runs the start command and keeps the window open.
+      const inner = startCmd ? `cmd /k ${startCmd}` : 'cmd';
+      for (let i = 0; i < repeat; i++) {
+        execSync(`start "" ${inner}`, { cwd: terminalCwd, stdio: 'ignore' });
+      }
+    } else if (isTerminal && platform === 'darwin') {
+      // Open Terminal.app at the dir, optionally run a command, keep it open.
+      const script = startCmd
+        ? `cd ${JSON.stringify(terminalCwd)} && ${startCmd}`
+        : `cd ${JSON.stringify(terminalCwd)}`;
+      for (let i = 0; i < repeat; i++) {
+        spawnSync('osascript', [
+          '-e', 'tell application "Terminal" to do script ' + JSON.stringify(script),
+          '-e', 'tell application "Terminal" to activate',
+        ], { stdio: 'ignore' });
+      }
+    } else if (isTerminal) {
+      // Linux: cd into the dir, run the command, keep the shell open.
+      const inner = `cd ${JSON.stringify(terminalCwd)}; ${startCmd ? startCmd + '; ' : ''}exec "\${SHELL:-bash}"`;
+      for (let i = 0; i < repeat; i++) spawnSync(cmdBase, ['-e', 'sh', '-c', inner], { stdio: 'ignore' });
+    } else if (key === 'open') {
+      // Open the path in the OS default handler (default app for a file).
+      if (platform === 'win32') {
+        execSync('start "" ' + `"${folderPath}"`, { stdio: 'ignore' });
+      } else {
+        execSync(`${cmdBase} "${folderPath}"`, { stdio: 'ignore' });
+      }
     } else if (platform === 'win32' && key === 'webstorm') {
       // Run WebStorm detached on Windows (works for PATH command or absolute exe/cmd path).
       spawn(cmdBase, [folderPath], {
@@ -275,26 +353,24 @@ export function launchApp(appName, folderPath) {
         shell: true,
       }).unref();
     } else if (isSystemFileManager) {
-      // Use spawn with detached so the file manager opens independently
-      // and we don't care about the exit code
+      // Reveal the file in its folder, or just open a folder directly.
       if (platform === 'win32') {
-        spawn('explorer', [folderPath], {
-          detached: true,
-          stdio: 'ignore',
-          shell: false,
-        }).unref();
+        const args = targetIsFile ? ['/select,', folderPath] : [folderPath];
+        spawn('explorer', args, { detached: true, stdio: 'ignore', shell: false }).unref();
+      } else if (platform === 'darwin') {
+        execSync(`${cmdBase} ${targetIsFile ? '-R ' : ''}"${folderPath}"`, { stdio: 'ignore' });
       } else {
-        const fullCmd = `${cmdBase} "${folderPath}"`;
-        execSync(fullCmd, { stdio: 'ignore' });
+        const target = targetIsFile ? path.dirname(folderPath) : folderPath;
+        execSync(`${cmdBase} "${target}"`, { stdio: 'ignore' });
       }
     } else {
       const fullCmd = `${cmdBase} "${folderPath}"`;
-      execSync(fullCmd, { stdio: 'ignore' });
+      for (let i = 0; i < repeat; i++) execSync(fullCmd, { stdio: 'ignore' });
     }
     return {
       ok: true,
       displayName: app.displayName,
-      message: `${app.displayName} --> ${folderPath}`,
+      message: `${app.displayName}${repeat > 1 ? ` x${repeat}` : ''}${startCmd ? ` (${startCmd})` : ''} --> ${folderPath}`,
     };
   } catch (err) {
     return {
@@ -304,20 +380,35 @@ export function launchApp(appName, folderPath) {
   }
 }
 
-export function getSupportedApps() {
-  return [...new Set(Object.entries(APP_MAP).map(([, v]) => v.displayName))];
+// Prefix a bare host with https:// so "github.com" is a valid URL.
+export function normalizeUrl(url) {
+  return /^[a-z]+:\/\//i.test(url) ? url : `https://${url}`;
+}
+
+/**
+ * Open a URL in the system default browser.
+ */
+export function launchUrl(url) {
+  const target = normalizeUrl(url);
+  try {
+    if (platform === 'win32') execSync(`start "" "${target}"`, { stdio: 'ignore' });
+    else if (platform === 'darwin') execSync(`open "${target}"`, { stdio: 'ignore' });
+    else execSync(`xdg-open "${target}"`, { stdio: 'ignore' });
+    return { ok: true, displayName: 'Browser', url: target };
+  } catch (err) {
+    return { ok: false, message: `Failed to open URL: ${err.message}` };
+  }
 }
 
 export function getInteractiveAppChoices() {
-  return INTERACTIVE_APP_KEYS
-    .filter(key => APP_MAP[key])
-    .map(key => ({
-      key,
-      label: APP_MAP[key].displayName,
-    }));
+  const appMap = getAppMap();
+  const keys = [...INTERACTIVE_APP_KEYS, ...Object.keys(customApps())];
+  return keys
+    .filter(key => appMap[key])
+    .map(key => ({ key, label: appMap[key].displayName }));
 }
 
-export { APP_MAP };
+export { APP_MAP, getAppMap };
 
 /**
  * Launch an arbitrary executable (for app shortcuts).
@@ -326,12 +417,30 @@ export { APP_MAP };
  */
 export function launchExecutable(exePath) {
   try {
-    const cmd = exePath.includes(' ') && !exePath.startsWith('"') ? `"${exePath}"` : exePath;
-    spawn(cmd, [], {
-      detached: true,
-      stdio: 'ignore',
-      shell: true,
-    }).unref();
+    let child;
+
+    if (platform === 'win32' && /\.(bat|cmd)$/i.test(exePath)) {
+      // .bat/.cmd files must run via cmd.exe with cwd set to the batch file's
+      // own directory so that relative paths inside the script resolve correctly.
+      // windowsHide suppresses the intermediate cmd.exe console window.
+      child = spawn('cmd.exe', ['/c', exePath], {
+        detached: true,
+        stdio: 'ignore',
+        shell: false,
+        windowsHide: true,
+        cwd: path.dirname(exePath),
+      });
+    } else {
+      const cmd = exePath.includes(' ') && !exePath.startsWith('"') ? `"${exePath}"` : exePath;
+      child = spawn(cmd, [], {
+        detached: true,
+        stdio: 'ignore',
+        shell: true,
+        windowsHide: true,
+      });
+    }
+
+    child.unref();
 
     const displayName = path.basename(exePath).replace(/\.[^.]+$/, '');
     return { ok: true, displayName };

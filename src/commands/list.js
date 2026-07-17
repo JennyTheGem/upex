@@ -7,54 +7,69 @@ import fs from 'node:fs';
 import nodePath from 'node:path';
 import chalk from 'chalk';
 import { loadLinks } from '../store.js';
+import { gitStatus } from '../git.js';
 import * as ui from '../ui.js';
+
+// Compact git cell: "main" (clean) or "main*" (dirty).
+function gitCell(filepath) {
+  const git = filepath ? gitStatus(filepath) : null;
+  if (!git) return chalk.dim('--');
+  return git.dirty ? chalk.yellow(`${git.branch}*`) : chalk.magenta(git.branch);
+}
 
 export function registerList(program) {
   program
-    .command('list')
+    .command('list [tag]')
     .alias('ls')
-    .description('List all saved shortcuts')
-    .action(() => {
+    .description('List all saved shortcuts (optionally filtered by tag)')
+    .option('-g, --git', 'Show each folder\'s current git branch')
+    .action((tag, options) => {
+      const showGit = !!options.git;
       const links = loadLinks();
-      const entries = Object.entries(links);
+      let entries = Object.entries(links);
+      if (tag) {
+        entries = entries.filter(([, e]) => Array.isArray(e.tags) && e.tags.includes(tag));
+      }
 
       if (entries.length === 0) {
         ui.blank();
-        ui.info('No shortcuts saved. Use: upex add <name> [path]');
+        ui.info(tag ? `No shortcuts tagged "${tag}".` : 'No shortcuts saved. Use: upex add <name> [path]');
         ui.blank();
         return;
       }
 
-      ui.heading('Saved Shortcuts');
+      ui.heading(tag ? `Shortcuts tagged #${tag}` : 'Saved Shortcuts');
+
+      const header = [chalk.bold('#'), chalk.bold('NAME'), chalk.bold('APP'), chalk.bold('PATH')];
+      if (showGit) header.push(chalk.bold('GIT'));
+      header.push(chalk.bold('TAGS'), chalk.bold('STATUS'));
 
       const rows = [
-        [chalk.bold('#'), chalk.bold('NAME'), chalk.bold('APP'), chalk.bold('PATH'), chalk.bold('STATUS')],
+        header,
         ...entries.map(([name, entry], i) => {
           const filepath = entry.path;
           const appLabel = entry.app
             ? chalk.cyan(nodePath.basename(entry.app).replace(/\.[^.]+$/, ''))
-            : chalk.dim('--');
-          const exists = filepath ? fs.existsSync(filepath) : !entry.app;
+            : entry.url ? chalk.cyan('url') : chalk.dim('--');
+          const exists = filepath ? fs.existsSync(filepath) : !!(entry.app || entry.url);
           const pathDisplay = filepath
             ? (exists ? filepath : chalk.dim(filepath))
-            : chalk.dim('(app only)');
-          const status = entry.app && !filepath
-            ? ui.tag.ok
-            : exists ? ui.tag.ok : ui.tag.fail;
-          return [
-            chalk.dim(String(i + 1)),
-            chalk.bold(name),
-            appLabel,
-            pathDisplay,
-            status,
-          ];
+            : entry.url ? chalk.blue(entry.url) : chalk.dim('(app only)');
+          const status = exists ? ui.tag.ok : ui.tag.fail;
+          const tags = Array.isArray(entry.tags) && entry.tags.length
+            ? chalk.dim(entry.tags.join(', '))
+            : chalk.dim('--');
+          const row = [chalk.dim(String(i + 1)), chalk.bold(name), appLabel, pathDisplay];
+          if (showGit) row.push(gitCell(filepath));
+          row.push(tags, status);
+          return row;
         }),
       ];
 
       ui.table(rows, { header: true });
       ui.blank();
       ui.separator();
-      ui.dim(`${entries.length} shortcut${entries.length === 1 ? '' : 's'} total`);
+      ui.dim(`${entries.length} shortcut${entries.length === 1 ? '' : 's'}${tag ? ` tagged #${tag}` : ' total'}`);
       ui.blank();
     });
 }
