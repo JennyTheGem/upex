@@ -214,10 +214,15 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
         flash,
       });
 
+      // Clip to terminal width: a wrapped line occupies 2+ rows, which would
+      // desync renderedLineCount and leave stale rows behind on redraw.
+      const width = Math.max(1, (stdout.columns || 80) - 1);
+      const clipped = output.split('\n').map(line => ui.truncate(line, width));
+
       clearRendered();
 
-      stdout.write(output + '\n');
-      renderedLineCount = output.split('\n').length;
+      stdout.write(clipped.join('\n') + '\n');
+      renderedLineCount = clipped.length;
     };
 
     const updateFilter = () => {

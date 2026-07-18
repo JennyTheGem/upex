@@ -13,6 +13,7 @@ import { frecency, pruneBroken, mergeLinks, lastUsedName } from '../src/store.js
 import { installCmdWrapper } from '../src/commands/setup.js';
 import { normalizeUrl } from '../src/launcher.js';
 import { parseTags } from '../src/commands/add.js';
+import { truncate } from '../src/ui.js';
 
 // -- frecency: recent + used beats old + unused; unused = 0 --
 const now = Date.now();
@@ -90,4 +91,15 @@ assert.deepEqual(parseTags('work, personal ,'), ['work', 'personal'], 'tags spli
 assert.equal(parseTags(''), undefined, 'empty tag string -> undefined');
 assert.equal(parseTags(undefined), undefined, 'missing tag -> undefined');
 
-console.log('ok - frecency + prune + cmd wrapper + resolve guard + go args + merge + lastUsed + url + tags');
+// -- truncate: clips to visible width, ignores ANSI, keeps short lines as-is --
+const strip = (s) => s.replace(/\x1B\[[0-9;]*m/g, '');
+assert.equal(truncate('hello', 10), 'hello', 'short line untouched');
+assert.equal(strip(truncate('abcdefghij', 5)).length, 5, 'clipped to exact width');
+assert.equal(strip(truncate(`\x1B[1mabcdefghij\x1B[0m`, 5)).length, 5, 'ANSI codes do not count as width');
+assert.ok(truncate('abcdefghij', 5).endsWith('\x1B[0m'), 'clipped line resets styling');
+assert.equal(truncate('abc', 0), '', 'zero width -> empty');
+// text fills the width exactly, then a styled tail follows: must not overflow by the ellipsis
+assert.equal(strip(truncate(`abcde\x1B[2m fg\x1B[0m`, 5)).length, 5, 'styled tail after exact fill stays in width');
+assert.equal(strip(truncate('abcdefghij', 1)), '…', 'width 1 -> ellipsis only');
+
+console.log('ok - frecency + prune + cmd wrapper + resolve guard + go args + merge + lastUsed + url + tags + truncate');

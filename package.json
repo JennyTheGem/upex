@@ -1,6 +1,6 @@
 {
   "name": "upex",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "description": "A personal file shortcut manager — register named aliases for folder paths and instantly open them.",
   "type": "module",
   "main": "src/index.js",

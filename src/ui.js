@@ -95,6 +95,29 @@ function stripAnsi(str) {
   return str.replace(/\x1B\[[0-9;]*m/g, '');
 }
 
+/**
+ * Clip a styled string to `width` visible columns, keeping ANSI codes intact.
+ */
+export function truncate(str, width) {
+  if (width <= 0) return '';
+  if (stripAnsi(str).length <= width) return str;
+
+  let out = '';
+  let budget = width - 1; // one column reserved for the ellipsis
+  // eslint-disable-next-line no-control-regex
+  for (const part of str.split(/(\x1B\[[0-9;]*m)/)) {
+    if (part.startsWith('\x1B')) { out += part; continue; }
+    if (part.length <= budget) {
+      out += part;
+      budget -= part.length;
+      continue;
+    }
+    out += part.slice(0, budget);
+    break;
+  }
+  return out + '…\x1B[0m';
+}
+
 export function separator(length = 60) {
   console.log(chalk.dim('  ' + '─'.repeat(length)));
 }
