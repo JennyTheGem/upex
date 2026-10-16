@@ -81,6 +81,7 @@ export function registerOpenGroup(program) {
   program
     .command('open <tag>')
     .description('Open every shortcut carrying <tag> in its default opener')
+    .summary('Open every shortcut tagged <tag>')
     .action(async (tag) => {
       const links = loadLinks();
       const matches = Object.keys(links).filter(n => (links[n].tags || []).includes(tag));

@@ -2,13 +2,15 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-Read `goals.md` before starting work.
+@goals.md
+
+Goals live in goals.json, managed by upgo; goals.md is generated and auto-loaded. Use the upgo CLI (see the upgo skill), never edit either file.
 
 ## Commands
 
-- `npm test` — run the smoke asserts (`node test/smoke.mjs`). Covers the only non-trivial pure logic: `frecency` and `pruneBroken`. There is no build or lint step.
-- `npm link` then `upex ...` — install globally and exercise the CLI end-to-end. This is the primary way to verify behavior.
-- `node bin/upex.js <args>` — run without linking.
+- `npm test`: run the smoke asserts (`node test/smoke.mjs`). Covers the non-trivial pure logic plus CLI round-trips against a temp home. There is no build or lint step.
+- `npm link` then `upex ...`: install globally and exercise the CLI end-to-end. This is the primary way to verify behavior.
+- `node bin/upex.js <args>`: run without linking.
 
 Do not start the interactive selector (`upex` with no args) in an automated context; it takes over stdin/stdout with raw readline. Jenny verifies the TUI herself.
 
@@ -16,13 +18,13 @@ Do not start the interactive selector (`upex` with no args) in an automated cont
 
 ESM Node CLI (`"type": "module"`) built on `commander`. Entry is `bin/upex.js` → `createProgram()` in `src/index.js`.
 
-**Command registration.** Every file in `src/commands/` exports a `registerX(program)` that attaches one sub-command. `index.js` imports and calls each in order, then defines a catch-all default action. Commander has no clean "default positional command", so the default action manually checks whether the first positional matches a known sub-command name/alias; if not, it treats it as a shortcut name and calls `handleOpen`. New sub-commands must be added to that registration list AND to the `SUBCOMMANDS` string in `src/commands/completion.js`.
+**Command registration.** Every file in `src/commands/` exports a `registerX(program)` that attaches one sub-command. `index.js` imports and calls each in order, then defines a catch-all default action. Commander has no clean "default positional command", so the default action manually checks whether the first positional matches a known sub-command name/alias; if not, it treats it as a shortcut name and calls `handleOpen`. New sub-commands only need adding to that registration list: `upex help` and the completion scripts read `program.commands`. Give a long `.description()` a short `.summary()` so the help table stays narrow.
 
-**Storage (`src/store.js`).** Two JSON files under `~/.upex/`: `links.json` (shortcuts) and `config.json` (custom openers, `webstormPath`). `ensureStore()` lazily creates them. Entries are `{ path?, app?, uses?, lastUsed? }`. Legacy string entries (`"name": "/path"`) are normalized to `{ path }` on every read, so always go through `loadLinks`/`normalizeEntry` rather than parsing the file directly. `recordUse` bumps `uses`/`lastUsed`; `frecency` combines usage count with a day-decaying recency bonus to drive selector ordering. `pruneBroken` takes an injectable `exists` fn (for testing) and, when a path dies but an app remains, keeps the app and drops only the dead path.
+**Storage (`src/store.js`).** Two JSON files under `~/.upex/`: `links.json` (shortcuts) and `config.json` (custom openers, `webstormPath`). `ensureStore()` lazily creates them. An unreadable file throws `StoreError` (printed by `bin/upex.js`), never `{}`, so a later save can't wipe it; saves go through a per-process temp file + rename. Entries are `{ path?, app?, uses?, lastUsed? }`. Legacy string entries (`"name": "/path"`) are normalized to `{ path }` on every read, so always go through `loadLinks`/`normalizeEntry` rather than parsing the file directly. `recordUse` bumps `uses`/`lastUsed`; `frecency` combines usage count with a day-decaying recency bonus to drive selector ordering. `pruneBroken` takes an injectable `exists` fn (for testing) and, when a path dies but an app remains, keeps the app and drops only the dead path.
 
 **Two kinds of shortcut.** A *folder shortcut* has `path` and opens in an opener (Explorer, VS Code, ...). An *app shortcut* has `app` (an executable/command) and launches directly. `handleOpen` in `src/commands/open.js` branches on which is present; a bare `upex <file>` opens a file in its default app while a folder opens Explorer.
 
-**Launching (`src/launcher.js`).** `APP_MAP` holds built-in openers, each with a per-platform `cmd()` (`win32`/`darwin`/`linux`), display name, and install hint. `getAppMap()` merges user openers from `config.json.apps` (custom wins on name clash). `launchApp` handles the platform quirks — the hard part of this codebase:
+**Launching (`src/launcher.js`).** `APP_MAP` holds built-in openers, each with a per-platform `cmd()` (`win32`/`darwin`/`linux`), display name, and install hint. `getAppMap()` merges user openers from `config.json.apps` (custom wins on name clash). `launchApp` handles the platform quirks, the hard part of this codebase:
 - Windows `explorer.exe` returns non-zero even on success, so system file managers get special-cased and are spawned detached rather than checked via exit code.
 - `start` is a `cmd.exe` builtin, not a resolvable binary, so its command-existence check is skipped.
 - Terminals (`cmd`) open N detached windows via `start "" cmd`; `cmd /k <startCmd>` keeps the window open running a command.

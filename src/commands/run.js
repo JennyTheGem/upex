@@ -34,6 +34,7 @@ export function registerRun(program) {
   program
     .command('run <name> [script]')
     .description('Run a package.json script in a terminal at the shortcut folder')
+    .summary('Run a package.json script in a terminal')
     .action((name, script) => {
       const links = loadLinks();
       const resolved = resolveName(name, links);

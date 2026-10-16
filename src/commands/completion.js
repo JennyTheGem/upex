@@ -9,9 +9,8 @@ import os from 'node:os';
 import { loadLinks } from '../store.js';
 import * as ui from '../ui.js';
 
-const SUBCOMMANDS = 'add list remove rename edit copy check setup help go cmd app completion tag open ws run export import last';
-
-const SCRIPTS = {
+// SUBCOMMANDS comes from the registered commands, so new ones complete with no manual list.
+const scripts = (SUBCOMMANDS) => ({
   bash: `_upex() {
   local cur="\${COMP_WORDS[COMP_CWORD]}"
   if [ "$COMP_CWORD" -eq 1 ]; then
@@ -41,7 +40,7 @@ complete -c upex -n "__fish_use_subcommand" -a "${SUBCOMMANDS}"`,
     [System.Management.Automation.CompletionResult]::new($_, $_, 'ParameterValue', $_)
   }
 }`,
-};
+});
 
 function detectShell() {
   if (os.platform() === 'win32') return 'powershell';
@@ -62,9 +61,11 @@ export function registerCompletion(program) {
   program
     .command('completion [shell]')
     .description('Print a shell completion script (bash|zsh|fish|powershell)')
+    .summary('Print a shell completion script')
     .action((shell) => {
       const key = (shell || detectShell()).toLowerCase();
-      const script = SCRIPTS[key === 'pwsh' ? 'powershell' : key];
+      const names = program.createHelp().visibleCommands(program).flatMap(c => [c.name(), ...c.aliases()]);
+      const script = scripts(names.join(' '))[key === 'pwsh' ? 'powershell' : key];
       if (!script) {
         ui.error(`No completion for "${shell}". Supported: bash, zsh, fish, powershell`);
         process.exit(1);

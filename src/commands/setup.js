@@ -124,6 +124,7 @@ export function registerSetup(program) {
   program
     .command('setup [shell]')
     .description('Shell integration for cd support ("setup cmd" installs the cmd.exe wrapper)')
+    .summary('Shell integration ("setup cmd": cmd.exe wrapper)')
     .action((shell) => {
       const platform = os.platform();
 

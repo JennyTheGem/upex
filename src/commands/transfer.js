@@ -15,6 +15,7 @@ export function registerExport(program) {
   program
     .command('export [file]')
     .description('Export shortcuts + config as a JSON bundle (stdout if no file)')
+    .summary('Export shortcuts + config as JSON')
     .action((file) => {
       const bundle = { upex: 'bundle', version: 1, links: loadLinks(), config: loadConfig() };
       const json = JSON.stringify(bundle, null, 2);
@@ -31,6 +32,7 @@ export function registerImport(program) {
   program
     .command('import <file>')
     .description('Import a bundle (merge by default, --replace to overwrite)')
+    .summary('Import a bundle (merge, or --replace)')
     .option('--replace', 'Replace all existing shortcuts instead of merging')
     .action((file, options) => {
       let bundle;

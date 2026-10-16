@@ -138,11 +138,14 @@ function fileExists(filePath) {
 }
 
 // Copy text to the system clipboard via the native platform utility.
-function copyToClipboard(text) {
+export function copyToClipboard(text) {
   const cmd = platform === 'win32' ? 'clip'
     : platform === 'darwin' ? 'pbcopy'
-    : commandExists('wl-copy') ? 'wl-copy' : 'xclip -selection clipboard';
-  execSync(cmd, { input: text, stdio: ['pipe', 'ignore', 'ignore'], shell: true });
+    : process.env.WAYLAND_DISPLAY && commandExists('wl-copy') ? 'wl-copy' : 'xclip -selection clipboard';
+  // Keep non-ASCII paths intact: clip reads UTF-16LE whatever the code page, pbcopy needs a UTF-8 locale.
+  const input = platform === 'win32' ? Buffer.from(text, 'utf16le') : text;
+  const env = platform === 'darwin' ? { ...process.env, LC_CTYPE: 'UTF-8' } : process.env;
+  execSync(cmd, { input, env, stdio: ['pipe', 'ignore', 'ignore'], shell: true });
 }
 
 function quoteIfNeeded(cmd) {

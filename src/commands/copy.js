@@ -3,8 +3,8 @@
  * Usage: upex copy <name>
  */
 
-import clipboard from 'clipboardy';
 import { loadLinks } from '../store.js';
+import { copyToClipboard } from '../launcher.js';
 import { resolveName } from '../fuzzy.js';
 import * as ui from '../ui.js';
 
@@ -36,7 +36,12 @@ export function registerCopy(program) {
         process.exit(1);
       }
 
-      clipboard.writeSync(targetPath);
+      try {
+        copyToClipboard(targetPath);
+      } catch (err) {
+        ui.error(`Failed to copy: ${err.message}`);
+        process.exit(1);
+      }
 
       if (!resolved.exact) {
         ui.dim(`matched "${name}" --> "${resolved.name}"`);

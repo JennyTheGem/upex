@@ -1,34 +1,19 @@
 /**
- * help.js -- Show structured command reference.
+ * help.js -- Show structured command reference, built from the registered commands.
  */
 
 import chalk from 'chalk';
 import * as ui from '../ui.js';
 
-const COMMANDS = [
-  ['upex',      '[--app <app>]',          'Open the interactive selector and choose shortcut/app'],
-  ['add',       '<name> [path] [--app]',  'Register a folder or app shortcut'],
-  ['list',      '[tag]',                  'Show all saved shortcuts (alias: ls)'],
-  ['remove',    '<name>',                 'Delete a shortcut (alias: rm)'],
-  ['rename',    '<old> <new>',            'Rename a shortcut'],
-  ['edit',      '<name> [path]',          'Update a shortcut path'],
-  ['copy',      '<name>',                 'Copy shortcut path to clipboard'],
-  ['go',        '<name> [start...]',      'cd via wrapper; extra args run as a command there'],
-  ['cmd',       '<name> [count] [start]', 'Open N terminals, optionally running a command'],
-  ['run',       '<name> [script]',        'Run a package.json script in a terminal'],
-  ['last',      '',                        'Reopen the most recent shortcut (alias: upex -)'],
-  ['tag',       '<name> [tags...]',       'List/add/remove tags (-r to remove)'],
-  ['open',      '<tag>',                  'Open every shortcut carrying a tag'],
-  ['ws',        '[name|add|rm] ...',      'Open or manage workspaces'],
-  ['export',    '[file]',                 'Export shortcuts + config as JSON'],
-  ['import',    '<file> [--replace]',     'Import a bundle (merge or replace)'],
-  ['app',       '[alias] [command]',      'Manage custom openers'],
-  ['check',     '[--prune]',              'Report (or remove) broken paths'],
-  ['completion','[shell]',                'Print a shell completion script'],
-  ['setup',     '[cmd]',                  'Shell integration ("setup cmd" installs the cmd wrapper)'],
-  ['help',      '',                        'Show this reference'],
-  ['<name>',    '[app]',                  'Open shortcut (app: vscode, cmd, claude, ...)'],
-];
+// "<name> [target...] [--tag <tags>]" from a command's arguments and options.
+function argsOf(cmd) {
+  const args = cmd.registeredArguments.map((a) => {
+    const n = a.name() + (a.variadic ? '...' : '');
+    return a.required ? `<${n}>` : `[${n}]`;
+  });
+  const opts = cmd.options.map(o => `[${o.flags.replace(/^-\w, /, '')}]`);
+  return [...args, ...opts].join(' ');
+}
 
 export function registerHelp(program) {
   program
@@ -37,16 +22,22 @@ export function registerHelp(program) {
     .action(() => {
       ui.heading('upex -- command reference');
 
+      // The default action (no sub-command) has no Command object, so it is listed by hand.
+      const help = program.createHelp();
       const rows = [
-        [chalk.bold('COMMAND'), chalk.bold('ARGS'), chalk.bold('DESCRIPTION')],
-        ...COMMANDS.map(([cmd, args, desc]) => [
-          chalk.bold(cmd),
-          args || chalk.dim('--'),
-          desc,
+        ['upex', '[--app <app>]', 'Open the interactive selector and choose shortcut/app'],
+        ...help.visibleCommands(program).map(c => [
+          [c.name(), ...c.aliases()].join('|'),
+          argsOf(c),
+          help.subcommandDescription(c),
         ]),
+        ['<name>', '[app] [count]', 'Open shortcut (app: vscode, cmd, claude, ...)'],
       ];
 
-      ui.table(rows, { header: true });
+      ui.table([
+        [chalk.bold('COMMAND'), chalk.bold('ARGS'), chalk.bold('DESCRIPTION')],
+        ...rows.map(([cmd, args, desc]) => [chalk.bold(cmd), args || chalk.dim('--'), desc]),
+      ], { header: true });
       ui.blank();
       ui.dim('Run "upex <command> --help" for details.');
       ui.blank();

@@ -11,20 +11,16 @@ import { handleOpen } from './open.js';
 
 export function registerCmd(program) {
   program
-    .command('cmd <name> [rest...]')
+    .command('cmd <name> [count] [start...]')
     .description('Open a shortcut in N terminal windows, optionally running a start command')
+    .summary('Open N terminals, optionally running a command')
     // Let flags after the shortcut (e.g. "claude --model x") pass through as the start command.
     .enablePositionalOptions()
     .passThroughOptions()
     .allowUnknownOption()
-    .action((name, rest = []) => {
-      // A leading integer is the window count; anything else is the start command.
-      let count = 1;
-      let start = rest;
-      if (rest.length && /^\d+$/.test(rest[0])) {
-        count = Number(rest[0]);
-        start = rest.slice(1);
-      }
-      return handleOpen(name, 'cmd', count, start.join(' '));
+    .action((name, count, start = []) => {
+      // A non-numeric "count" is really the first word of the start command.
+      if (count && !/^\d+$/.test(count)) [count, start] = [1, [count, ...start]];
+      return handleOpen(name, 'cmd', Number(count) || 1, start.join(' '));
     });
 }

@@ -20,6 +20,7 @@ export function registerAdd(program) {
   program
     .command('add <name> [target]')
     .description('Register a shortcut (folder, or an app with --app, or a URL with --url)')
+    .summary('Register a folder, app (--app) or URL (--url)')
     .option('--app', 'Treat <target> as an application to launch')
     .option('--url', 'Treat <target> as a URL to open in the browser')
     .option('-t, --tag <tags>', 'Comma-separated tags to attach')

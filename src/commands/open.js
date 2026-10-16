@@ -70,6 +70,7 @@ export function registerGo(program) {
   program
     .command('go <name> [start...]')
     .description('Print a shortcut\'s path (cd via shell wrapper); extra args run as a command there')
+    .summary('Print a path (cd via wrapper); extra args run there')
     // Let flags in the start command (e.g. "claude --model x") pass through.
     .enablePositionalOptions()
     .passThroughOptions()

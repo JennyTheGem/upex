@@ -11,6 +11,7 @@ export function registerLast(program) {
   program
     .command('last')
     .description('Reopen the most recently used shortcut')
+    .summary('Reopen the most recent shortcut (alias: upex -)')
     .action(() => {
       const name = lastUsedName();
       if (!name) {

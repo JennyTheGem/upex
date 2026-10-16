@@ -1,0 +1,206 @@
+{
+  "$schema": "file:///E:/Downloads/Projects/Assets/upgo/goals.schema.json",
+  "version": 1,
+  "project": "upex",
+  "purpose": "a personal CLI to register named aliases for folder/app paths and instantly open them in Explorer, an IDE, a terminal, or a custom app.",
+  "sections": [
+    {
+      "n": 1,
+      "title": "Shortcut management"
+    },
+    {
+      "n": 2,
+      "title": "Opening"
+    },
+    {
+      "n": 3,
+      "title": "Resolution & UX"
+    },
+    {
+      "n": 4,
+      "title": "Shell integration"
+    },
+    {
+      "n": 5,
+      "title": "Platform support"
+    },
+    {
+      "n": 6,
+      "title": "Quality"
+    }
+  ],
+  "traps": [],
+  "items": [
+    {
+      "id": "add-remove-rename-edit-folder-shortcuts-add",
+      "section": 1,
+      "title": "Add / remove / rename / edit folder shortcuts (`add`, `remove`, `rename`, `edit`)",
+      "phase": "later",
+      "status": "done",
+      "created": "2026-10-16",
+      "updated": "2026-10-16"
+    },
+    {
+      "id": "app-shortcuts-add-name-exe-app-launched-directly",
+      "section": 1,
+      "title": "App shortcuts (`add <name> <exe> --app`) launched directly",
+      "phase": "later",
+      "status": "done",
+      "created": "2026-10-16",
+      "updated": "2026-10-16"
+    },
+    {
+      "id": "list-table-copy-path-to-clipboard-check-prune",
+      "section": 1,
+      "title": "`list` table, `copy` path to clipboard, `check [--prune]` for broken paths",
+      "phase": "later",
+      "status": "done",
+      "created": "2026-10-16",
+      "updated": "2026-10-16"
+    },
+    {
+      "id": "legacy-string-entry-auto-migration-on-read",
+      "section": 1,
+      "title": "Legacy string-entry auto-migration on read",
+      "phase": "later",
+      "status": "done",
+      "created": "2026-10-16",
+      "updated": "2026-10-16"
+    },
+    {
+      "id": "open-in-explorer-default-app-vs-code-webstorm",
+      "section": 2,
+      "title": "Open in Explorer / default app / VS Code / WebStorm / terminal",
+      "phase": "later",
+      "status": "done",
+      "created": "2026-10-16",
+      "updated": "2026-10-16"
+    },
+    {
+      "id": "custom-openers-via-app-command-config-json-apps",
+      "section": 2,
+      "title": "Custom openers via `app` command + `config.json.apps`",
+      "phase": "later",
+      "status": "done",
+      "created": "2026-10-16",
+      "updated": "2026-10-16"
+    },
+    {
+      "id": "multi-terminal-open-with-optional-start-command",
+      "section": 2,
+      "title": "Multi-terminal open with optional start command (`cmd <name> [count] [start]`)",
+      "phase": "later",
+      "status": "done",
+      "created": "2026-10-16",
+      "updated": "2026-10-16"
+    },
+    {
+      "id": "claude-opener-terminal-running-claude-code-upex",
+      "section": 2,
+      "title": "`claude` opener: terminal running Claude Code (`upex <name> claude [count]`)",
+      "phase": "later",
+      "status": "done",
+      "created": "2026-10-16",
+      "updated": "2026-10-16"
+    },
+    {
+      "id": "file-vs-folder-awareness-reveal-file-in",
+      "section": 2,
+      "title": "File vs folder awareness (reveal file in Explorer, open file in default app)",
+      "phase": "later",
+      "status": "done",
+      "created": "2026-10-16",
+      "updated": "2026-10-16"
+    },
+    {
+      "id": "exact-then-fuzzy-name-resolution-fuse-js",
+      "section": 3,
+      "title": "Exact-then-fuzzy name resolution (fuse.js)",
+      "phase": "later",
+      "status": "done",
+      "created": "2026-10-16",
+      "updated": "2026-10-16"
+    },
+    {
+      "id": "interactive-frecency-ordered-selector-arrows",
+      "section": 3,
+      "title": "Interactive frecency-ordered selector (arrows, fuzzy filter, in-selector add/edit/rename/delete)",
+      "phase": "later",
+      "status": "done",
+      "created": "2026-10-16",
+      "updated": "2026-10-16"
+    },
+    {
+      "id": "frecency-ordering-usage-recency-decay",
+      "section": 3,
+      "title": "Frecency ordering (usage + recency decay)",
+      "phase": "later",
+      "status": "done",
+      "created": "2026-10-16",
+      "updated": "2026-10-16"
+    },
+    {
+      "id": "cd-support-via-wrapper-hidden-resolve-public-go",
+      "section": 4,
+      "title": "`cd` support via wrapper + hidden `__resolve` / public `go`",
+      "phase": "later",
+      "status": "done",
+      "created": "2026-10-16",
+      "updated": "2026-10-16"
+    },
+    {
+      "id": "shell-completion-bash-zsh-fish-powershell",
+      "section": 4,
+      "title": "Shell completion (bash/zsh/fish/powershell) + hidden `__names`",
+      "phase": "later",
+      "status": "done",
+      "created": "2026-10-16",
+      "updated": "2026-10-16"
+    },
+    {
+      "id": "setup-integration-instructions",
+      "section": 4,
+      "title": "`setup` integration instructions",
+      "phase": "later",
+      "status": "done",
+      "created": "2026-10-16",
+      "updated": "2026-10-16"
+    },
+    {
+      "id": "windows-macos-linux-launch-paths",
+      "section": 5,
+      "title": "Windows / macOS / Linux launch paths",
+      "phase": "later",
+      "status": "done",
+      "created": "2026-10-16",
+      "updated": "2026-10-16"
+    },
+    {
+      "id": "windows-webstorm-resolution-path-config-env",
+      "section": 5,
+      "title": "Windows WebStorm resolution (PATH, config, env, Toolbox, install dirs)",
+      "phase": "later",
+      "status": "done",
+      "created": "2026-10-16",
+      "updated": "2026-10-16"
+    },
+    {
+      "id": "smoke-asserts-for-frecency-prunebroken",
+      "section": 6,
+      "title": "Smoke asserts for `frecency` + `pruneBroken`",
+      "phase": "later",
+      "status": "done",
+      "created": "2026-10-16",
+      "updated": "2026-10-16"
+    },
+    {
+      "id": "broader-test-coverage-fuzzy-resolution-launcher",
+      "section": 6,
+      "title": "Broader test coverage (fuzzy resolution, launcher branching per platform)",
+      "phase": "later",
+      "status": "planned",
+      "created": "2026-10-16",
+      "updated": "2026-10-16"
+    }
+  ]
+}
