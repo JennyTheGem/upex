@@ -29,7 +29,7 @@ export function registerRemove(program) {
 
       const entry = links[name];
       removeLink(name);
-      ui.success(`Removed: ${name} --> ${entry.path || entry.app}`);
+      ui.success(`Removed: ${name} --> ${entry.path || entry.app || entry.url}`);
     });
 }
 

@@ -23,6 +23,48 @@ function ensureStore() {
   }
 }
 
+// Thrown when a store file can't be parsed; bin/upex.js prints it instead of a stack.
+export class StoreError extends Error {}
+
+// Parse a store file. Never falls back to {}: a later save would wipe the real data.
+function readJson(file) {
+  ensureStore();
+  let parsed;
+  try {
+    // Strip a BOM (PowerShell/Notepad edits add one).
+    parsed = JSON.parse(fs.readFileSync(file, 'utf-8').replace(/^\uFEFF/, ''));
+  } catch (err) {
+    throw new StoreError(`Cannot read ${file}: ${err.message}\n  Fix or delete the file, nothing was changed.`);
+  }
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    throw new StoreError(`${file} must hold a JSON object.\n  Fix or delete the file, nothing was changed.`);
+  }
+  return parsed;
+}
+
+// Temp file + rename, so a crash mid-write can't leave a truncated store.
+function writeJson(file, data) {
+  ensureStore();
+  // Write through a symlinked store instead of replacing the link.
+  const target = fs.realpathSync(file);
+  // Per-process name: a shared tmp lets two concurrent writers interleave into it.
+  const tmp = `${target}.${process.pid}.tmp`;
+  fs.writeFileSync(tmp, JSON.stringify(data, null, 2), 'utf-8');
+  // Windows can't replace a file another process has open; retry briefly.
+  for (let tries = 0; ; tries++) {
+    try {
+      fs.renameSync(tmp, target);
+      return;
+    } catch (err) {
+      if (tries >= 20 || !['EPERM', 'EACCES', 'EBUSY'].includes(err.code)) {
+        fs.rmSync(tmp, { force: true });
+        throw err;
+      }
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 25);
+    }
+  }
+}
+
 /**
  * Normalize a raw link value to { path?, app? }.
  * Supports legacy string format and new object format.
@@ -34,24 +76,16 @@ function normalizeEntry(value) {
 }
 
 export function loadLinks() {
-  ensureStore();
-  try {
-    const raw = fs.readFileSync(LINKS_FILE, 'utf-8');
-    const parsed = JSON.parse(raw);
-    const normalized = {};
-    for (const [name, value] of Object.entries(parsed)) {
-      const entry = normalizeEntry(value);
-      if (entry) normalized[name] = entry;
-    }
-    return normalized;
-  } catch {
-    return {};
+  const normalized = {};
+  for (const [name, value] of Object.entries(readJson(LINKS_FILE))) {
+    const entry = normalizeEntry(value);
+    if (entry) normalized[name] = entry;
   }
+  return normalized;
 }
 
 export function saveLinks(links) {
-  ensureStore();
-  fs.writeFileSync(LINKS_FILE, JSON.stringify(links, null, 2), 'utf-8');
+  writeJson(LINKS_FILE, links);
 }
 
 export function getLink(name) {
@@ -190,19 +224,11 @@ export function saveWorkspaces(workspaces) {
 }
 
 export function loadConfig() {
-  ensureStore();
-  try {
-    const raw = fs.readFileSync(CONFIG_FILE, 'utf-8');
-    const parsed = JSON.parse(raw);
-    return parsed && typeof parsed === 'object' ? parsed : {};
-  } catch {
-    return {};
-  }
+  return readJson(CONFIG_FILE);
 }
 
 export function saveConfig(config) {
-  ensureStore();
-  fs.writeFileSync(CONFIG_FILE, JSON.stringify(config, null, 2), 'utf-8');
+  writeJson(CONFIG_FILE, config);
 }
 
 export { LINKS_FILE, CONFIG_FILE };

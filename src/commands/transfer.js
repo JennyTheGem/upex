@@ -48,12 +48,14 @@ export function registerImport(program) {
         process.exit(1);
       }
 
+      const hasConfig = bundle.config && typeof bundle.config === 'object';
+      // Read config before saving links, so a corrupt config.json aborts without a partial import.
+      const current = hasConfig ? loadConfig() : null;
       const { merged, added, updated } = mergeLinks(loadLinks(), incoming, { replace: options.replace });
       saveLinks(merged);
 
       // Merge config (apps + workspaces) without clobbering unless replacing.
-      if (bundle.config && typeof bundle.config === 'object') {
-        const current = loadConfig();
+      if (hasConfig) {
         const inc = bundle.config;
         const next = options.replace ? inc : {
           ...current,

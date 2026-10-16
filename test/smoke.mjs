@@ -51,21 +51,38 @@ const cli = fileURLToPath(new URL('../bin/upex.js', import.meta.url));
 const r = spawnSync(process.execPath, [cli, '__resolve', 'list'], { encoding: 'utf-8' });
 assert.equal(r.status, 1, '__resolve refuses subcommand names');
 assert.equal(r.stdout, '', 'no path printed for subcommand names');
+// a lone `upex --help` through a wrapper must fall through, not cd into help text
+const h = spawnSync(process.execPath, [cli, '__resolve', '--help'], { encoding: 'utf-8' });
+assert.equal(h.status, 1, '__resolve refuses --help');
+assert.equal(h.stdout, '', 'no help text printed for the wrapper to cd into');
 
-// -- go with args: runs the command inside the shortcut folder --
+// Run the CLI against a throwaway home holding the given links.json content.
 const home = fs.mkdtempSync(path.join(os.tmpdir(), 'upex-home-'));
-const target = fs.mkdtempSync(path.join(os.tmpdir(), 'upex-target-'));
-fs.mkdirSync(path.join(home, '.upex'), { recursive: true });
-fs.writeFileSync(path.join(home, '.upex', 'links.json'), JSON.stringify({ t: { path: target } }));
-const pwd = process.platform === 'win32' ? 'cd' : 'pwd';
-const g = spawnSync(process.execPath, [cli, 'go', 't', pwd], {
+const linksFile = path.join(home, '.upex', 'links.json');
+fs.mkdirSync(path.dirname(linksFile), { recursive: true });
+const upexIn = (...args) => spawnSync(process.execPath, [cli, ...args], {
   encoding: 'utf-8',
   env: { ...process.env, USERPROFILE: home, HOME: home },
 });
+
+// -- go with args: runs the command inside the shortcut folder --
+const target = fs.mkdtempSync(path.join(os.tmpdir(), 'upex-target-'));
+fs.writeFileSync(linksFile, JSON.stringify({ t: { path: target } }));
+const g = upexIn('go', 't', process.platform === 'win32' ? 'cd' : 'pwd');
 assert.equal(g.status, 0, 'go with args exits 0');
 assert.equal(g.stdout.trim(), target, 'command runs in the shortcut folder');
-fs.rmSync(home, { recursive: true, force: true });
 fs.rmSync(target, { recursive: true, force: true });
+
+// -- store: a corrupt links.json is never overwritten, a BOM is tolerated --
+const broken = '{"keep": {"path": "X"},';
+fs.writeFileSync(linksFile, broken);
+assert.equal(upexIn('add', 'new', home).status, 1, 'corrupt store fails the command');
+assert.equal(fs.readFileSync(linksFile, 'utf-8'), broken, 'corrupt store is left untouched');
+fs.writeFileSync(linksFile, '\uFEFF' + JSON.stringify({ gh: { url: 'github.com' } }));
+assert.equal(upexIn('edit', 'gh', 'gitlab.com').status, 0, 'BOM-prefixed store loads');
+assert.equal(JSON.parse(fs.readFileSync(linksFile, 'utf-8')).gh.url, 'gitlab.com', 'edit replaces a URL target');
+assert.ok(!fs.readdirSync(path.dirname(linksFile)).some(f => f.endsWith('.tmp')), 'save leaves no temp file');
+fs.rmSync(home, { recursive: true, force: true });
 
 // -- mergeLinks: merge overwrites on clash, replace swaps the set --
 const cur = { a: { path: 'A' }, b: { path: 'B' } };
@@ -102,4 +119,4 @@ assert.equal(truncate('abc', 0), '', 'zero width -> empty');
 assert.equal(strip(truncate(`abcde\x1B[2m fg\x1B[0m`, 5)).length, 5, 'styled tail after exact fill stays in width');
 assert.equal(strip(truncate('abcdefghij', 1)), '…', 'width 1 -> ellipsis only');
 
-console.log('ok - frecency + prune + cmd wrapper + resolve guard + go args + merge + lastUsed + url + tags + truncate');
+console.log('ok - frecency + prune + cmd wrapper + resolve guard + go args + safe store + edit url + merge + lastUsed + url + tags + truncate');

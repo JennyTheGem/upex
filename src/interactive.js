@@ -304,7 +304,7 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
       return true;
     };
 
-    const onKeypress = (str, key = {}) => {
+    const handleKey = (str, key = {}) => {
       flash = '';
 
       if (key.ctrl && key.name === 'c') {
@@ -456,6 +456,15 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
         query += str;
         updateFilter();
         redraw();
+      }
+    };
+
+    // Store errors in a handler must reject (bin/upex.js prints them), not crash uncaught.
+    const onKeypress = (str, key) => {
+      try {
+        handleKey(str, key);
+      } catch (error) {
+        fail(error);
       }
     };
 

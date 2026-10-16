@@ -26,7 +26,7 @@ export function registerCopy(program) {
       }
 
       const entry = links[resolved.name];
-      const targetPath = entry.path;
+      const targetPath = entry.path || entry.url;
 
       if (!targetPath) {
         ui.warn(`"${resolved.name}" is an app shortcut with no folder path.`);

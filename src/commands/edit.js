@@ -1,6 +1,8 @@
 /**
- * edit.js -- Update the path for an existing shortcut.
- * Usage: upex edit <name> [newPath]
+ * edit.js -- Update the target of an existing shortcut.
+ * Usage: upex edit <name> [target]
+ *   folder shortcut: target is the new path (defaults to cwd)
+ *   URL / app shortcut: target is the new URL / command (required)
  */
 
 import path from 'node:path';
@@ -11,9 +13,9 @@ import * as ui from '../ui.js';
 
 export function registerEdit(program) {
   program
-    .command('edit <name> [newPath]')
-    .description('Update the path for an existing shortcut')
-    .action((name, newPath) => {
+    .command('edit <name> [target]')
+    .description('Update a shortcut\'s path (or URL / app command)')
+    .action((name, target) => {
       const links = loadLinks();
       const resolved = resolveName(name, links);
 
@@ -24,24 +26,29 @@ export function registerEdit(program) {
 
       if (!resolved.exact) {
         ui.warn(`No exact match. Did you mean "${resolved.name}"?`);
-        ui.info(`Run: upex edit ${resolved.name}${newPath ? ' ' + newPath : ''}`);
+        ui.info(`Run: upex edit ${resolved.name}${target ? ' ' + target : ''}`);
         return;
       }
 
-      const targetPath = newPath ? path.resolve(newPath) : process.cwd();
+      const entry = links[name];
+      // An app shortcut that also has a path keeps editing the path, as before.
+      const field = entry.url ? 'url' : entry.app && !entry.path ? 'app' : 'path';
+      let value = target;
 
-      if (!fs.existsSync(targetPath)) {
-        ui.error(`Path does not exist: ${targetPath}`);
+      if (field === 'path') {
+        value = target ? path.resolve(target) : process.cwd();
+        if (!fs.existsSync(value)) {
+          ui.error(`Path does not exist: ${value}`);
+          process.exit(1);
+        }
+      } else if (!value) {
+        ui.error(`Provide the new ${field === 'url' ? 'URL' : 'app path or command'}: upex edit ${name} <${field}>`);
         process.exit(1);
       }
 
-      const entry = links[name];
-      const oldPath = entry.path || '(none)';
-      // Preserve existing app field when editing the path
-      const updated = { ...entry, path: targetPath };
-      setLink(name, updated);
+      setLink(name, { ...entry, [field]: value });
       ui.success(`Updated: ${name}`);
-      ui.dim(`Old: ${oldPath}`);
-      ui.dim(`New: ${targetPath}`);
+      ui.dim(`Old: ${entry[field] || '(none)'}`);
+      ui.dim(`New: ${value}`);
     });
 }

@@ -52,6 +52,8 @@ export function registerResolve(program) {
   program
     .command('__resolve <name>', { hidden: true })
     .description('(internal) Resolve a shortcut name to its path')
+    // Wrappers send a lone `upex --help` here; exit 1 so they fall through to real help.
+    .helpOption(false)
     .action((name) => {
       // Wrappers route every bare arg through here; never let fuzzy matching
       // shadow a real subcommand (e.g. "list" hijacked into a cd).
