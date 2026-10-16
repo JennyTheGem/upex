@@ -51,6 +51,7 @@ npm link
 | `vscode` / `code` | VS Code |
 | `webstorm` | WebStorm |
 | `cmd` | Command Prompt (Windows) / Terminal |
+| `claude` | Terminal running Claude Code (`claude`) |
 | `finder` / `explorer` | System File Manager (reveals a file shortcut) |
 | `open` | OS default handler (opens a file in its default app) |
 | `copy` | Copy the path to the clipboard |

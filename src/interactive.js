@@ -7,7 +7,7 @@ import path from 'node:path';
 import readline from 'node:readline';
 import chalk from 'chalk';
 import Fuse from 'fuse.js';
-import { getInteractiveAppChoices } from './launcher.js';
+import { getInteractiveAppChoices, isTerminalApp } from './launcher.js';
 import { loadLinks, frecency, removeLink, setLink, renameLink, linkExists } from './store.js';
 import * as ui from './ui.js';
 
@@ -51,7 +51,7 @@ function formatName(name, width) {
 function formatAppChoices(appChoices, selectedAppIndex, cmdCount) {
   return appChoices
     .map((choice, index) => {
-      const suffix = choice.key === 'cmd' && cmdCount > 1 ? ` x${cmdCount}` : '';
+      const suffix = isTerminalApp(choice.key) && cmdCount > 1 ? ` x${cmdCount}` : '';
       const label = `${choice.label}${suffix}`;
       return index === selectedAppIndex ? chalk.bold(`[${label}]`) : label;
     })
@@ -119,7 +119,7 @@ export function renderInteractiveView({
     lines.push(`  ${focus === 'app' ? '>' : ' '} ${chalk.dim('open')}    ${formatAppChoices(appChoices, selectedAppIndex, cmdCount)}`);
   }
 
-  const cmdSelected = appChoices[selectedAppIndex]?.key === 'cmd';
+  const cmdSelected = isTerminalApp(appChoices[selectedAppIndex]?.key);
   const upDownHint = focus === 'app' && cmdSelected ? 'Up/Down=count' : 'Up/Down=navigate';
   lines.push(chalk.dim(`  keys    Enter=open  Tab=switch  ${upDownHint}  Left/Right=app  ^E=edit ^R=rename ^A=add ^D=del  Esc=cancel`));
   lines.push(chalk.dim('  ────────────────────────────────────────────────────────────────────────────'));
@@ -396,7 +396,7 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
           status: 'selected',
           name: selected.name,
           app: appKey,
-          count: appKey === 'cmd' ? cmdCount : 1,
+          count: isTerminalApp(appKey) ? cmdCount : 1,
         });
         return;
       }
@@ -407,7 +407,7 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
         return;
       }
 
-      const cmdFocused = focus === 'app' && appChoices[selectedAppIndex]?.key === 'cmd';
+      const cmdFocused = focus === 'app' && isTerminalApp(appChoices[selectedAppIndex]?.key);
 
       if (key.name === 'up') {
         if (cmdFocused) {

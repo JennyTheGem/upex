@@ -27,7 +27,7 @@ const COMMANDS = [
   ['completion','[shell]',                'Print a shell completion script'],
   ['setup',     '[cmd]',                  'Shell integration ("setup cmd" installs the cmd wrapper)'],
   ['help',      '',                        'Show this reference'],
-  ['<name>',    '[app]',                  'Open shortcut (app: vscode, cmd, ...)'],
+  ['<name>',    '[app]',                  'Open shortcut (app: vscode, cmd, claude, ...)'],
 ];
 
 export function registerHelp(program) {

@@ -17,6 +17,7 @@ Finished items move to `goals-completed.md`.
 - ✅ Open in Explorer / default app / VS Code / WebStorm / terminal
 - ✅ Custom openers via `app` command + `config.json.apps`
 - ✅ Multi-terminal open with optional start command (`cmd <name> [count] [start]`)
+- ✅ `claude` opener: terminal running Claude Code (`upex <name> claude [count]`)
 - ✅ File vs folder awareness (reveal file in Explorer, open file in default app)
 
 ## 3. Resolution & UX

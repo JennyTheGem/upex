@@ -74,6 +74,11 @@ const APP_MAP = {
     displayName: platform === 'win32' ? 'Command Prompt' : 'Terminal',
     installHint: 'This is a system app and should be available by default.',
   },
+  claude: {
+    cmd: () => 'claude',
+    displayName: 'Claude',
+    installHint: 'Install Claude Code and make sure "claude" is on your PATH.\nhttps://claude.com/claude-code',
+  },
 };
 
 const INTERACTIVE_APP_KEYS = [
@@ -81,8 +86,12 @@ const INTERACTIVE_APP_KEYS = [
   'vscode',
   'webstorm',
   'cmd',
+  'claude',
   'copy',
 ];
+
+// Openers that open terminal windows (and so take a window count).
+export const isTerminalApp = key => key === 'cmd' || key === 'claude';
 
 // User-defined openers from ~/.upex/config.json { "apps": { "cursor": "cursor" } }.
 function customApps() {
@@ -302,12 +311,16 @@ export function launchApp(appName, folderPath, count = 1, startCmd = '') {
     };
   }
 
+  // Claude runs inside a terminal window.
+  if (key === 'claude') cmdBase = APP_MAP.cmd.cmd();
+  const runCmd = key === 'claude' ? `claude ${startCmd}`.trim() : startCmd;
+
   // Some apps (e.g. explorer.exe on Windows) return non-zero exit codes
   // even on success. We need special handling for system file managers.
   const isSystemFileManager = key !== 'open' && (['explorer', 'finder'].includes(key) ||
     (cmdBin === 'explorer' || cmdBin === 'open' || cmdBin === 'xdg-open'));
 
-  const isTerminal = key === 'cmd';
+  const isTerminal = isTerminalApp(key);
   const repeat = isTerminal ? Math.min(9, Math.max(1, Math.floor(count) || 1)) : 1;
   // A terminal at a file means "sit in that file's folder".
   const terminalCwd = targetIsFile ? path.dirname(folderPath) : folderPath;
@@ -319,14 +332,14 @@ export function launchApp(appName, folderPath, count = 1, startCmd = '') {
       // window outlives upex. Run it synchronously (no `detached`) to avoid
       // CREATE_NEW_PROCESS_GROUP, which would disable Ctrl+C inside the window.
       // `cmd /k <start>` runs the start command and keeps the window open.
-      const inner = startCmd ? `cmd /k ${startCmd}` : 'cmd';
+      const inner = runCmd ? `cmd /k ${runCmd}` : 'cmd';
       for (let i = 0; i < repeat; i++) {
         execSync(`start "" ${inner}`, { cwd: terminalCwd, stdio: 'ignore' });
       }
     } else if (isTerminal && platform === 'darwin') {
       // Open Terminal.app at the dir, optionally run a command, keep it open.
-      const script = startCmd
-        ? `cd ${JSON.stringify(terminalCwd)} && ${startCmd}`
+      const script = runCmd
+        ? `cd ${JSON.stringify(terminalCwd)} && ${runCmd}`
         : `cd ${JSON.stringify(terminalCwd)}`;
       for (let i = 0; i < repeat; i++) {
         spawnSync('osascript', [
@@ -336,8 +349,11 @@ export function launchApp(appName, folderPath, count = 1, startCmd = '') {
       }
     } else if (isTerminal) {
       // Linux: cd into the dir, run the command, keep the shell open.
-      const inner = `cd ${JSON.stringify(terminalCwd)}; ${startCmd ? startCmd + '; ' : ''}exec "\${SHELL:-bash}"`;
-      for (let i = 0; i < repeat; i++) spawnSync(cmdBase, ['-e', 'sh', '-c', inner], { stdio: 'ignore' });
+      const inner = `cd ${JSON.stringify(terminalCwd)}; ${runCmd ? runCmd + '; ' : ''}exec "\${SHELL:-bash}"`;
+      for (let i = 0; i < repeat; i++) {
+        const r = spawnSync(cmdBase, ['-e', 'sh', '-c', inner], { stdio: 'ignore' });
+        if (r.error) throw r.error;
+      }
     } else if (key === 'open') {
       // Open the path in the OS default handler (default app for a file).
       if (platform === 'win32') {
