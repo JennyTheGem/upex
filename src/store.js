@@ -75,6 +75,9 @@ function normalizeEntry(value) {
   return null;
 }
 
+// Field holding a shortcut's target. An app shortcut that also has a path edits the path.
+export const targetField = (e) => (e.url ? 'url' : e.app && !e.path ? 'app' : 'path');
+
 export function loadLinks() {
   const normalized = {};
   for (const [name, value] of Object.entries(readJson(LINKS_FILE))) {
@@ -221,6 +224,11 @@ export function loadWorkspaces() {
 export function saveWorkspaces(workspaces) {
   const config = loadConfig();
   saveConfig({ ...config, workspaces });
+}
+
+export function removeWorkspace(name) {
+  const { [name]: _drop, ...rest } = loadWorkspaces();
+  saveWorkspaces(rest);
 }
 
 export function loadConfig() {

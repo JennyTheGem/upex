@@ -27,6 +27,10 @@
     {
       "n": 6,
       "title": "Quality"
+    },
+    {
+      "n": 7,
+      "title": "Web UI"
     }
   ],
   "traps": [],
@@ -140,6 +144,17 @@
       "updated": "2026-10-16"
     },
     {
+      "id": "selector-tab-switches-to-a-workspaces-view",
+      "section": 3,
+      "title": "Selector: Tab switches to a Workspaces view (Enter opens all, ^D deletes); terminal count moved to Ctrl+Up/Down",
+      "phase": "later",
+      "status": "done",
+      "size": "S",
+      "created": "2026-11-02",
+      "updated": "2026-11-02",
+      "note": "src/interactive.js view toggle; openWorkspace exported; smoke covers render"
+    },
+    {
       "id": "cd-support-via-wrapper-hidden-resolve-public-go",
       "section": 4,
       "title": "`cd` support via wrapper + hidden `__resolve` / public `go`",
@@ -201,6 +216,17 @@
       "status": "planned",
       "created": "2026-10-16",
       "updated": "2026-10-16"
+    },
+    {
+      "id": "upex-ui-local-web-page-to-add-edit-rename-tag",
+      "section": 7,
+      "title": "upex ui: local web page to add, edit, rename, tag, delete and open shortcuts, manage workspaces, prune missing paths",
+      "phase": "later",
+      "status": "done",
+      "size": "L",
+      "created": "2026-11-02",
+      "updated": "2026-11-02",
+      "note": "src/commands/web.js + src/web/index.html; token + Host guard; smoke covers applyShortcut, cleanEntries, API auth"
     }
   ]
 }

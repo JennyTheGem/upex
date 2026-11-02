@@ -11,12 +11,12 @@
  */
 
 import chalk from 'chalk';
-import { loadWorkspaces, saveWorkspaces, linkExists } from '../store.js';
+import { loadWorkspaces, saveWorkspaces, removeWorkspace, linkExists } from '../store.js';
 import { handleOpen } from './open.js';
 import * as ui from '../ui.js';
 
 // Human-readable one-liner for an entry: "shortcut:app x2 (start cmd)".
-function describeEntry(e) {
+export function describeEntry(e) {
   let s = e.app ? `${e.shortcut}:${e.app}` : e.shortcut;
   if (e.count > 1) s += ` x${e.count}`;
   if (e.start) s += ` (${e.start})`;
@@ -37,7 +37,7 @@ function listWorkspaces(workspaces) {
   ui.blank();
 }
 
-async function openWorkspace(workspaces, name) {
+export async function openWorkspace(workspaces, name) {
   const entries = workspaces[name];
   if (!entries) {
     ui.error(`No workspace named "${name}".`);
@@ -102,17 +102,13 @@ export function registerWorkspace(program) {
           process.exit(1);
         }
         if (!shortcut) {
-          const { [name]: _drop, ...keep } = workspaces;
-          saveWorkspaces(keep);
+          removeWorkspace(name);
           ui.success(`Removed workspace "${name}".`);
           return;
         }
         const list = (workspaces[name] || []).filter(e => e.shortcut !== shortcut);
         if (list.length) saveWorkspaces({ ...workspaces, [name]: list });
-        else {
-          const { [name]: _drop, ...keep } = workspaces;
-          saveWorkspaces(keep);
-        }
+        else removeWorkspace(name);
         ui.success(`ws "${name}" -= ${shortcut}`);
         return;
       }

@@ -19,10 +19,12 @@ import { registerCmd } from './commands/cmd.js';
 import { registerApp } from './commands/app.js';
 import { registerCompletion } from './commands/completion.js';
 import { registerTag, registerOpenGroup } from './commands/tag.js';
-import { registerWorkspace } from './commands/workspace.js';
+import { registerWorkspace, openWorkspace } from './commands/workspace.js';
+import { loadWorkspaces } from './store.js';
 import { registerRun } from './commands/run.js';
 import { registerExport, registerImport } from './commands/transfer.js';
 import { registerLast } from './commands/last.js';
+import { registerWeb } from './commands/web.js';
 import { runInteractiveMode } from './interactive.js';
 
 const { version } = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf-8'));
@@ -70,6 +72,7 @@ export function createProgram() {
   registerExport(program);
   registerImport(program);
   registerLast(program);
+  registerWeb(program);
 
   // Default action: upex <name> [app]
   // Commander doesn't support a default positional command well,
@@ -86,6 +89,10 @@ export function createProgram() {
         const result = await runInteractiveMode({ preferredApp: program.opts().app });
         if (result.status === 'selected') {
           await handleOpen(result.name, result.app, result.count || 1);
+          return;
+        }
+        if (result.status === 'workspace') {
+          await openWorkspace(loadWorkspaces(), result.name);
           return;
         }
         if (result.status === 'noninteractive') {

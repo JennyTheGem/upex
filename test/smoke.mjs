@@ -7,13 +7,16 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { spawnSync } from 'node:child_process';
+import http from 'node:http';
+import { spawn, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { frecency, pruneBroken, mergeLinks, lastUsedName } from '../src/store.js';
 import { installCmdWrapper } from '../src/commands/setup.js';
 import { normalizeUrl } from '../src/launcher.js';
 import { parseTags } from '../src/commands/add.js';
 import { truncate } from '../src/ui.js';
+import { applyShortcut, cleanEntries } from '../src/commands/web.js';
+import { renderInteractiveView } from '../src/interactive.js';
 
 // -- frecency: recent + used beats old + unused; unused = 0 --
 const now = Date.now();
@@ -119,4 +122,74 @@ assert.equal(truncate('abc', 0), '', 'zero width -> empty');
 assert.equal(strip(truncate(`abcde\x1B[2m fg\x1B[0m`, 5)).length, 5, 'styled tail after exact fill stays in width');
 assert.equal(strip(truncate('abcdefghij', 1)), '…', 'width 1 -> ellipsis only');
 
-console.log('ok - frecency + prune + cmd wrapper + resolve guard + go args + safe store + edit url + merge + lastUsed + url + tags + truncate');
+// -- selector: Tab view lists workspaces, hides the opener row --
+const viewArgs = { query: '', choices: [{ name: 's', path: 'P', exists: true }], selectedIndex: 0, appChoices: [{ key: 'explorer', label: 'Explorer' }], selectedAppIndex: 0, cmdCount: 1 };
+const wsView = strip(renderInteractiveView({ ...viewArgs, view: 'workspaces', workspaces: [{ name: 'dev', path: 's:vscode' }] }));
+assert.ok(wsView.includes('[Workspaces]') && wsView.includes('> dev') && wsView.includes('s:vscode'), 'workspace view lists workspaces');
+assert.ok(!wsView.includes('Explorer'), 'no opener row in workspace view');
+assert.ok(strip(renderInteractiveView(viewArgs)).includes('[Shortcuts]'), 'shortcut view is the default');
+
+// -- applyShortcut: add, rename in place, clashes, path checks --
+const yes = () => true;
+const base = { a: { path: path.resolve('/A') }, b: { url: 'x.dev', tags: ['t'] } };
+assert.ok(applyShortcut(base, undefined, { kind: 'url', name: 'c', target: 'y.dev' }, yes).links.c.url === 'y.dev', 'add url');
+assert.match(applyShortcut(base, undefined, { kind: 'url', name: 'a', target: 'y' }, yes).error, /exists/, 'add clash rejected');
+assert.match(applyShortcut(base, undefined, { kind: 'folder', name: 'd', target: '/nope' }, () => false).error, /does not exist/, 'missing folder rejected');
+assert.match(applyShortcut(base, undefined, { kind: 'url', name: 'a b', target: 'y' }, yes).error, /spaces/, 'spaces rejected');
+const ren = applyShortcut(base, 'a', { name: 'z', target: '/A', tags: 'p, q' }, () => false).links;
+assert.deepEqual(Object.keys(ren), ['z', 'b'], 'rename keeps position, unchanged dead path allowed');
+assert.deepEqual(ren.z.tags, ['p', 'q'], 'tags parsed on edit');
+assert.equal(applyShortcut(base, 'b', { name: 'b', target: 'x.dev', tags: '' }, yes).links.b.tags, undefined, 'empty tags dropped');
+assert.match(applyShortcut(base, 'a', { name: 'b', target: '/A' }, yes).error, /exists/, 'rename clash rejected');
+assert.ok(applyShortcut({ 'Led start': { url: 'x' } }, 'Led start', { name: 'Led start', target: 'y' }, yes).links, 'CLI name with spaces stays editable');
+
+// -- cleanEntries: shape workspace entries, reject bad ones --
+assert.deepEqual(cleanEntries([{ shortcut: ' s ', app: '', count: '2', start: ' claude ' }]), [{ shortcut: 's', count: 2, start: 'claude' }], 'entry cleaned');
+assert.equal(cleanEntries([{ shortcut: '' }]), null, 'empty shortcut rejected');
+assert.equal(cleanEntries([{ shortcut: 's', count: 0 }]), null, 'count 0 rejected');
+assert.equal(cleanEntries('x'), null, 'non-array rejected');
+assert.equal(cleanEntries([null]), null, 'null entry rejected, not thrown');
+
+// -- upex ui: token + host guard, add via API writes the store --
+const webHome = fs.mkdtempSync(path.join(os.tmpdir(), 'upex-web-'));
+const srv = spawn(process.execPath, [cli, 'ui', '--port', '0', '--no-open'], {
+  env: { ...process.env, USERPROFILE: webHome, HOME: webHome },
+});
+try {
+  const link = await new Promise((resolve, reject) => {
+    let out = '';
+    srv.stdout.on('data', (c) => { out += c; const m = out.match(/http:\/\/127\.0\.0\.1:\d+\/\?t=[0-9a-f]+/); if (m) resolve(m[0]); });
+    srv.on('exit', () => reject(new Error('ui server exited: ' + out)));
+  });
+  const { origin: base, searchParams } = new URL(link);
+  const token = searchParams.get('t');
+  assert.equal((await fetch(base)).status, 403, 'page without token refused');
+  assert.ok((await (await fetch(link)).text()).includes(`const TOKEN = '${token}'`), 'page carries the token');
+  assert.equal((await fetch(base + '/api/state')).status, 403, 'api without token refused');
+  const rebound = await new Promise((resolve) => http.get(base, { agent: false, headers: { host: 'evil.test' } }, (res) => { res.resume(); resolve(res.statusCode); }));
+  assert.equal(rebound, 403, 'foreign Host header refused');
+  const post = await fetch(base + '/api/links', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'x-upex-token': token },
+    body: JSON.stringify({ kind: 'url', name: 'gh', target: 'github.com', tags: 'web' }),
+  });
+  assert.equal(post.status, 200, 'add via api ok');
+  const saved = JSON.parse(fs.readFileSync(path.join(webHome, '.upex', 'links.json'), 'utf-8'));
+  assert.deepEqual(saved.gh, { url: 'github.com', tags: ['web'] }, 'api add written to store');
+  const putWs = (prev) => fetch(base + '/api/workspace', {
+    method: 'PUT',
+    headers: { 'content-type': 'application/json', 'x-upex-token': token },
+    body: JSON.stringify({ name: 'dev', entries: [{ shortcut: 'gh' }], prev }),
+  });
+  assert.equal((await putWs(null)).status, 200, 'new workspace created');
+  assert.equal((await putWs(null)).status, 409, 'stale page cannot overwrite a changed workspace');
+} finally {
+  // Already exited (e.g. crashed on start): waiting for 'exit' again would never settle.
+  if (srv.exitCode === null && srv.signalCode === null) {
+    srv.kill();
+    await new Promise((r) => srv.once('exit', r));
+  }
+  fs.rmSync(webHome, { recursive: true, force: true });
+}
+
+console.log('ok - frecency + prune + cmd wrapper + resolve guard + go args + safe store + edit url + merge + lastUsed + url + tags + truncate + web ui');

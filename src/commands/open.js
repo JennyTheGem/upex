@@ -87,6 +87,7 @@ export function registerGo(program) {
 
 /**
  * Handle the default open/launch action.
+ * Returns true when opened; in batch mode a failure returns false instead of exiting.
  */
 export async function handleOpen(name, app, count = 1, startCmd = '', { batch = false } = {}) {
   // In batch mode (group/workspace open) a bad shortcut must not exit the whole run.
@@ -100,7 +101,7 @@ export async function handleOpen(name, app, count = 1, startCmd = '', { batch = 
       ui.error(`Shortcut not found: ${name}`);
       const names = Object.keys(links);
       if (names.length > 0) ui.dim(`Available: ${names.join(', ')}`);
-    })) return;
+    })) return false;
   }
 
   const shortcutName = resolved.name;
@@ -110,7 +111,7 @@ export async function handleOpen(name, app, count = 1, startCmd = '', { batch = 
   if (entry.url) {
     const result = launchUrl(entry.url);
     if (!result.ok) {
-      if (bail(() => ui.error(result.message))) return;
+      if (bail(() => ui.error(result.message))) return false;
     }
     recordUse(shortcutName);
     if (!resolved.exact) {
@@ -119,7 +120,7 @@ export async function handleOpen(name, app, count = 1, startCmd = '', { batch = 
     ui.heading(shortcutName);
     console.log(`  ${chalk.dim('url')}    ${chalk.bold(result.url)}`);
     ui.blank();
-    return;
+    return true;
   }
 
   // ── App shortcut: launch stored executable directly ──
@@ -127,7 +128,7 @@ export async function handleOpen(name, app, count = 1, startCmd = '', { batch = 
     const result = launchExecutable(entry.app);
 
     if (!result.ok) {
-      if (bail(() => ui.error(result.message))) return;
+      if (bail(() => ui.error(result.message))) return false;
     }
 
     recordUse(shortcutName);
@@ -142,7 +143,7 @@ export async function handleOpen(name, app, count = 1, startCmd = '', { batch = 
       console.log(`  ${chalk.dim('path')}   ${entry.path}`);
     }
     ui.blank();
-    return;
+    return true;
   }
 
   // ── Folder shortcut: open in specified or default opener ──
@@ -152,14 +153,14 @@ export async function handleOpen(name, app, count = 1, startCmd = '', { batch = 
     if (bail(() => {
       ui.warn(`No folder path stored for "${shortcutName}".`);
       ui.dim(`This is an app shortcut. Run without an opener: upex ${shortcutName}`);
-    })) return;
+    })) return false;
   }
 
   if (!fs.existsSync(targetPath)) {
     if (bail(() => {
       ui.warn(`Path does not exist: ${targetPath}`);
       ui.dim(`Use "upex edit ${shortcutName} <newPath>" to update.`);
-    })) return;
+    })) return false;
   }
 
   // A bare `upex <file>` opens the file in its default app; a folder opens Explorer.
@@ -167,7 +168,7 @@ export async function handleOpen(name, app, count = 1, startCmd = '', { batch = 
   const result = launchApp(appKey, targetPath, count, startCmd);
 
   if (!result.ok) {
-    if (bail(() => ui.error(result.message))) return;
+    if (bail(() => ui.error(result.message))) return false;
   }
 
   recordUse(shortcutName);
@@ -183,4 +184,5 @@ export async function handleOpen(name, app, count = 1, startCmd = '', { batch = 
   console.log(`  ${chalk.dim('app')}    ${chalk.bold(appLabel)}`);
   console.log(`  ${chalk.dim('path')}   ${targetPath}`);
   ui.blank();
+  return true;
 }

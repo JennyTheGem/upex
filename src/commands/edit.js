@@ -7,7 +7,7 @@
 
 import path from 'node:path';
 import fs from 'node:fs';
-import { setLink, loadLinks } from '../store.js';
+import { setLink, loadLinks, targetField } from '../store.js';
 import { resolveName } from '../fuzzy.js';
 import * as ui from '../ui.js';
 
@@ -31,8 +31,7 @@ export function registerEdit(program) {
       }
 
       const entry = links[name];
-      // An app shortcut that also has a path keeps editing the path, as before.
-      const field = entry.url ? 'url' : entry.app && !entry.path ? 'app' : 'path';
+      const field = targetField(entry);
       let value = target;
 
       if (field === 'path') {

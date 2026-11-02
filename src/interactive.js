@@ -8,7 +8,8 @@ import readline from 'node:readline';
 import chalk from 'chalk';
 import Fuse from 'fuse.js';
 import { getInteractiveAppChoices, isTerminalApp } from './launcher.js';
-import { loadLinks, frecency, removeLink, setLink, renameLink, linkExists } from './store.js';
+import { loadLinks, frecency, removeLink, setLink, renameLink, linkExists, loadWorkspaces, removeWorkspace } from './store.js';
+import { describeEntry } from './commands/workspace.js';
 import * as ui from './ui.js';
 
 const MAX_VISIBLE_CHOICES = 8;
@@ -29,6 +30,14 @@ function buildChoices() {
       score: frecency(entry),
     }))
     .sort((a, b) => b.score - a.score || a.name.localeCompare(b.name));
+}
+
+// Workspaces in the same { name, path, searchText } shape so filterChoices works on them.
+function buildWorkspaceChoices() {
+  return Object.entries(loadWorkspaces()).map(([name, entries]) => {
+    const summary = (entries || []).map(describeEntry).join('  ');
+    return { name, path: summary, searchText: `${name} ${summary}` };
+  });
 }
 
 export function filterChoices(choices, query) {
@@ -81,6 +90,8 @@ const PROMPT_LABEL = {
   add: () => 'new shortcut name (path = cwd):',
 };
 
+const VIEWS = { shortcuts: 'Shortcuts', workspaces: 'Workspaces' };
+
 export function renderInteractiveView({
   query,
   choices,
@@ -88,20 +99,25 @@ export function renderInteractiveView({
   appChoices,
   selectedAppIndex,
   cmdCount,
-  focus,
+  view = 'shortcuts',
+  workspaces = [],
+  wsIndex = 0,
   mode = 'browse',
   action = null,
   inputBuffer = '',
   flash = '',
 }) {
+  const isWs = view === 'workspaces';
+  const list = isWs ? workspaces : choices;
+  const index = isWs ? wsIndex : selectedIndex;
   const nameWidth = Math.max(
     4,
-    ...choices.slice(0, MAX_VISIBLE_CHOICES).map(choice => choice.name.length),
+    ...list.slice(0, MAX_VISIBLE_CHOICES).map(choice => choice.name.length),
     12,
   );
 
   // App and URL shortcuts launch directly — no opener row.
-  const currentChoice = choices[selectedIndex];
+  const currentChoice = list[index];
   const selectedIsApp = currentChoice?.isApp || currentChoice?.isUrl;
 
   const lines = [];
@@ -110,18 +126,22 @@ export function renderInteractiveView({
   lines.push(`  ${chalk.dim('│')}  ${chalk.bold('Shortcut Selector')}  ${chalk.dim('│')}`);
   lines.push(chalk.dim('  └─────────────────────┘'));
   lines.push('');
+  const tabs = Object.entries(VIEWS).map(([key, label]) => (key === view ? chalk.bold(`[${label}]`) : label)).join('  ');
+  lines.push(`  ${chalk.dim('view')}    ${tabs}`);
   lines.push(`  ${chalk.dim('filter')}  ${query || chalk.dim('(type to search)')}`);
 
-  // Hide opener row for app shortcuts — they launch directly
-  if (selectedIsApp) {
-    lines.push(`    ${chalk.dim('open')}    ${chalk.cyan('launch app')}`);
+  if (isWs) {
+    lines.push(chalk.dim('  keys    Enter=open all  Tab=shortcuts  Up/Down=navigate  ^D=del  Esc=cancel'));
   } else {
-    lines.push(`  ${focus === 'app' ? '>' : ' '} ${chalk.dim('open')}    ${formatAppChoices(appChoices, selectedAppIndex, cmdCount)}`);
+    // Hide opener row for app shortcuts, they launch directly
+    if (selectedIsApp) {
+      lines.push(`  ${chalk.dim('open')}    ${chalk.cyan('launch app')}`);
+    } else {
+      lines.push(`  ${chalk.dim('open')}    ${formatAppChoices(appChoices, selectedAppIndex, cmdCount)}`);
+    }
+    const countHint = isTerminalApp(appChoices[selectedAppIndex]?.key) ? '  ^Up/^Down=count' : '';
+    lines.push(chalk.dim(`  keys    Enter=open  Tab=workspaces  Up/Down=navigate  Left/Right=app${countHint}  ^E=edit ^R=rename ^A=add ^D=del  Esc=cancel`));
   }
-
-  const cmdSelected = isTerminalApp(appChoices[selectedAppIndex]?.key);
-  const upDownHint = focus === 'app' && cmdSelected ? 'Up/Down=count' : 'Up/Down=navigate';
-  lines.push(chalk.dim(`  keys    Enter=open  Tab=switch  ${upDownHint}  Left/Right=app  ^E=edit ^R=rename ^A=add ^D=del  Esc=cancel`));
   lines.push(chalk.dim('  ────────────────────────────────────────────────────────────────────────────'));
 
   // Live-action status line (input prompt / delete confirm / error flash).
@@ -129,13 +149,26 @@ export function renderInteractiveView({
     const target = currentChoice?.name || '';
     lines.push(`  ${chalk.cyan('▸')} ${PROMPT_LABEL[action](target)} ${inputBuffer}${chalk.dim('▏')}`);
   } else if (mode === 'confirm') {
-    lines.push(`  ${chalk.yellow('?')} delete "${currentChoice?.name}"?  ${chalk.dim('(y / n)')}`);
+    lines.push(`  ${chalk.yellow('?')} delete ${isWs ? 'workspace ' : ''}"${currentChoice?.name}"?  ${chalk.dim('(y / n)')}`);
   } else if (flash) {
     lines.push(`  ${chalk.yellow(flash)}`);
   }
 
-  if (choices.length === 0) {
-    lines.push(`  ${ui.tag.warn}  No matches`);
+  if (list.length === 0) {
+    lines.push(isWs && !query
+      ? `  ${chalk.dim('No workspaces yet. Add one: upex ws add <name> <shortcut> [app], or use upex ui')}`
+      : `  ${ui.tag.warn}  No matches`);
+    return lines.join('\n');
+  }
+
+  if (isWs) {
+    const { start, end } = getVisibleWindow(list, index);
+    for (let i = start; i < end; i++) {
+      lines.push(`  ${i === index ? '>' : ' '} ${formatName(list[i].name, nameWidth)}  ${chalk.dim(list[i].path)}`);
+    }
+    if (list.length > MAX_VISIBLE_CHOICES) {
+      lines.push(chalk.dim(`  showing ${start + 1}-${end} of ${list.length}`));
+    }
     return lines.join('\n');
   }
 
@@ -179,7 +212,10 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
     let query = '';
     let filteredChoices = choices;
     let selectedIndex = 0;
-    let focus = 'shortcut';
+    let view = 'shortcuts'; // Tab toggles 'shortcuts' | 'workspaces'
+    let wsChoices = buildWorkspaceChoices();
+    let filteredWs = wsChoices;
+    let wsIndex = 0;
     let cmdCount = 1;
     let renderedLineCount = 0;
     let mode = 'browse';   // 'browse' | 'input' | 'confirm'
@@ -207,7 +243,9 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
         appChoices,
         selectedAppIndex,
         cmdCount,
-        focus,
+        view,
+        workspaces: filteredWs,
+        wsIndex,
         mode,
         action,
         inputBuffer,
@@ -226,6 +264,8 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
     };
 
     const updateFilter = () => {
+      filteredWs = filterChoices(wsChoices, query);
+      wsIndex = Math.max(0, Math.min(wsIndex, filteredWs.length - 1));
       filteredChoices = filterChoices(choices, query);
       if (filteredChoices.length === 0) {
         selectedIndex = 0;
@@ -239,6 +279,7 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
     // Reload from disk after a mutation and try to keep `name` selected.
     const rebuild = (name) => {
       choices = buildChoices();
+      wsChoices = buildWorkspaceChoices();
       updateFilter();
       const idx = name ? filteredChoices.findIndex(c => c.name === name) : -1;
       selectedIndex = idx >= 0 ? idx : Math.min(selectedIndex, Math.max(0, filteredChoices.length - 1));
@@ -315,7 +356,11 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
 
       // ── Confirm-delete mode ──
       if (mode === 'confirm') {
-        if (key.name === 'y') {
+        if (key.name === 'y' && view === 'workspaces') {
+          const victim = filteredWs[wsIndex];
+          if (victim) removeWorkspace(victim.name);
+          rebuild();
+        } else if (key.name === 'y') {
           const victim = filteredChoices[selectedIndex];
           if (victim) removeLink(victim.name);
           rebuild();
@@ -356,6 +401,33 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
         stdout.write('\n');
         finish({ status: 'cancelled' });
         return;
+      }
+
+      if (key.name === 'tab') {
+        view = view === 'shortcuts' ? 'workspaces' : 'shortcuts';
+        query = '';
+        updateFilter();
+        redraw();
+        return;
+      }
+
+      if (view === 'workspaces') {
+        const n = filteredWs.length;
+        if (key.ctrl && key.name === 'd') {
+          if (n > 0) { mode = 'confirm'; redraw(); }
+          return;
+        }
+        if (key.name === 'return') {
+          if (n > 0) finish({ status: 'workspace', name: filteredWs[wsIndex].name });
+          return;
+        }
+        if ((key.name === 'up' || key.name === 'down') && n > 0) {
+          wsIndex = (wsIndex + (key.name === 'up' ? n - 1 : 1)) % n;
+          redraw();
+          return;
+        }
+        // Shortcut-only keys (^A/^E/^R, Left/Right) do nothing here.
+        if (key.ctrl || key.name === 'left' || key.name === 'right' || key.name === 'up' || key.name === 'down') return;
       }
 
       // Live actions (Ctrl+key so they never clash with search typing).
@@ -401,19 +473,14 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
         return;
       }
 
-      if (key.name === 'tab') {
-        focus = focus === 'shortcut' ? 'app' : 'shortcut';
-        redraw();
-        return;
-      }
-
-      const cmdFocused = focus === 'app' && isTerminalApp(appChoices[selectedAppIndex]?.key);
+      // Ctrl+Up/Down sets the terminal count; plain Up/Down navigates.
+      const countKey = key.ctrl && isTerminalApp(appChoices[selectedAppIndex]?.key);
 
       if (key.name === 'up') {
-        if (cmdFocused) {
+        if (countKey) {
           cmdCount = Math.min(9, cmdCount + 1);
           redraw();
-        } else if (focus === 'shortcut' && filteredChoices.length > 0) {
+        } else if (!key.ctrl && filteredChoices.length > 0) {
           selectedIndex = selectedIndex === 0 ? filteredChoices.length - 1 : selectedIndex - 1;
           redraw();
         }
@@ -421,10 +488,10 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
       }
 
       if (key.name === 'down') {
-        if (cmdFocused) {
+        if (countKey) {
           cmdCount = Math.max(1, cmdCount - 1);
           redraw();
-        } else if (focus === 'shortcut' && filteredChoices.length > 0) {
+        } else if (!key.ctrl && filteredChoices.length > 0) {
           selectedIndex = selectedIndex === filteredChoices.length - 1 ? 0 : selectedIndex + 1;
           redraw();
         }

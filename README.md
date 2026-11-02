@@ -40,6 +40,7 @@ npm link
 | `upex copy <name>` | Copy shortcut path to clipboard |
 | `upex app [alias] [command]` | Manage custom openers (list / add / `--remove`) |
 | `upex check [--prune]` | Report broken paths (`--prune` removes them) |
+| `upex ui [--port <n>] [--no-open]` | Manage shortcuts and workspaces in the browser |
 | `upex completion [shell]` | Print a shell completion script (bash/zsh/fish/powershell) |
 | `upex setup [cmd]` | Shell integration; `setup cmd` installs the cmd.exe wrapper |
 | `upex help` | Show all available commands |
@@ -183,7 +184,8 @@ Run `upex` with no arguments to open the interactive selector. Shortcuts are ord
 
 - `Up` / `Down` -- move through shortcuts
 - `Left` / `Right` -- change the selected app
-- `Tab` -- switch focus between the list and the app row
+- `Ctrl+Up` / `Ctrl+Down` -- terminal count when a terminal opener (cmd, claude) is selected
+- `Tab` -- switch between the Shortcuts and Workspaces views (Enter opens the whole workspace, `Ctrl+D` deletes it)
 - `Enter` -- open the selected shortcut in the selected app
 - Type -- fuzzy-filter the list
 - `Ctrl+A` -- add a shortcut for the current directory
@@ -191,6 +193,12 @@ Run `upex` with no arguments to open the interactive selector. Shortcuts are ord
 - `Ctrl+R` -- rename the selected shortcut
 - `Ctrl+D` -- delete the selected shortcut (confirm with `y`)
 - `Esc` -- cancel
+
+## Web UI
+
+Run `upex ui` to open a local page (default `http://127.0.0.1:4545`, a free port if that one is busy) where you can add, edit, rename, tag, delete and open shortcuts, manage workspaces, and remove missing paths. Press `/` to search, `n` for a new shortcut. Stop it with `Ctrl+C`.
+
+It only listens on 127.0.0.1 and every request needs a token that is new each run, so other sites can't use it. With `--no-open`, open the link it prints (it carries the token).
 
 ## Shell Completion
 
