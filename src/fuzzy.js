@@ -26,6 +26,17 @@ export function fuzzyMatch(query, names) {
   };
 }
 
+// Up to `n` close names for a "did you mean" hint; looser than resolving.
+export function suggestNames(query, names, n = 3) {
+  return new Fuse(names, { threshold: 0.6 }).search(query, { limit: n }).map(r => r.item);
+}
+
+// One-line hint for a name that didn't resolve, or null.
+export function didYouMean(query, names) {
+  const s = suggestNames(query, names);
+  return s.length ? `Did you mean: ${s.join(', ')}?` : names.length ? 'See all with: upex list' : null;
+}
+
 /**
  * Resolve a shortcut name: exact match first, then fuzzy.
  * Returns { name, exact } or null.

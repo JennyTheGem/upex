@@ -113,7 +113,7 @@ export function setLink(name, pathOrEntry) {
 
 export function removeLink(name) {
   const links = loadLinks();
-  if (!(name in links)) return false;
+  if (!Object.hasOwn(links, name)) return false;
   delete links[name];
   saveLinks(links);
   return true;
@@ -121,8 +121,8 @@ export function removeLink(name) {
 
 export function renameLink(oldName, newName) {
   const links = loadLinks();
-  if (!(oldName in links)) return { ok: false, reason: 'not_found' };
-  if (newName in links) return { ok: false, reason: 'exists' };
+  if (!Object.hasOwn(links, oldName)) return { ok: false, reason: 'not_found' };
+  if (Object.hasOwn(links, newName)) return { ok: false, reason: 'exists' };
   links[newName] = links[oldName];
   delete links[oldName];
   saveLinks(links);
@@ -130,8 +130,15 @@ export function renameLink(oldName, newName) {
 }
 
 export function linkExists(name) {
-  const links = loadLinks();
-  return name in links;
+  return Object.hasOwn(loadLinks(), name);
+}
+
+// Why a new shortcut or workspace name is invalid, or null when it's fine.
+export function nameError(name) {
+  if (!name) return 'Name is required.';
+  if (name === '__proto__') return 'That name is reserved.';
+  if (/\s/.test(name)) return 'Names cannot contain spaces.';
+  return null;
 }
 
 /**
@@ -139,7 +146,7 @@ export function linkExists(name) {
  */
 export function recordUse(name) {
   const links = loadLinks();
-  if (!(name in links)) return;
+  if (!Object.hasOwn(links, name)) return;
   const entry = links[name];
   entry.uses = (entry.uses || 0) + 1;
   entry.lastUsed = Date.now();
@@ -207,7 +214,7 @@ export function mergeLinks(current, incoming, { replace = false } = {}) {
   const added = [];
   const updated = [];
   for (const [name, entry] of Object.entries(incoming)) {
-    (name in merged ? updated : added).push(name);
+    (Object.hasOwn(merged, name) ? updated : added).push(name);
     merged[name] = entry;
   }
   return { merged, added, updated };

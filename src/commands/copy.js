@@ -5,7 +5,7 @@
 
 import { loadLinks } from '../store.js';
 import { copyToClipboard } from '../launcher.js';
-import { resolveName } from '../fuzzy.js';
+import { resolveName, didYouMean } from '../fuzzy.js';
 import * as ui from '../ui.js';
 
 export function registerCopy(program) {
@@ -18,10 +18,8 @@ export function registerCopy(program) {
 
       if (!resolved) {
         ui.error(`Shortcut not found: ${name}`);
-        const names = Object.keys(links);
-        if (names.length > 0) {
-          ui.dim(`Available: ${names.join(', ')}`);
-        }
+        const hint = didYouMean(name, Object.keys(links));
+        if (hint) ui.dim(hint);
         process.exit(1);
       }
 

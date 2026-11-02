@@ -6,10 +6,11 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
+import os from 'node:os';
 import { spawnSync } from 'node:child_process';
 import chalk from 'chalk';
 import { loadLinks, recordUse } from '../store.js';
-import { resolveTarget } from '../fuzzy.js';
+import { resolveTarget, didYouMean } from '../fuzzy.js';
 import { launchApp, launchExecutable, launchUrl } from '../launcher.js';
 import * as ui from '../ui.js';
 
@@ -99,8 +100,8 @@ export async function handleOpen(name, app, count = 1, startCmd = '', { batch = 
   if (!resolved) {
     if (bail(() => {
       ui.error(`Shortcut not found: ${name}`);
-      const names = Object.keys(links);
-      if (names.length > 0) ui.dim(`Available: ${names.join(', ')}`);
+      const hint = didYouMean(name, Object.keys(links));
+      if (hint) ui.dim(hint);
     })) return false;
   }
 
@@ -129,7 +130,8 @@ export async function handleOpen(name, app, count = 1, startCmd = '', { batch = 
 
   // ── App shortcut: launch stored executable directly ──
   if (entry.app && !app && !resolved.sub) {
-    const result = launchExecutable(entry.app);
+    // A command line opens a terminal in the home folder and runs there.
+    const result = entry.terminal ? launchApp('cmd', os.homedir(), 1, entry.app) : launchExecutable(entry.app);
 
     if (!result.ok) {
       if (bail(() => ui.error(result.message))) return false;
@@ -143,6 +145,7 @@ export async function handleOpen(name, app, count = 1, startCmd = '', { batch = 
 
     ui.heading(shortcutName);
     console.log(`  ${chalk.dim('app')}    ${chalk.bold(result.displayName)}`);
+    if (entry.terminal) console.log(`  ${chalk.dim('run')}    ${entry.app}`);
     if (entry.path) {
       console.log(`  ${chalk.dim('path')}   ${entry.path}`);
     }

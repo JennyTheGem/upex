@@ -35,7 +35,7 @@ export function registerApp(program) {
       }
 
       if (options.remove) {
-        if (!(alias in apps)) {
+        if (!Object.hasOwn(apps, alias)) {
           ui.error(`No custom app named "${alias}".`);
           return;
         }

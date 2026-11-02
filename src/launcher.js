@@ -150,6 +150,18 @@ export function copyToClipboard(text) {
   execSync(cmd, { input, env, stdio: ['pipe', 'ignore', 'ignore'], shell: true });
 }
 
+// Caret-escape cmd.exe metacharacters the outer shell sees unquoted. `line` starts inside quotes.
+export function caretEscape(line) {
+  let quoted = true;
+  let out = '';
+  for (const ch of line) {
+    if (ch === '"') quoted = !quoted;
+    else if (!quoted && '&|<>^'.includes(ch)) out += '^';
+    out += ch;
+  }
+  return out;
+}
+
 function quoteIfNeeded(cmd) {
   if (cmd.includes(' ') && !cmd.startsWith('"')) {
     return `"${cmd}"`;
@@ -358,7 +370,9 @@ export function launchApp(appName, folderPath, count = 1, startCmd = '') {
       // window outlives upex. Run it synchronously (no `detached`) to avoid
       // CREATE_NEW_PROCESS_GROUP, which would disable Ctrl+C inside the window.
       // `cmd /k <start>` runs the start command and keeps the window open.
-      const inner = runCmd ? `cmd /k ${runCmd}` : 'cmd';
+      // Quoted with /s so && and | run in the new window, not in this shell;
+      // carets cover the parts the user quoted themselves ("a & b").
+      const inner = runCmd ? `cmd /s /k "${caretEscape(runCmd)}"` : 'cmd';
       for (let i = 0; i < repeat; i++) {
         execSync(`start "" ${inner}`, { cwd: terminalCwd, stdio: 'ignore' });
       }
@@ -473,7 +487,8 @@ export function launchExecutable(exePath) {
         cwd: path.dirname(exePath),
       });
     } else {
-      const cmd = exePath.includes(' ') && !exePath.startsWith('"') ? `"${exePath}"` : exePath;
+      // Quote only a real file path with spaces; anything else is a command line with args.
+      const cmd = exePath.includes(' ') && !exePath.startsWith('"') && fileExists(exePath) ? `"${exePath}"` : exePath;
       child = spawn(cmd, [], {
         detached: true,
         stdio: 'ignore',

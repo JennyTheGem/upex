@@ -74,7 +74,7 @@ export function registerRun(program) {
         return;
       }
 
-      if (!(script in scripts)) {
+      if (!Object.hasOwn(scripts, script)) {
         ui.error(`No "${script}" script in ${resolved.name}. Available: ${Object.keys(scripts).join(', ') || '(none)'}`);
         process.exit(1);
       }

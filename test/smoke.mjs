@@ -8,16 +8,16 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import http from 'node:http';
-import { spawn, spawnSync } from 'node:child_process';
+import { spawn, spawnSync, execSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { frecency, pruneBroken, mergeLinks, lastUsedName } from '../src/store.js';
+import { frecency, pruneBroken, mergeLinks, lastUsedName, nameError } from '../src/store.js';
 import { installCmdWrapper } from '../src/commands/setup.js';
-import { normalizeUrl } from '../src/launcher.js';
+import { normalizeUrl, caretEscape } from '../src/launcher.js';
 import { parseTags } from '../src/commands/add.js';
 import { truncate } from '../src/ui.js';
 import { applyShortcut, cleanEntries } from '../src/commands/web.js';
 import { renderInteractiveView, inView } from '../src/interactive.js';
-import { resolveTarget } from '../src/fuzzy.js';
+import { resolveTarget, suggestNames } from '../src/fuzzy.js';
 
 // -- frecency: recent + used beats old + unused; unused = 0 --
 const now = Date.now();
@@ -111,6 +111,15 @@ fs.writeFileSync(linksFile, '\uFEFF' + JSON.stringify({ gh: { url: 'github.com' 
 assert.equal(upexIn('edit', 'gh', 'gitlab.com').status, 0, 'BOM-prefixed store loads');
 assert.equal(JSON.parse(fs.readFileSync(linksFile, 'utf-8')).gh.url, 'gitlab.com', 'edit replaces a URL target');
 assert.ok(!fs.readdirSync(path.dirname(linksFile)).some(f => f.endsWith('.tmp')), 'save leaves no temp file');
+
+// -- prototype names are real names; a workspace with a failing entry exits 1 --
+fs.writeFileSync(linksFile, JSON.stringify({}));
+assert.equal(upexIn('add', 'constructor', home).status, 0, '"constructor" can be added');
+assert.equal(upexIn('add', 'has space', home).status, 1, 'names with spaces rejected');
+upexIn('ws', 'add', 'w', 'nope');
+assert.equal(upexIn('ws', 'w').status, 1, 'failed workspace entry exits 1');
+assert.equal(upexIn('ws', 'toString').status, 1, 'prototype workspace name is not found');
+
 fs.rmSync(home, { recursive: true, force: true });
 
 // -- mergeLinks: merge overwrites on clash, replace swaps the set --
@@ -147,6 +156,15 @@ assert.deepEqual(tabbed.filter(inView('apps')).map(c => c.name), ['a', 'u'], 'ap
 assert.equal(normalizeUrl('github.com'), 'https://github.com', 'bare host gets https');
 assert.equal(normalizeUrl('http://x.dev'), 'http://x.dev', 'existing scheme preserved');
 
+// -- caretEscape: cmd.exe metachars inside the user's own quotes survive the outer shell --
+assert.equal(caretEscape('cd x && echo "a & b|c"'), 'cd x && echo "a ^& b^|c"', 'only user-quoted metachars escaped');
+if (process.platform === 'win32') {
+  // Same quote layout as `start "" cmd /s /k "<line>"`, but /c so no window opens.
+  const line = 'echo "a & b" && echo two';
+  const out = execSync(`cmd /s /c "${caretEscape(line)}"`, { encoding: 'utf-8' }).split(/\r?\n/).map(s => s.trim());
+  assert.deepEqual(out.slice(0, 2), ['"a & b"', 'two'], 'cmd.exe runs the line as typed');
+}
+
 // -- parseTags: split/trim/drop-empty, undefined when nothing usable --
 assert.deepEqual(parseTags('work, personal ,'), ['work', 'personal'], 'tags split and trimmed');
 assert.equal(parseTags(''), undefined, 'empty tag string -> undefined');
@@ -177,6 +195,9 @@ const yes = () => true;
 const base = { a: { path: path.resolve('/A') }, b: { url: 'x.dev', tags: ['t'] } };
 assert.ok(applyShortcut(base, undefined, { kind: 'url', name: 'c', target: 'y.dev' }, yes).links.c.url === 'y.dev', 'add url');
 assert.match(applyShortcut(base, undefined, { kind: 'url', name: 'a', target: 'y' }, yes).error, /exists/, 'add clash rejected');
+const cmdAdd = applyShortcut(base, undefined, { kind: 'cmd', name: 'dev', target: 'npm run dev' }, yes).links.dev;
+assert.deepEqual(cmdAdd, { app: 'npm run dev', terminal: true }, 'add cmd stores a terminal app');
+assert.deepEqual(applyShortcut({ dev: cmdAdd }, 'dev', { name: 'dev', target: 'npm test' }, yes).links.dev, { app: 'npm test', terminal: true }, 'edit cmd keeps terminal');
 assert.match(applyShortcut(base, undefined, { kind: 'folder', name: 'd', target: '/nope' }, () => false).error, /does not exist/, 'missing folder rejected');
 assert.match(applyShortcut(base, undefined, { kind: 'url', name: 'a b', target: 'y' }, yes).error, /spaces/, 'spaces rejected');
 const ren = applyShortcut(base, 'a', { name: 'z', target: '/A', tags: 'p, q' }, () => false).links;
@@ -185,6 +206,19 @@ assert.deepEqual(ren.z.tags, ['p', 'q'], 'tags parsed on edit');
 assert.equal(applyShortcut(base, 'b', { name: 'b', target: 'x.dev', tags: '' }, yes).links.b.tags, undefined, 'empty tags dropped');
 assert.match(applyShortcut(base, 'a', { name: 'b', target: '/A' }, yes).error, /exists/, 'rename clash rejected');
 assert.ok(applyShortcut({ 'Led start': { url: 'x' } }, 'Led start', { name: 'Led start', target: 'y' }, yes).links, 'CLI name with spaces stays editable');
+
+// -- opener via the web form: set, clear, folder only, known only --
+const op = { a: { path: path.resolve('/A'), opener: 'vscode' }, b: { url: 'x.dev' } };
+assert.equal(applyShortcut(op, 'a', { name: 'a', target: '/A', opener: 'cmd' }, yes).links.a.opener, 'cmd', 'opener set');
+assert.equal(applyShortcut(op, 'a', { name: 'a', target: '/A', opener: '' }, yes).links.a.opener, undefined, 'empty opener clears');
+assert.equal(applyShortcut(op, 'a', { name: 'a', target: '/A' }, yes).links.a.opener, 'vscode', 'missing opener kept');
+assert.match(applyShortcut(op, 'b', { name: 'b', target: 'x.dev', opener: 'cmd' }, yes).error, /folder/, 'opener on URL rejected');
+assert.match(applyShortcut(op, 'a', { name: 'a', target: '/A', opener: 'nope' }, yes).error, /Unknown/, 'unknown opener rejected');
+
+// -- names: one rule for CLI, selector and web --
+assert.equal(nameError('dev'), null, 'plain name ok');
+assert.ok(nameError('') && nameError('a b') && nameError('__proto__'), 'empty, spaced and __proto__ rejected');
+assert.deepEqual(suggestNames('webap', ['webapp', 'notes']), ['webapp'], 'close name suggested');
 
 // -- cleanEntries: shape workspace entries, reject bad ones --
 assert.deepEqual(cleanEntries([{ shortcut: ' s ', app: '', count: '2', start: ' claude ' }]), [{ shortcut: 's', count: 2, start: 'claude' }], 'entry cleaned');
@@ -228,6 +262,14 @@ try {
   });
   assert.equal((await putWs(null)).status, 200, 'new workspace created');
   assert.equal((await putWs(null)).status, 409, 'stale page cannot overwrite a changed workspace');
+  const rename = await fetch(base + '/api/workspace', {
+    method: 'PUT',
+    headers: { 'content-type': 'application/json', 'x-upex-token': token },
+    body: JSON.stringify({ name: 'dev', newName: 'work', entries: [{ shortcut: 'gh' }], prev: [{ shortcut: 'gh' }] }),
+  });
+  assert.equal(rename.status, 200, 'workspace renamed');
+  const cfg = JSON.parse(fs.readFileSync(path.join(webHome, '.upex', 'config.json'), 'utf-8'));
+  assert.deepEqual(Object.keys(cfg.workspaces), ['work'], 'old workspace name gone');
 } finally {
   // Already exited (e.g. crashed on start): waiting for 'exit' again would never settle.
   if (srv.exitCode === null && srv.signalCode === null) {
@@ -237,4 +279,4 @@ try {
   fs.rmSync(webHome, { recursive: true, force: true });
 }
 
-console.log('ok - frecency + prune + cmd wrapper + resolve guard + go args + safe store + edit url + merge + lastUsed + url + tags + truncate + web ui + subpaths + opener + doctor + apps tab');
+console.log('ok - frecency + prune + cmd wrapper + resolve guard + go args + safe store + edit url + merge + lastUsed + url + tags + truncate + web ui + subpaths + opener + doctor + apps tab + names + ws rename + cmd quoting');

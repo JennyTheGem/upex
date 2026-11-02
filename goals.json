@@ -76,6 +76,46 @@
       "updated": "2026-10-16"
     },
     {
+      "id": "command-line-app-shortcuts-add-cmd-command-kind",
+      "section": 1,
+      "title": "Command-line app shortcuts (add --cmd, Command kind in web UI) run in a terminal window",
+      "phase": "later",
+      "status": "done",
+      "created": "2026-11-02",
+      "updated": "2026-11-02",
+      "note": "{app, terminal:true}; runs via launchApp('cmd', home, 1, line)"
+    },
+    {
+      "id": "cli-hasown-name-checks-constructor-tostring-bug",
+      "section": 1,
+      "title": "CLI: hasOwn name checks (constructor/toString bug)",
+      "phase": "later",
+      "status": "done",
+      "created": "2026-11-02",
+      "updated": "2026-11-02",
+      "note": "done in web/cli batch"
+    },
+    {
+      "id": "cli-ws-open-reports-failures-and-exits-1",
+      "section": 1,
+      "title": "CLI: ws open reports failures and exits 1",
+      "phase": "later",
+      "status": "done",
+      "created": "2026-11-02",
+      "updated": "2026-11-02",
+      "note": "done in web/cli batch"
+    },
+    {
+      "id": "one-name-rule-no-spaces-proto-for-cli-selector",
+      "section": 1,
+      "title": "One name rule (no spaces, __proto__) for CLI, selector and web",
+      "phase": "later",
+      "status": "done",
+      "created": "2026-11-02",
+      "updated": "2026-11-02",
+      "note": "done in web/cli batch"
+    },
+    {
       "id": "open-in-explorer-default-app-vs-code-webstorm",
       "section": 2,
       "title": "Open in Explorer / default app / VS Code / WebStorm / terminal",
@@ -188,6 +228,16 @@
       "updated": "2026-11-02"
     },
     {
+      "id": "cli-did-you-mean-instead-of-listing-every-name",
+      "section": 3,
+      "title": "CLI: did-you-mean instead of listing every name",
+      "phase": "later",
+      "status": "done",
+      "created": "2026-11-02",
+      "updated": "2026-11-02",
+      "note": "done in web/cli batch"
+    },
+    {
       "id": "cd-support-via-wrapper-hidden-resolve-public-go",
       "section": 4,
       "title": "`cd` support via wrapper + hidden `__resolve` / public `go`",
@@ -270,6 +320,66 @@
       "created": "2026-11-02",
       "updated": "2026-11-02",
       "note": "src/commands/web.js + src/web/index.html; token + Host guard; smoke covers applyShortcut, cleanEntries, API auth"
+    },
+    {
+      "id": "web-ui-default-opener-in-add-edit",
+      "section": 7,
+      "title": "Web UI: default opener in add/edit",
+      "phase": "later",
+      "status": "done",
+      "created": "2026-11-02",
+      "updated": "2026-11-02",
+      "note": "done in web/cli batch"
+    },
+    {
+      "id": "web-ui-frecency-sort-by-default-a-to-z-option",
+      "section": 7,
+      "title": "Web UI: frecency sort by default, A to Z option",
+      "phase": "later",
+      "status": "done",
+      "created": "2026-11-02",
+      "updated": "2026-11-02",
+      "note": "done in web/cli batch"
+    },
+    {
+      "id": "web-ui-reorder-edit-entries-and-rename",
+      "section": 7,
+      "title": "Web UI: reorder, edit entries and rename workspaces",
+      "phase": "later",
+      "status": "done",
+      "created": "2026-11-02",
+      "updated": "2026-11-02",
+      "note": "done in web/cli batch"
+    },
+    {
+      "id": "web-ui-copy-path-button",
+      "section": 7,
+      "title": "Web UI: copy path button",
+      "phase": "later",
+      "status": "done",
+      "created": "2026-11-02",
+      "updated": "2026-11-02",
+      "note": "done in web/cli batch"
+    },
+    {
+      "id": "web-ui-terminal-count-start-command-from-a",
+      "section": 7,
+      "title": "Web UI: terminal count + start command from a shortcut row",
+      "phase": "later",
+      "status": "done",
+      "created": "2026-11-02",
+      "updated": "2026-11-02",
+      "note": "done in web/cli batch"
+    },
+    {
+      "id": "web-ui-re-check-paths-on-focus-replaces-check",
+      "section": 7,
+      "title": "Web UI: re-check paths on focus (replaces Check paths button)",
+      "phase": "later",
+      "status": "done",
+      "created": "2026-11-02",
+      "updated": "2026-11-02",
+      "note": "done in web/cli batch"
     },
     {
       "id": "publish-to-npm",

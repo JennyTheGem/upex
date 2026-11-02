@@ -48,13 +48,14 @@ export function registerList(program) {
         header,
         ...entries.map(([name, entry], i) => {
           const filepath = entry.path;
-          const appLabel = entry.app
+          const appLabel = entry.terminal ? chalk.cyan('cmd')
+            : entry.app
             ? chalk.cyan(nodePath.basename(entry.app).replace(/\.[^.]+$/, ''))
             : entry.url ? chalk.cyan('url') : chalk.dim(entry.opener || '--');
           const exists = filepath ? fs.existsSync(filepath) : !!(entry.app || entry.url);
           const pathDisplay = filepath
             ? (exists ? filepath : chalk.dim(filepath))
-            : entry.url ? chalk.blue(entry.url) : chalk.dim('(app only)');
+            : entry.url ? chalk.blue(entry.url) : entry.terminal ? entry.app : chalk.dim('(app only)');
           const status = exists ? ui.tag.ok : ui.tag.fail;
           const tags = Array.isArray(entry.tags) && entry.tags.length
             ? chalk.dim(entry.tags.join(', '))

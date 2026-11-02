@@ -3,7 +3,7 @@
  * Usage: upex rename <oldName> <newName>
  */
 
-import { renameLink, loadLinks } from '../store.js';
+import { renameLink, loadLinks, nameError } from '../store.js';
 import { resolveName } from '../fuzzy.js';
 import * as ui from '../ui.js';
 
@@ -23,6 +23,12 @@ export function registerRename(program) {
       if (!resolved.exact) {
         ui.warn(`No exact match. Did you mean "${resolved.name}"?`);
         ui.info(`Run: upex rename ${resolved.name} ${newName}`);
+        return;
+      }
+
+      const bad = nameError(newName);
+      if (bad) {
+        ui.error(bad);
         return;
       }
 

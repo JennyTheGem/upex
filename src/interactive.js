@@ -8,7 +8,7 @@ import readline from 'node:readline';
 import chalk from 'chalk';
 import Fuse from 'fuse.js';
 import { getInteractiveAppChoices, getAppMap, isTerminalApp } from './launcher.js';
-import { loadLinks, frecency, removeLink, setLink, renameLink, linkExists, loadWorkspaces, removeWorkspace } from './store.js';
+import { loadLinks, frecency, removeLink, setLink, renameLink, linkExists, loadWorkspaces, removeWorkspace, nameError } from './store.js';
 import { describeEntry } from './commands/workspace.js';
 import * as ui from './ui.js';
 
@@ -23,6 +23,7 @@ function buildChoices() {
       path: entry.path || entry.app || entry.url || '',
       app: entry.app || null,
       isApp: !!entry.app,
+      isCmd: !!(entry.app && entry.terminal),
       isUrl: !!entry.url,
       tags: entry.tags || [],
       opener: entry.opener ? String(entry.opener).toLowerCase() : null,
@@ -186,7 +187,7 @@ export function renderInteractiveView({
     const choice = visibleChoices[i];
     const cursor = choiceIndex === selectedIndex ? '>' : ' ';
     const status = choice.exists ? ui.tag.ok : ui.tag.fail;
-    const badge = choice.isApp ? chalk.cyan('[*APP]') : choice.isUrl ? chalk.blue('[*URL]') : status;
+    const badge = choice.isCmd ? chalk.cyan('[*CMD]') : choice.isApp ? chalk.cyan('[*APP]') : choice.isUrl ? chalk.blue('[*URL]') : status;
     const tags = choice.tags && choice.tags.length ? chalk.dim(`  #${choice.tags.join(' #')}`) : '';
     const label = `${formatName(choice.name, nameWidth)}  ${badge}  ${choice.path}${tags}`;
     lines.push(`  ${cursor} ${label}`);
@@ -334,7 +335,8 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
       const buf = inputBuffer.trim();
 
       if (action === 'add') {
-        if (!buf) { flash = 'name required'; return false; }
+        const bad = nameError(buf);
+        if (bad) { flash = bad.toLowerCase().replace(/\.$/, ''); return false; }
         if (linkExists(buf)) { flash = `"${buf}" already exists`; return false; }
         setLink(buf, { path: process.cwd() });
         rebuild(buf);
@@ -351,7 +353,8 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
       }
 
       if (action === 'rename') {
-        if (!buf) { flash = 'name required'; return false; }
+        const bad = nameError(buf);
+        if (bad) { flash = bad.toLowerCase().replace(/\.$/, ''); return false; }
         const result = renameLink(target, buf);
         if (!result.ok) {
           flash = result.reason === 'exists' ? `"${buf}" already exists` : 'not found';

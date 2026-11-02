@@ -11,7 +11,7 @@
  */
 
 import chalk from 'chalk';
-import { loadWorkspaces, saveWorkspaces, removeWorkspace, linkExists } from '../store.js';
+import { loadWorkspaces, saveWorkspaces, removeWorkspace, linkExists, nameError } from '../store.js';
 import { handleOpen } from './open.js';
 import * as ui from '../ui.js';
 
@@ -37,8 +37,17 @@ function listWorkspaces(workspaces) {
   ui.blank();
 }
 
+// Open each entry; returns how many failed.
+export async function openEntries(entries) {
+  let failed = 0;
+  for (const { shortcut, app, count = 1, start = '' } of entries) {
+    if (!(await handleOpen(shortcut, app || undefined, count, start, { batch: true }))) failed++;
+  }
+  return failed;
+}
+
 export async function openWorkspace(workspaces, name) {
-  const entries = workspaces[name];
+  const entries = Object.hasOwn(workspaces, name) && workspaces[name];
   if (!entries) {
     ui.error(`No workspace named "${name}".`);
     const names = Object.keys(workspaces);
@@ -46,8 +55,10 @@ export async function openWorkspace(workspaces, name) {
     process.exit(1);
   }
   ui.dim(`Opening workspace "${name}" (${entries.length} entr${entries.length === 1 ? 'y' : 'ies'})`);
-  for (const { shortcut, app, count = 1, start = '' } of entries) {
-    await handleOpen(shortcut, app || undefined, count, start, { batch: true });
+  const failed = await openEntries(entries);
+  if (failed) {
+    ui.error(`${failed} of ${entries.length} entr${entries.length === 1 ? 'y' : 'ies'} failed to open.`);
+    process.exitCode = 1;
   }
 }
 
@@ -72,6 +83,11 @@ export function registerWorkspace(program) {
           ui.error('Usage: upex ws add <name> <shortcut> [app] [count] [start...]');
           process.exit(1);
         }
+        const bad = !Object.hasOwn(workspaces, name) && nameError(name);
+        if (bad) {
+          ui.error(bad);
+          process.exit(1);
+        }
         if (!linkExists(shortcut)) {
           ui.warn(`Shortcut "${shortcut}" doesn't exist yet, adding anyway.`);
         }
@@ -88,7 +104,7 @@ export function registerWorkspace(program) {
           ...(count > 1 && { count }),
           ...(start.length && { start: start.join(' ') }),
         };
-        const list = workspaces[name] || [];
+        const list = Object.hasOwn(workspaces, name) ? workspaces[name] : [];
         list.push(entry);
         saveWorkspaces({ ...workspaces, [name]: list });
         ui.success(`ws "${name}" += ${describeEntry(entry)}`);
@@ -97,7 +113,7 @@ export function registerWorkspace(program) {
 
       if (verb === 'rm' || verb === 'remove') {
         const [name, shortcut] = rest;
-        if (!name || !(name in workspaces)) {
+        if (!name || !Object.hasOwn(workspaces, name)) {
           ui.error(`No workspace named "${name}".`);
           process.exit(1);
         }

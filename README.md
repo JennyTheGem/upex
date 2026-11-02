@@ -18,6 +18,7 @@ npm link
 |---|---|
 | `upex add <name> [path]` | Register a folder shortcut (defaults to current directory) |
 | `upex add <name> <app> --app` | Register an app shortcut (the path is the executable) |
+| `upex add <name> "<command>" --cmd` | Register a command line (runs in a terminal window) |
 | `upex add <name> <url> --url` | Register a URL shortcut (opens in the browser) |
 | `upex add <name> [path] --tag a,b` | Attach tags while registering |
 | `upex` | Open the interactive shortcut selector and choose shortcut/app |
@@ -93,6 +94,10 @@ upex webap vscode
 # Register an app shortcut (the path is the executable, --app is a flag)
 upex add chrome "C:\Program Files\Google\Chrome\Application\chrome.exe" --app
 upex chrome          # launches Chrome
+
+# Register a command line; it runs in a new terminal window (starts in your home folder)
+upex add dev "cd /d E:\projects\app && npm run dev" --cmd
+upex dev
 
 # Save a file (opens in its default app; "explorer" reveals it in its folder)
 upex add notes "E:\docs\notes.md"
@@ -199,7 +204,7 @@ Run `upex` with no arguments to open the interactive selector. Shortcuts are ord
 
 ## Web UI
 
-Run `upex ui` to open a local page (default `http://127.0.0.1:4545`, a free port if that one is busy) where you can add, edit, rename, tag, delete and open shortcuts, manage workspaces, and remove missing paths. Folders, apps (app + URL shortcuts) and workspaces each get their own tab. Press `/` to search, `n` for a new shortcut or app. Stop it with `Ctrl+C`.
+Run `upex ui` to open a local page (default `http://127.0.0.1:4545`, a free port if that one is busy) where you can add, edit, rename, tag, delete, copy and open shortcuts, set a default opener, open terminals with a window count and start command, build, reorder and rename workspaces, and remove missing paths. Lists sort by most used (or A to Z) and re-check paths when you come back to the page. Folders, apps (app, command and URL shortcuts) and workspaces each get their own tab. Press `/` to search, `n` for a new shortcut or app. Stop it with `Ctrl+C`.
 
 It only listens on 127.0.0.1 and every request needs a token that is new each run, so other sites can't use it. With `--no-open`, open the link it prints (it carries the token).
 

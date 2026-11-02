@@ -8,9 +8,10 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import crypto from 'node:crypto';
-import { loadLinks, saveLinks, loadWorkspaces, saveWorkspaces, pruneBroken, targetField } from '../store.js';
-import { getInteractiveAppChoices, launchUrl } from '../launcher.js';
+import { loadLinks, saveLinks, loadWorkspaces, saveWorkspaces, pruneBroken, targetField, nameError, frecency } from '../store.js';
+import { getInteractiveAppChoices, launchUrl, openerKey, isTerminalApp } from '../launcher.js';
 import { handleOpen } from './open.js';
+import { openEntries } from './workspace.js';
 import { parseTags } from './add.js';
 import * as ui from '../ui.js';
 
@@ -21,19 +22,19 @@ const DEFAULT_PORT = 4545;
  * Add (old undefined) or edit/rename (old = current name) one shortcut.
  * Pure: returns { links } with the new set, or { error }.
  */
-export function applyShortcut(links, old, { kind, name, target, tags } = {}, exists = fs.existsSync) {
+export function applyShortcut(links, old, { kind, name, target, tags, opener } = {}, exists = fs.existsSync) {
   name = String(name ?? '').trim();
   target = String(target ?? '').trim();
-  if (!name) return { error: 'Name is required.' };
-  if (name === '__proto__') return { error: 'That name is reserved.' };
-  // CLI names may hold spaces; only new names are checked so those stay editable.
-  if (name !== old && /\s/.test(name)) return { error: 'Names cannot contain spaces.' };
+  // Old CLI names may hold spaces; only new names are checked so those stay editable.
+  const bad = name !== old && nameError(name);
+  if (bad) return { error: bad };
   if (old !== undefined && !Object.hasOwn(links, old)) return { error: `Shortcut not found: ${old}` };
   if (name !== old && Object.hasOwn(links, name)) return { error: `"${name}" already exists.` };
 
   const prev = old === undefined ? {} : links[old];
-  const field = old === undefined ? { folder: 'path', app: 'app', url: 'url' }[kind] : targetField(prev);
-  if (!field) return { error: 'Pick folder, app or URL.' };
+  const field = old === undefined ? { folder: 'path', app: 'app', cmd: 'app', url: 'url' }[kind] : targetField(prev);
+  if (!field) return { error: 'Pick folder, app, command or URL.' };
+  if (old === undefined && kind === 'cmd') prev.terminal = true;
   if (!target) return { error: 'Target is required.' };
   if (field === 'path') {
     target = path.resolve(target);
@@ -44,6 +45,13 @@ export function applyShortcut(links, old, { kind, name, target, tags } = {}, exi
   const entry = { ...prev, [field]: target };
   const t = parseTags(Array.isArray(tags) ? tags.join(',') : String(tags ?? ''));
   if (t) entry.tags = t; else delete entry.tags;
+  // undefined leaves the opener alone, '' clears it.
+  if (opener) {
+    if (field !== 'path') return { error: 'A default opener only applies to folder shortcuts.' };
+    const key = openerKey(opener);
+    if (!key) return { error: `Unknown opener "${opener}".` };
+    entry.opener = key;
+  } else if (opener !== undefined) delete entry.opener;
 
   // Rebuild so a renamed shortcut keeps its position.
   const out = {};
@@ -80,17 +88,19 @@ function state() {
       const field = targetField(e);
       return {
         name,
-        kind: field === 'path' ? 'folder' : field,
+        kind: field === 'path' ? 'folder' : e.terminal ? 'cmd' : field,
         // Same split as the terminal selector: anything that launches directly lives on Apps.
         tab: e.app || e.url ? 'apps' : 'links',
         target: e[field] ?? '',
         tags: e.tags || [],
+        opener: e.opener || '',
         lastUsed: e.lastUsed || 0,
+        score: frecency(e),
         broken: Boolean(e.path) && !fs.existsSync(e.path),
       };
     }),
     workspaces: loadWorkspaces(),
-    apps: getInteractiveAppChoices(),
+    apps: getInteractiveAppChoices().map(a => ({ ...a, terminal: isTerminalApp(a.key) })),
     home: os.homedir(),
     sep: path.sep,
   };
@@ -114,7 +124,9 @@ const routes = {
     const name = String(b.name ?? '');
     // Exact only: a stale name must not fuzzy-open some other shortcut.
     if (!Object.hasOwn(loadLinks(), name)) throw new HttpError(404, `Shortcut not found: ${name}`);
-    const ok = await handleOpen(name, b.app || undefined, 1, '', { batch: true });
+    const [e] = cleanEntries([{ shortcut: name, app: b.app, count: b.count, start: b.start }]) || [];
+    if (!e) throw new HttpError(400, 'Window count must be at least 1.');
+    const ok = await handleOpen(name, e.app, e.count || 1, e.start || '', { batch: true });
     if (!ok) throw new HttpError(422, `Could not open "${b.name}". Details are in the upex ui terminal.`);
     return {};
   },
@@ -125,20 +137,25 @@ const routes = {
     return { removed };
   },
 
-  // Set one workspace's entries; an empty list deletes it.
+  // Set one workspace's entries (and optionally rename it); an empty list deletes it.
   // `prev` is the list the page saw (null = new), so a CLI change in between is not overwritten.
   'PUT /api/workspace': (b) => {
     const name = String(b.name ?? '').trim();
+    const to = b.newName === undefined ? name : String(b.newName).trim();
     const entries = cleanEntries(b.entries);
     const all = loadWorkspaces();
     const exists = Object.hasOwn(all, name);
-    if (!name || name === '__proto__' || (!exists && /\s/.test(name))) throw new HttpError(400, 'Workspace names need at least one character and no spaces.');
+    const bad = (!exists && nameError(name)) || (to !== name && nameError(to));
+    if (bad) throw new HttpError(400, bad);
+    if (to !== name && Object.hasOwn(all, to)) throw new HttpError(409, `"${to}" already exists.`);
     if (!entries) throw new HttpError(400, 'Each entry needs a shortcut and a count of at least 1.');
     if (JSON.stringify(b.prev ?? null) !== JSON.stringify(exists ? all[name] : null)) {
       throw new HttpError(409, `Workspace "${name}" changed elsewhere. Reloaded, try again.`);
     }
-    const { [name]: _old, ...rest } = all;
-    saveWorkspaces(entries.length ? { ...rest, [name]: entries } : rest);
+    // fromEntries keeps the order, so a renamed workspace stays in place.
+    const list = Object.entries(all).map(([k, v]) => (k === name ? [to, entries] : [k, v]));
+    if (!exists) list.push([to, entries]);
+    saveWorkspaces(Object.fromEntries(list.filter(([k, v]) => k !== to || v.length)));
     return {};
   },
 
@@ -146,10 +163,7 @@ const routes = {
     const workspaces = loadWorkspaces();
     const entries = Object.hasOwn(workspaces, String(b.name)) && workspaces[b.name];
     if (!entries) throw new HttpError(404, `No workspace named "${b.name}".`);
-    let failed = 0;
-    for (const { shortcut, app, count = 1, start = '' } of entries) {
-      if (!(await handleOpen(shortcut, app || undefined, count, start, { batch: true }))) failed++;
-    }
+    const failed = await openEntries(entries);
     if (failed) throw new HttpError(422, `${failed} of ${entries.length} entries failed. Details are in the upex ui terminal.`);
     return {};
   },
