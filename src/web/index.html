@@ -237,6 +237,7 @@ h1 { font-size: 20px; letter-spacing: -.015em; margin: 8px 0 4px; }
     <div class="brand">upex</div>
     <nav aria-label="Views">
       <button class="tab" data-view="links" aria-current="page">Shortcuts <span class="n" id="n-links"></span></button>
+      <button class="tab" data-view="apps">Apps <span class="n" id="n-apps"></span></button>
       <button class="tab" data-view="ws">Workspaces <span class="n" id="n-ws"></span></button>
     </nav>
     <div class="search">
@@ -255,6 +256,10 @@ h1 { font-size: 20px; letter-spacing: -.015em; margin: 8px 0 4px; }
 const TOKEN = '__TOKEN__';
 const NS = 'http://www.w3.org/2000/svg';
 const KINDS = { folder: 'Folder', app: 'App', url: 'URL' };
+// Kinds each list tab can add; folders on Shortcuts, apps and URLs on Apps.
+const TAB_KINDS = { links: ['folder'], apps: ['app', 'url'] };
+const TITLES = { links: 'Shortcuts', apps: 'Apps', ws: 'Workspaces' };
+const tabLinks = () => S.links.filter(l => l.tab === S.view);
 
 const S = {
   links: [], workspaces: {}, apps: [], home: '', sep: '/',
@@ -363,7 +368,7 @@ function placeholder(kind) {
 
 function visibleLinks() {
   const q = S.q.trim().toLowerCase();
-  return S.links
+  return tabLinks()
     .filter(l => !S.tag || l.tags.includes(S.tag))
     .filter(l => !q || [l.name, l.target, ...l.tags].some(s => s.toLowerCase().includes(q)))
     .sort((a, b) => a.name.localeCompare(b.name));
@@ -375,8 +380,9 @@ function addForm() {
   const field = (key, attrs) => h('input', { type: 'text', value: d[key], spellcheck: 'false', autocomplete: 'off',
     oninput: e => (d[key] = e.target.value), ...attrs });
   const target = field('target', { class: 'wide mono', placeholder: placeholder(S.addKind), 'aria-label': KINDS[S.addKind] + ' target' });
-  const seg = h('div', { class: 'seg', role: 'radiogroup', 'aria-label': 'Kind' },
-    Object.entries(KINDS).map(([k, label]) => [
+  const kinds = TAB_KINDS[S.view];
+  const seg = kinds.length > 1 && h('div', { class: 'seg', role: 'radiogroup', 'aria-label': 'Kind' },
+    kinds.map(k => [k, KINDS[k]]).map(([k, label]) => [
       h('input', { type: 'radio', name: 'kind', id: 'k-' + k, checked: S.addKind === k, onchange: () => {
         S.addKind = k;
         target.placeholder = placeholder(k);
@@ -396,13 +402,13 @@ function addForm() {
     }
   };
   const form = h('form', { class: 'form', onsubmit: submit, onkeydown: e => e.key === 'Escape' && close() },
-    h('div', { class: 'row' }, seg),
+    seg && h('div', { class: 'row' }, seg),
     h('div', { class: 'row' },
       field('name', { id: 'add-name', placeholder: 'name', 'aria-label': 'Name' }),
       target,
       field('tags', { placeholder: 'tags, comma separated', 'aria-label': 'Tags' })),
     h('div', { class: 'row' },
-      h('button', { type: 'submit', class: 'btn primary' }, icon('plus'), 'Add shortcut'),
+      h('button', { type: 'submit', class: 'btn primary' }, icon('plus'), S.view === 'apps' ? 'Add app' : 'Add shortcut'),
       btn('Cancel', 'ghost', () => close())),
     err);
   function close() { S.adding = false; S.addErr = ''; render(); }
@@ -477,8 +483,11 @@ function row(l) {
 
 function linksView() {
   const out = [];
+  const mine = tabLinks();
+  const isApps = S.view === 'apps';
+  const newLabel = isApps ? 'New app' : 'New shortcut';
   const broken = S.links.filter(l => l.broken);
-  const tags = [...new Set(S.links.flatMap(l => l.tags))].sort();
+  const tags = [...new Set(mine.flatMap(l => l.tags))].sort();
 
   out.push(h('div', { class: 'toolbar' },
     tags.length > 0 && h('div', { class: 'chips', role: 'group', 'aria-label': 'Filter by tag' },
@@ -490,7 +499,7 @@ function linksView() {
       const n = S.links.filter(l => l.broken).length;
       say(n ? `${n} path${n === 1 ? '' : 's'} missing` : 'All paths found');
     }, 'check'),
-    !S.adding && btn('New shortcut', 'primary', () => openPanel('adding', 'add-name'), 'plus', { 'aria-keyshortcuts': 'n' })));
+    !S.adding && btn(newLabel, 'primary', () => openPanel('adding', 'add-name'), 'plus', { 'aria-keyshortcuts': 'n' })));
 
   if (broken.length) {
     out.push(h('div', { class: 'notice', role: 'region', 'aria-label': 'Missing paths' },
@@ -507,11 +516,13 @@ function linksView() {
   if (S.adding) out.push(addForm());
 
   const list = visibleLinks();
-  if (!S.links.length) {
+  if (!mine.length) {
     out.push(h('div', { class: 'list' }, h('div', { class: 'empty' },
-      h('strong', null, 'No shortcuts yet'),
-      'A shortcut is a short name for a folder, an app or a URL. Open it here or with upex <name> in a terminal.',
-      h('div', null, !S.adding && btn('Add your first shortcut', 'primary', () => openPanel('adding', 'add-name'), 'plus')))));
+      h('strong', null, isApps ? 'No apps yet' : 'No shortcuts yet'),
+      isApps
+        ? 'An app shortcut launches a program or opens a URL. Run it here or with upex <name> in a terminal.'
+        : 'A shortcut is a short name for a folder. Open it here or with upex <name> in a terminal.',
+      h('div', null, !S.adding && btn(isApps ? 'Add your first app' : 'Add your first shortcut', 'primary', () => openPanel('adding', 'add-name'), 'plus')))));
   } else if (!list.length) {
     out.push(h('div', { class: 'list' }, h('div', { class: 'empty' },
       h('strong', null, 'Nothing matches'),
@@ -608,7 +619,8 @@ function wsView() {
 // ---------- Shell ----------
 
 function render() {
-  document.getElementById('n-links').textContent = S.links.length;
+  document.getElementById('n-links').textContent = S.links.filter(l => l.tab === 'links').length;
+  document.getElementById('n-apps').textContent = S.links.filter(l => l.tab === 'apps').length;
   document.getElementById('n-ws').textContent = Object.keys(S.workspaces).length;
   document.querySelectorAll('.tab').forEach(t =>
     t.dataset.view === S.view ? t.setAttribute('aria-current', 'page') : t.removeAttribute('aria-current'));
@@ -617,19 +629,23 @@ function render() {
   const main = document.getElementById('main');
   main.removeAttribute('aria-busy');
   main.replaceChildren(
-    h('h1', null, S.view === 'ws' ? 'Workspaces' : 'Shortcuts'),
+    h('h1', null, TITLES[S.view]),
     ...(S.view === 'ws' ? wsView() : linksView()));
 }
 
 document.querySelectorAll('.tab').forEach(t => t.addEventListener('click', () => {
+  if (S.view === t.dataset.view) return;
   S.view = t.dataset.view;
+  // Per-tab state: an open add form or tag filter belongs to the tab it was opened on.
+  S.adding = false; S.addErr = ''; S.tag = null; S.editing = null; S.confirming = null;
+  if (TAB_KINDS[S.view]) S.addKind = TAB_KINDS[S.view][0];
   render();
 }));
 document.getElementById('q').addEventListener('input', e => { S.q = e.target.value; render(); });
 document.addEventListener('keydown', e => {
   const typing = /^(INPUT|SELECT|TEXTAREA)$/.test(document.activeElement?.tagName);
   if (e.key === '/' && !typing) { e.preventDefault(); document.getElementById('q').focus(); }
-  else if (e.key === 'n' && !typing && !e.ctrlKey && !e.metaKey && S.view === 'links') { e.preventDefault(); openPanel('adding', 'add-name'); }
+  else if (e.key === 'n' && !typing && !e.ctrlKey && !e.metaKey && S.view !== 'ws') { e.preventDefault(); openPanel('adding', 'add-name'); }
   else if (e.key === 'Escape' && document.activeElement?.id === 'q') { e.target.value = S.q = ''; e.target.blur(); render(); }
 });
 

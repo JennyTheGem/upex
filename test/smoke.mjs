@@ -219,6 +219,8 @@ try {
   assert.equal(post.status, 200, 'add via api ok');
   const saved = JSON.parse(fs.readFileSync(path.join(webHome, '.upex', 'links.json'), 'utf-8'));
   assert.deepEqual(saved.gh, { url: 'github.com', tags: ['web'] }, 'api add written to store');
+  const st = await (await fetch(base + '/api/state', { headers: { 'x-upex-token': token } })).json();
+  assert.equal(st.links.find(l => l.name === 'gh').tab, 'apps', 'URL shortcut listed on the Apps tab');
   const putWs = (prev) => fetch(base + '/api/workspace', {
     method: 'PUT',
     headers: { 'content-type': 'application/json', 'x-upex-token': token },

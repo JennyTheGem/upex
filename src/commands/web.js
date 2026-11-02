@@ -81,6 +81,8 @@ function state() {
       return {
         name,
         kind: field === 'path' ? 'folder' : field,
+        // Same split as the terminal selector: anything that launches directly lives on Apps.
+        tab: e.app || e.url ? 'apps' : 'links',
         target: e[field] ?? '',
         tags: e.tags || [],
         lastUsed: e.lastUsed || 0,
