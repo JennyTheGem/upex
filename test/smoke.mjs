@@ -16,7 +16,8 @@ import { normalizeUrl } from '../src/launcher.js';
 import { parseTags } from '../src/commands/add.js';
 import { truncate } from '../src/ui.js';
 import { applyShortcut, cleanEntries } from '../src/commands/web.js';
-import { renderInteractiveView } from '../src/interactive.js';
+import { renderInteractiveView, inView } from '../src/interactive.js';
+import { resolveTarget } from '../src/fuzzy.js';
 
 // -- frecency: recent + used beats old + unused; unused = 0 --
 const now = Date.now();
@@ -74,13 +75,38 @@ fs.writeFileSync(linksFile, JSON.stringify({ t: { path: target } }));
 const g = upexIn('go', 't', process.platform === 'win32' ? 'cd' : 'pwd');
 assert.equal(g.status, 0, 'go with args exits 0');
 assert.equal(g.stdout.trim(), target, 'command runs in the shortcut folder');
+
+// -- subpaths: go prints a folder inside the shortcut, missing subfolder fails --
+fs.mkdirSync(path.join(target, 'sub'));
+assert.equal(upexIn('go', 't/sub').stdout, path.join(target, 'sub'), 'go resolves a subpath');
+assert.equal(upexIn('go', 't/nope').status, 1, 'missing subpath fails');
+
+// -- default opener: set, reject unknown, reject on URL, clear --
+const stored = () => JSON.parse(fs.readFileSync(linksFile, 'utf-8'));
+assert.equal(upexIn('edit', 't', '--opener', 'VSCode').status, 0, 'opener set');
+assert.equal(stored().t.opener, 'vscode', 'opener stored lowercased');
+assert.equal(stored().t.path, target, 'opener-only edit keeps the path');
+assert.equal(upexIn('edit', 't', '--opener', 'nope').status, 1, 'unknown opener rejected');
+assert.equal(upexIn('edit', 't', '--opener', 'constructor').status, 1, 'prototype names are not openers');
+assert.equal(upexIn('edit', 't', '--opener', 'code').status, 0, 'alias opener accepted');
+assert.equal(stored().t.opener, 'vscode', 'alias stored under the selector key');
+assert.equal(upexIn('add', 'u', 'x.dev', '--url', '--opener', 'vscode').status, 1, 'opener on a URL shortcut rejected');
+assert.equal(upexIn('edit', 't', '--no-opener').status, 0, 'opener cleared');
+assert.equal(stored().t.opener, undefined, 'cleared opener removed from the entry');
+
+// -- doctor: healthy store passes, a corrupt one fails --
+const doc = upexIn('doctor');
+assert.equal(doc.status, 0, 'doctor passes on a good store');
+assert.ok(doc.stdout.includes('1 shortcut'), 'doctor reports the store');
 fs.rmSync(target, { recursive: true, force: true });
+assert.match(upexIn('doctor').stdout, /broken shortcut: t/, 'doctor flags a broken path');
 
 // -- store: a corrupt links.json is never overwritten, a BOM is tolerated --
 const broken = '{"keep": {"path": "X"},';
 fs.writeFileSync(linksFile, broken);
 assert.equal(upexIn('add', 'new', home).status, 1, 'corrupt store fails the command');
 assert.equal(fs.readFileSync(linksFile, 'utf-8'), broken, 'corrupt store is left untouched');
+assert.equal(upexIn('doctor').status, 1, 'doctor fails on a corrupt store');
 fs.writeFileSync(linksFile, '\uFEFF' + JSON.stringify({ gh: { url: 'github.com' } }));
 assert.equal(upexIn('edit', 'gh', 'gitlab.com').status, 0, 'BOM-prefixed store loads');
 assert.equal(JSON.parse(fs.readFileSync(linksFile, 'utf-8')).gh.url, 'gitlab.com', 'edit replaces a URL target');
@@ -101,6 +127,21 @@ assert.deepEqual(Object.keys(rep.merged).sort(), ['b', 'c'], 'replace swaps the 
 // -- lastUsedName: highest lastUsed wins, none -> null --
 assert.equal(lastUsedName({ x: { lastUsed: 1 }, y: { lastUsed: 9 }, z: {} }), 'y', 'most recent wins');
 assert.equal(lastUsedName({ x: {}, y: {} }), null, 'no lastUsed -> null');
+
+// -- resolveTarget: exact, subpath, fuzzy head, slash-named shortcut wins --
+const rl = { web: {}, api: {}, 'a/b': {} };
+assert.deepEqual(resolveTarget('web', rl), { name: 'web', exact: true, sub: '' }, 'exact name');
+assert.deepEqual(resolveTarget('web/src/x', rl), { name: 'web', exact: true, sub: 'src/x' }, 'subpath split');
+assert.deepEqual(resolveTarget('web\\src', rl), { name: 'web', exact: true, sub: 'src' }, 'backslash subpath');
+assert.equal(resolveTarget('wbe/src', rl).name, 'web', 'fuzzy head keeps the subpath');
+assert.deepEqual(resolveTarget('a/b', rl), { name: 'a/b', exact: true, sub: '' }, 'full name with a slash wins');
+assert.deepEqual(resolveTarget('a/b/c', rl), { name: 'a/b', exact: true, sub: 'c' }, 'slash-named shortcut takes a subpath');
+assert.equal(resolveTarget('zzzzzz', rl), null, 'no match -> null');
+
+// -- selector tabs: folders on Shortcuts, apps + URLs on Apps --
+const tabbed = [{ name: 'f' }, { name: 'a', isApp: true }, { name: 'u', isUrl: true }];
+assert.deepEqual(tabbed.filter(inView('shortcuts')).map(c => c.name), ['f'], 'shortcuts tab: folders only');
+assert.deepEqual(tabbed.filter(inView('apps')).map(c => c.name), ['a', 'u'], 'apps tab: apps and URLs');
 
 // -- normalizeUrl: bare host gets https, real scheme kept --
 assert.equal(normalizeUrl('github.com'), 'https://github.com', 'bare host gets https');
@@ -128,6 +169,8 @@ const wsView = strip(renderInteractiveView({ ...viewArgs, view: 'workspaces', wo
 assert.ok(wsView.includes('[Workspaces]') && wsView.includes('> dev') && wsView.includes('s:vscode'), 'workspace view lists workspaces');
 assert.ok(!wsView.includes('Explorer'), 'no opener row in workspace view');
 assert.ok(strip(renderInteractiveView(viewArgs)).includes('[Shortcuts]'), 'shortcut view is the default');
+const appsView = strip(renderInteractiveView({ ...viewArgs, view: 'apps', choices: [{ name: 'g', path: 'x.dev', isUrl: true, exists: true }] }));
+assert.ok(appsView.includes('[Apps]') && appsView.includes('open in browser') && !appsView.includes('Explorer'), 'apps view: no opener row');
 
 // -- applyShortcut: add, rename in place, clashes, path checks --
 const yes = () => true;
@@ -192,4 +235,4 @@ try {
   fs.rmSync(webHome, { recursive: true, force: true });
 }
 
-console.log('ok - frecency + prune + cmd wrapper + resolve guard + go args + safe store + edit url + merge + lastUsed + url + tags + truncate + web ui');
+console.log('ok - frecency + prune + cmd wrapper + resolve guard + go args + safe store + edit url + merge + lastUsed + url + tags + truncate + web ui + subpaths + opener + doctor + apps tab');

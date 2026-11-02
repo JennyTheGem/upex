@@ -10,4 +10,8 @@ Closed sections: §1 Shortcut management · §2 Opening · §3 Resolution & UX �
 
 ## 6. Quality
 
-- `broader-test-coverage-fuzzy-resolution-launcher` Broader test coverage (fuzzy resolution, launcher branching per platform) (later)
+- Plus 1 maybe: `upgo list --section 6 --phase maybe`
+
+## 8. Distribution
+
+- `publish-to-npm` Publish to npm so a new PC only needs npm i -g upex (later)

@@ -7,7 +7,7 @@ import path from 'node:path';
 import readline from 'node:readline';
 import chalk from 'chalk';
 import Fuse from 'fuse.js';
-import { getInteractiveAppChoices, isTerminalApp } from './launcher.js';
+import { getInteractiveAppChoices, getAppMap, isTerminalApp } from './launcher.js';
 import { loadLinks, frecency, removeLink, setLink, renameLink, linkExists, loadWorkspaces, removeWorkspace } from './store.js';
 import { describeEntry } from './commands/workspace.js';
 import * as ui from './ui.js';
@@ -25,12 +25,16 @@ function buildChoices() {
       isApp: !!entry.app,
       isUrl: !!entry.url,
       tags: entry.tags || [],
+      opener: entry.opener ? String(entry.opener).toLowerCase() : null,
       exists: entry.path ? fs.existsSync(entry.path) : !!(entry.app || entry.url),
       searchText: `${name} ${entry.path || ''} ${entry.app || ''} ${entry.url || ''} ${(entry.tags || []).join(' ')}`,
       score: frecency(entry),
     }))
     .sort((a, b) => b.score - a.score || a.name.localeCompare(b.name));
 }
+
+// Folder shortcuts on the Shortcuts tab, app + URL shortcuts on the Apps tab.
+export const inView = (view) => (c) => (view === 'apps') === !!(c.isApp || c.isUrl);
 
 // Workspaces in the same { name, path, searchText } shape so filterChoices works on them.
 function buildWorkspaceChoices() {
@@ -90,7 +94,9 @@ const PROMPT_LABEL = {
   add: () => 'new shortcut name (path = cwd):',
 };
 
-const VIEWS = { shortcuts: 'Shortcuts', workspaces: 'Workspaces' };
+const VIEWS = { shortcuts: 'Shortcuts', apps: 'Apps', workspaces: 'Workspaces' };
+const VIEW_KEYS = Object.keys(VIEWS);
+const nextView = (view) => VIEW_KEYS[(VIEW_KEYS.indexOf(view) + 1) % VIEW_KEYS.length];
 
 export function renderInteractiveView({
   query,
@@ -116,9 +122,7 @@ export function renderInteractiveView({
     12,
   );
 
-  // App and URL shortcuts launch directly — no opener row.
   const currentChoice = list[index];
-  const selectedIsApp = currentChoice?.isApp || currentChoice?.isUrl;
 
   const lines = [];
   lines.push('');
@@ -130,17 +134,16 @@ export function renderInteractiveView({
   lines.push(`  ${chalk.dim('view')}    ${tabs}`);
   lines.push(`  ${chalk.dim('filter')}  ${query || chalk.dim('(type to search)')}`);
 
+  const tabHint = `Tab=${VIEWS[nextView(view)].toLowerCase()}`;
   if (isWs) {
-    lines.push(chalk.dim('  keys    Enter=open all  Tab=shortcuts  Up/Down=navigate  ^D=del  Esc=cancel'));
+    lines.push(chalk.dim(`  keys    Enter=open all  ${tabHint}  Up/Down=navigate  ^D=del  Esc=cancel`));
+  } else if (view === 'apps') {
+    lines.push(`  ${chalk.dim('open')}    ${chalk.cyan(currentChoice?.isUrl ? 'open in browser' : 'launch app')}`);
+    lines.push(chalk.dim(`  keys    Enter=open  ${tabHint}  Up/Down=navigate  ^R=rename ^D=del  Esc=cancel`));
   } else {
-    // Hide opener row for app shortcuts, they launch directly
-    if (selectedIsApp) {
-      lines.push(`  ${chalk.dim('open')}    ${chalk.cyan('launch app')}`);
-    } else {
-      lines.push(`  ${chalk.dim('open')}    ${formatAppChoices(appChoices, selectedAppIndex, cmdCount)}`);
-    }
+    lines.push(`  ${chalk.dim('open')}    ${formatAppChoices(appChoices, selectedAppIndex, cmdCount)}`);
     const countHint = isTerminalApp(appChoices[selectedAppIndex]?.key) ? '  ^Up/^Down=count' : '';
-    lines.push(chalk.dim(`  keys    Enter=open  Tab=workspaces  Up/Down=navigate  Left/Right=app${countHint}  ^E=edit ^R=rename ^A=add ^D=del  Esc=cancel`));
+    lines.push(chalk.dim(`  keys    Enter=open  ${tabHint}  Up/Down=navigate  Left/Right=app${countHint}  ^E=edit ^R=rename ^A=add ^D=del  Esc=cancel`));
   }
   lines.push(chalk.dim('  ────────────────────────────────────────────────────────────────────────────'));
 
@@ -155,9 +158,12 @@ export function renderInteractiveView({
   }
 
   if (list.length === 0) {
-    lines.push(isWs && !query
-      ? `  ${chalk.dim('No workspaces yet. Add one: upex ws add <name> <shortcut> [app], or use upex ui')}`
-      : `  ${ui.tag.warn}  No matches`);
+    const empty = {
+      workspaces: 'No workspaces yet. Add one: upex ws add <name> <shortcut> [app], or use upex ui',
+      apps: 'No app or URL shortcuts yet. Add one: upex add <name> <exe> --app',
+      shortcuts: 'No folder shortcuts yet. Add one with ^A (uses the current folder)',
+    };
+    lines.push(query ? `  ${ui.tag.warn}  No matches` : `  ${chalk.dim(empty[view])}`);
     return lines.join('\n');
   }
 
@@ -194,10 +200,17 @@ export function renderInteractiveView({
 }
 
 export async function runInteractiveMode({ preferredApp, stdin = process.stdin, stdout = process.stdout } = {}) {
-  let choices = buildChoices();
+  let allChoices = buildChoices();
   const appChoices = getInteractiveAppChoices();
+  // A default opener outside the usual row (e.g. "open") still needs a slot to preselect.
+  const appMap = getAppMap();
+  for (const key of new Set(allChoices.map(c => c.opener))) {
+    if (key && Object.hasOwn(appMap, key) && !appChoices.some(c => c.key === key)) {
+      appChoices.push({ key, label: appMap[key].displayName });
+    }
+  }
 
-  if (choices.length === 0) {
+  if (allChoices.length === 0) {
     ui.blank();
     ui.info('No shortcuts saved. Use: upex add <name> [path]');
     ui.blank();
@@ -210,9 +223,10 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
 
   return new Promise((resolve, reject) => {
     let query = '';
+    let view = 'shortcuts'; // Tab cycles 'shortcuts' | 'apps' | 'workspaces'
+    let choices = allChoices.filter(inView(view));
     let filteredChoices = choices;
     let selectedIndex = 0;
-    let view = 'shortcuts'; // Tab toggles 'shortcuts' | 'workspaces'
     let wsChoices = buildWorkspaceChoices();
     let filteredWs = wsChoices;
     let wsIndex = 0;
@@ -222,10 +236,10 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
     let action = null;     // 'edit' | 'rename' | 'add'
     let inputBuffer = '';
     let flash = '';
-    let selectedAppIndex = Math.max(
-      0,
-      appChoices.findIndex(choice => choice.key === (preferredApp || DEFAULT_APP_KEY)),
-    );
+    const appIndex = (key) => appChoices.findIndex(choice => choice.key === key);
+    let selectedAppIndex = Math.max(0, appIndex(preferredApp || DEFAULT_APP_KEY));
+    // Until Left/Right (or --app) picks one, the opener follows the shortcut's default opener.
+    let appPicked = !!preferredApp;
 
     const clearRendered = () => {
       if (renderedLineCount > 0) {
@@ -236,6 +250,10 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
     };
 
     const redraw = () => {
+      if (!appPicked && view === 'shortcuts') {
+        const own = appIndex(filteredChoices[selectedIndex]?.opener);
+        selectedAppIndex = own >= 0 ? own : Math.max(0, appIndex(DEFAULT_APP_KEY));
+      }
       const output = renderInteractiveView({
         query,
         choices: filteredChoices,
@@ -278,7 +296,8 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
 
     // Reload from disk after a mutation and try to keep `name` selected.
     const rebuild = (name) => {
-      choices = buildChoices();
+      allChoices = buildChoices();
+      choices = allChoices.filter(inView(view));
       wsChoices = buildWorkspaceChoices();
       updateFilter();
       const idx = name ? filteredChoices.findIndex(c => c.name === name) : -1;
@@ -404,8 +423,10 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
       }
 
       if (key.name === 'tab') {
-        view = view === 'shortcuts' ? 'workspaces' : 'shortcuts';
+        view = nextView(view);
         query = '';
+        choices = allChoices.filter(inView(view));
+        selectedIndex = 0;
         updateFilter();
         redraw();
         return;
@@ -431,7 +452,11 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
       }
 
       // Live actions (Ctrl+key so they never clash with search typing).
-      if (key.ctrl && key.name === 'a') { startAction('add'); redraw(); return; }
+      // ^A adds the cwd as a folder shortcut, so it belongs to the Shortcuts tab.
+      if (key.ctrl && key.name === 'a') {
+        if (view === 'shortcuts') { startAction('add'); redraw(); }
+        return;
+      }
       if (key.ctrl && key.name === 'd') {
         if (filteredChoices.length > 0) { mode = 'confirm'; redraw(); }
         return;
@@ -453,8 +478,8 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
 
         const selected = filteredChoices[selectedIndex];
 
-        // App shortcuts launch directly — ignore the opener selector
-        if (selected.isApp) {
+        // App and URL shortcuts launch directly, ignore the opener selector
+        if (selected.isApp || selected.isUrl) {
           finish({
             status: 'selected',
             name: selected.name,
@@ -474,7 +499,7 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
       }
 
       // Ctrl+Up/Down sets the terminal count; plain Up/Down navigates.
-      const countKey = key.ctrl && isTerminalApp(appChoices[selectedAppIndex]?.key);
+      const countKey = key.ctrl && view === 'shortcuts' && isTerminalApp(appChoices[selectedAppIndex]?.key);
 
       if (key.name === 'up') {
         if (countKey) {
@@ -498,13 +523,18 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
         return;
       }
 
+      // Opener picking only exists on the Shortcuts tab.
+      if ((key.name === 'left' || key.name === 'right') && view !== 'shortcuts') return;
+
       if (key.name === 'left') {
+        appPicked = true;
         selectedAppIndex = selectedAppIndex === 0 ? appChoices.length - 1 : selectedAppIndex - 1;
         redraw();
         return;
       }
 
       if (key.name === 'right') {
+        appPicked = true;
         selectedAppIndex = selectedAppIndex === appChoices.length - 1 ? 0 : selectedAppIndex + 1;
         redraw();
         return;

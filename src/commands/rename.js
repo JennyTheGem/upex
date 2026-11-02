@@ -1,5 +1,5 @@
  /**
- * rename.js — Rename a shortcut key
+ * rename.js -- Rename a shortcut key
  * Usage: upex rename <oldName> <newName>
  */
 

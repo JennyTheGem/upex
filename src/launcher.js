@@ -1,5 +1,5 @@
 /**
- * launcher.js — Opens folders in supported apps
+ * launcher.js -- Opens folders in supported apps
  */
 
 import { execSync, spawn, spawnSync } from 'node:child_process';
@@ -120,6 +120,8 @@ function getAppMap() {
  * Check if a command exists on the system.
  */
 function commandExists(cmd) {
+  // `where` rejects absolute paths.
+  if (path.isAbsolute(cmd)) return fileExists(cmd);
   try {
     const check = platform === 'win32' ? `where ${cmd}` : `which ${cmd}`;
     execSync(check, { stdio: 'ignore' });
@@ -250,6 +252,54 @@ function resolveWindowsWebStormCommand() {
   return found ? quoteIfNeeded(found) : null;
 }
 
+// The command an opener runs, or { error } when it isn't installed.
+function resolveOpener(key, app) {
+  let cmdBase = app.cmd();
+  // `start` is a cmd.exe builtin, not a resolvable executable.
+  let skipCommandCheck = platform === 'win32' && key === 'open';
+
+  if (platform === 'win32' && key === 'webstorm') {
+    const resolved = resolveWindowsWebStormCommand();
+    if (!resolved) {
+      return {
+        error: `WebStorm not found. Set "webstormPath" in ~/.upex/config.json or WEBSTORM_PATH env.\n` +
+          app.installHint,
+      };
+    }
+    cmdBase = resolved;
+    skipCommandCheck = true;
+  }
+
+  // For multi-word commands like "open -na ..." we only check the first word
+  const cmdBin = cmdBase.startsWith('"')
+    ? cmdBase.slice(1).split('"')[0]
+    : cmdBase.split(' ')[0];
+
+  if (!skipCommandCheck && !commandExists(cmdBin)) {
+    return { error: `Command "${cmdBin}" not found.\n${app.installHint}` };
+  }
+  return { cmdBase, cmdBin };
+}
+
+// Lowercased opener key, or null when no such opener exists.
+// Aliases (code, finder) map to the selector's key so it can preselect them.
+export function openerKey(name) {
+  const key = String(name).toLowerCase();
+  const map = getAppMap();
+  if (!Object.hasOwn(map, key)) return null;
+  const same = (k) => map[k] && map[k].displayName === map[key].displayName && map[k].cmd() === map[key].cmd();
+  return INTERACTIVE_APP_KEYS.find(same) || key;
+}
+
+// Is this opener usable here? For `upex doctor`. Copy needs no command.
+export function checkOpener(key) {
+  const app = getAppMap()[key];
+  if (!app) return { ok: false, message: `Unknown opener "${key}".` };
+  if (key === 'copy') return { ok: true, command: '(built-in)' };
+  const r = resolveOpener(key, app);
+  return r.error ? { ok: false, message: r.error } : { ok: true, command: r.cmdBase };
+}
+
 /**
  * Launch a folder in the specified app.
  * @param {number} [count] - how many windows to open (only honored for the terminal opener)
@@ -258,7 +308,7 @@ function resolveWindowsWebStormCommand() {
 export function launchApp(appName, folderPath, count = 1, startCmd = '') {
   const key = appName.toLowerCase();
   const appMap = getAppMap();
-  const app = appMap[key];
+  const app = Object.hasOwn(appMap, key) && appMap[key];
 
   if (!app) {
     const supported = [...new Set(Object.keys(appMap))].join(', ');
@@ -282,37 +332,10 @@ export function launchApp(appName, folderPath, count = 1, startCmd = '') {
     }
   }
 
-  let cmdBase = app.cmd();
-  let skipCommandCheck = false;
-
-  // `start` is a cmd.exe builtin, not a resolvable executable.
-  if (platform === 'win32' && key === 'open') skipCommandCheck = true;
-
-  if (platform === 'win32' && key === 'webstorm') {
-    const resolved = resolveWindowsWebStormCommand();
-    if (!resolved) {
-      return {
-        ok: false,
-        message:
-          `WebStorm not found. Set "webstormPath" in ~/.upex/config.json or WEBSTORM_PATH env.\n` +
-          app.installHint,
-      };
-    }
-    cmdBase = resolved;
-    skipCommandCheck = true;
-  }
-
-  // For multi-word commands like "open -na ..." we only check the first word
-  const cmdBin = cmdBase.startsWith('"')
-    ? cmdBase.slice(1).split('"')[0]
-    : cmdBase.split(' ')[0];
-
-  if (!skipCommandCheck && !commandExists(cmdBin)) {
-    return {
-      ok: false,
-      message: `Command "${cmdBin}" not found.\n${app.installHint}`,
-    };
-  }
+  const resolvedCmd = resolveOpener(key, app);
+  if (resolvedCmd.error) return { ok: false, message: resolvedCmd.error };
+  let { cmdBase } = resolvedCmd;
+  const { cmdBin } = resolvedCmd;
 
   // Claude runs inside a terminal window.
   if (key === 'claude') cmdBase = APP_MAP.cmd.cmd();

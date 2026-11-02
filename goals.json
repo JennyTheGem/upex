@@ -31,6 +31,10 @@
     {
       "n": 7,
       "title": "Web UI"
+    },
+    {
+      "n": 8,
+      "title": "Distribution"
     }
   ],
   "traps": [],
@@ -117,6 +121,16 @@
       "updated": "2026-10-16"
     },
     {
+      "id": "default-opener-per-shortcut",
+      "section": 2,
+      "title": "Default opener per shortcut (add/edit --opener <app>, --no-opener clears)",
+      "phase": "later",
+      "status": "done",
+      "created": "2026-11-02",
+      "updated": "2026-11-02",
+      "note": "add/edit --opener, --no-opener; selector preselects it; list shows it"
+    },
+    {
       "id": "exact-then-fuzzy-name-resolution-fuse-js",
       "section": 3,
       "title": "Exact-then-fuzzy name resolution (fuse.js)",
@@ -153,6 +167,25 @@
       "created": "2026-11-02",
       "updated": "2026-11-02",
       "note": "src/interactive.js view toggle; openWorkspace exported; smoke covers render"
+    },
+    {
+      "id": "subpath-resolution",
+      "section": 3,
+      "title": "Subpaths: upex <name>/sub/dir opens or cds into a folder inside a shortcut",
+      "phase": "later",
+      "status": "done",
+      "created": "2026-11-02",
+      "updated": "2026-11-02",
+      "note": "resolveTarget in fuzzy.js; open, go, __resolve"
+    },
+    {
+      "id": "selector-apps-tab",
+      "section": 3,
+      "title": "Selector: Apps tab for app + URL shortcuts (Tab cycles Shortcuts, Apps, Workspaces)",
+      "phase": "later",
+      "status": "done",
+      "created": "2026-11-02",
+      "updated": "2026-11-02"
     },
     {
       "id": "cd-support-via-wrapper-hidden-resolve-public-go",
@@ -212,10 +245,20 @@
       "id": "broader-test-coverage-fuzzy-resolution-launcher",
       "section": 6,
       "title": "Broader test coverage (fuzzy resolution, launcher branching per platform)",
-      "phase": "later",
+      "phase": "maybe",
       "status": "planned",
       "created": "2026-10-16",
-      "updated": "2026-10-16"
+      "updated": "2026-10-21"
+    },
+    {
+      "id": "upex-doctor",
+      "section": 6,
+      "title": "upex doctor: check store, openers, shell wrapper, completion, workspaces",
+      "phase": "later",
+      "status": "done",
+      "created": "2026-11-02",
+      "updated": "2026-11-02",
+      "note": "src/commands/doctor.js: store, paths, openers, workspaces, cmd wrapper, profiles, completion"
     },
     {
       "id": "upex-ui-local-web-page-to-add-edit-rename-tag",
@@ -227,6 +270,17 @@
       "created": "2026-11-02",
       "updated": "2026-11-02",
       "note": "src/commands/web.js + src/web/index.html; token + Host guard; smoke covers applyShortcut, cleanEntries, API auth"
+    },
+    {
+      "id": "publish-to-npm",
+      "section": 8,
+      "title": "Publish to npm so a new PC only needs npm i -g upex",
+      "body": "Check the name is free, fill author/repository/files in package.json, drop the em dash in description, npm publish.",
+      "phase": "later",
+      "status": "planned",
+      "size": "S",
+      "created": "2026-11-02",
+      "updated": "2026-11-02"
     }
   ]
 }

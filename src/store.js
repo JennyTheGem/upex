@@ -1,5 +1,5 @@
 /**
- * store.js — Persistent storage for upex shortcuts and config
+ * store.js -- Persistent storage for upex shortcuts and config
  * Reads/writes ~/.upex/links.json and ~/.upex/config.json
  */
 

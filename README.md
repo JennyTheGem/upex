@@ -1,4 +1,4 @@
-# ⚡ upex — Personal File Shortcut Manager
+# ⚡ upex: Personal File Shortcut Manager
 
 A professional Node.js CLI tool that lets you register named aliases for folder paths and instantly open them in the file explorer or a specified IDE/app.
 
@@ -24,6 +24,7 @@ npm link
 | `upex --app <app>` | Open the interactive selector with a preselected app |
 | `upex <name>` | Open shortcut in Explorer / default app (or launch stored app/URL) |
 | `upex <name> <app>` | Open in a specific app (vscode, cmd, open, or a custom app) |
+| `upex <name>/<sub>` | Open (or `cd` via the wrapper) a folder inside a shortcut, e.g. `upex web/src` |
 | `upex -` / `upex last` | Reopen the most recently used shortcut |
 | `upex go <name> [start...]` | Print the path (cd via shell wrapper); extra args run as a command in the folder |
 | `upex cmd <name> [count] [start]` | Open N terminals, optionally running a start command |
@@ -37,9 +38,11 @@ npm link
 | `upex remove <name>` | Delete a saved shortcut |
 | `upex rename <old> <new>` | Rename a shortcut |
 | `upex edit <name> [path]` | Update a shortcut's path (defaults to cwd) |
+| `upex edit <name> --opener <app>` | Open this shortcut in `<app>` by default (`--no-opener` clears; also on `add`) |
 | `upex copy <name>` | Copy shortcut path to clipboard |
 | `upex app [alias] [command]` | Manage custom openers (list / add / `--remove`) |
 | `upex check [--prune]` | Report broken paths (`--prune` removes them) |
+| `upex doctor` | Check the store, openers, shell wrapper and completion |
 | `upex ui [--port <n>] [--no-open]` | Manage shortcuts and workspaces in the browser |
 | `upex completion [shell]` | Print a shell completion script (bash/zsh/fish/powershell) |
 | `upex setup [cmd]` | Shell integration; `setup cmd` installs the cmd.exe wrapper |
@@ -81,10 +84,10 @@ upex velora
 # Open in VS Code
 upex velora vscode
 
-# Open in Command Prompt (Windows — cwd set to path)
+# Open in Command Prompt (Windows, cwd set to path)
 upex velora cmd
 
-# Fuzzy matching works — "velor" resolves to "velora"
+# Fuzzy matching works: "velor" resolves to "velora"
 upex velor vscode
 
 # Register an app shortcut (the path is the executable, --app is a flag)
@@ -183,9 +186,9 @@ upex import backup.json --replace  # replace everything
 Run `upex` with no arguments to open the interactive selector. Shortcuts are ordered by frecency (most-used and most-recent first).
 
 - `Up` / `Down` -- move through shortcuts
-- `Left` / `Right` -- change the selected app
+- `Left` / `Right` -- change the selected app (starts on the shortcut's default opener)
 - `Ctrl+Up` / `Ctrl+Down` -- terminal count when a terminal opener (cmd, claude) is selected
-- `Tab` -- switch between the Shortcuts and Workspaces views (Enter opens the whole workspace, `Ctrl+D` deletes it)
+- `Tab` -- cycle the Shortcuts (folders), Apps (app + URL shortcuts) and Workspaces views (Enter opens the whole workspace, `Ctrl+D` deletes it)
 - `Enter` -- open the selected shortcut in the selected app
 - Type -- fuzzy-filter the list
 - `Ctrl+A` -- add a shortcut for the current directory
@@ -275,12 +278,12 @@ Each entry is an object with optional fields:
 
 ```json
 {
-  "velora": { "path": "E:\\projects\\velora", "uses": 12, "lastUsed": 1752710400000 },
+  "velora": { "path": "E:\\projects\\velora", "opener": "vscode", "uses": 12, "lastUsed": 1752710400000 },
   "chrome": { "app": "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe" }
 }
 ```
 
-`uses` / `lastUsed` are written automatically and drive the interactive selector's frecency ordering.
+`opener` is the default opener for `upex <name>` (set with `--opener`). `uses` / `lastUsed` are written automatically and drive the interactive selector's frecency ordering.
 
 Legacy string entries (`"name": "/path"`) are auto-migrated on read.
 

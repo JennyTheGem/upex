@@ -73,7 +73,7 @@ export function registerWorkspace(program) {
           process.exit(1);
         }
         if (!linkExists(shortcut)) {
-          ui.warn(`Shortcut "${shortcut}" doesn't exist yet — adding anyway.`);
+          ui.warn(`Shortcut "${shortcut}" doesn't exist yet, adding anyway.`);
         }
         // A leading integer in the tail is the terminal count; the rest is the start command.
         let count = 1;

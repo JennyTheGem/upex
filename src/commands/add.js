@@ -1,12 +1,13 @@
 /**
- * add.js — Register a new shortcut
- * Usage: upex add <name> [path]        — folder shortcut (defaults to cwd)
- *        upex add <name> <app> --app   — app shortcut (the path IS the executable)
+ * add.js -- Register a new shortcut
+ * Usage: upex add <name> [path]        folder shortcut (defaults to cwd)
+ *        upex add <name> <app> --app   app shortcut (the path IS the executable)
  */
 
 import path from 'node:path';
 import fs from 'node:fs';
 import { setLink, linkExists } from '../store.js';
+import { withOpener } from './edit.js';
 import * as ui from '../ui.js';
 
 // "work,personal" -> ["work", "personal"]; undefined -> undefined (leave field off).
@@ -24,7 +25,13 @@ export function registerAdd(program) {
     .option('--app', 'Treat <target> as an application to launch')
     .option('--url', 'Treat <target> as a URL to open in the browser')
     .option('-t, --tag <tags>', 'Comma-separated tags to attach')
+    .option('-o, --opener <app>', 'Open this folder shortcut in <app> by default')
     .action((name, targetPath, options) => {
+      if (options.opener && (options.app || options.url)) {
+        ui.error('A default opener only applies to folder shortcuts.');
+        process.exit(1);
+      }
+
       if (linkExists(name)) {
         ui.warn(`"${name}" already exists. Use "upex edit ${name}" to update.`);
         return;
@@ -60,7 +67,10 @@ export function registerAdd(program) {
         ui.error(`Path does not exist: ${resolved}`);
         process.exit(1);
       }
-      setLink(name, { path: resolved, ...(tags && { tags }) });
+      let entry = { path: resolved, ...(tags && { tags }) };
+      if (options.opener) entry = withOpener(entry, options.opener);
+      if (!entry) process.exit(1);
+      setLink(name, entry);
       ui.success(`Added: ${name} --> ${resolved}`);
     });
 }

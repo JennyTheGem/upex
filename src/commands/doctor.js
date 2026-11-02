@@ -1,0 +1,130 @@
+/**
+ * doctor.js -- Check that upex is set up and healthy.
+ * Usage: upex doctor
+ */
+
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { spawnSync } from 'node:child_process';
+import chalk from 'chalk';
+import { loadLinks, loadConfig, loadWorkspaces, LINKS_FILE } from '../store.js';
+import { getAppMap, checkOpener, openerKey } from '../launcher.js';
+import { CMD_WRAPPER, findShimDir } from './setup.js';
+import { resolveTarget } from '../fuzzy.js';
+import * as ui from '../ui.js';
+
+const platform = os.platform();
+const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
+const readText = (f) => { try { return fs.readFileSync(f, 'utf-8'); } catch { return ''; } };
+
+// Shell profiles that could hold the cd wrapper or completion.
+function profileFiles() {
+  const home = os.homedir();
+  const files = [
+    path.join(home, '.bashrc'),
+    path.join(home, '.bash_profile'),
+    path.join(home, '.zshrc'),
+    path.join(home, '.config', 'fish', 'config.fish'),
+    path.join(home, '.config', 'fish', 'functions', 'upex.fish'),
+  ];
+  let docs = null;
+  if (platform === 'win32') {
+    // Ask Windows: Documents is often moved into OneDrive.
+    // UTF-8 so a non-ASCII Documents path survives the pipe.
+    const ps = '[Console]::OutputEncoding=[Text.Encoding]::UTF8; [Environment]::GetFolderPath("MyDocuments")';
+    const r = spawnSync('powershell.exe', ['-NoProfile', '-Command', ps], { encoding: 'utf-8', timeout: 5000 });
+    docs = r.stdout?.trim() || path.join(home, 'Documents');
+  }
+  for (const dir of docs ? ['PowerShell', 'WindowsPowerShell'] : ['powershell']) {
+    for (const name of ['Microsoft.PowerShell_profile.ps1', 'profile.ps1']) {
+      files.push(path.join(docs || path.join(home, '.config'), dir, name));
+    }
+  }
+  return files.filter(f => fs.existsSync(f));
+}
+
+function shellChecks() {
+  const out = [];
+  let cmdWrapper = false;
+
+  if (platform === 'win32') {
+    const shimDir = findShimDir();
+    const bat = shimDir && path.join(shimDir, 'upex.bat');
+    if (!shimDir) out.push(['warn', 'cmd wrapper', 'upex is not installed globally (npm link)']);
+    else if (!fs.existsSync(bat)) out.push(['warn', 'cmd wrapper', 'missing, run: upex setup cmd']);
+    else if (readText(bat) !== CMD_WRAPPER) out.push(['warn', 'cmd wrapper', 'outdated, run: upex setup cmd']);
+    else { out.push(['ok', 'cmd wrapper', bat]); cmdWrapper = true; }
+  }
+
+  const profiles = profileFiles().map(f => ({ f, text: readText(f) }));
+  const withWrapper = profiles.filter(p => p.text.includes('__resolve')).map(p => p.f);
+  const withCompletion = profiles.filter(p => p.text.includes('upex completion') || p.text.includes('__names')).map(p => p.f);
+  if (withWrapper.length) out.push(['ok', 'cd wrapper', withWrapper.join(', ')]);
+  else if (!cmdWrapper) out.push(['warn', 'cd wrapper', 'not in any shell profile, see: upex setup']);
+  // Completion is optional, so a missing one is only a hint.
+  out.push(withCompletion.length
+    ? ['ok', 'completion', withCompletion.join(', ')]
+    : ['skip', 'completion', 'not set up (optional), see: upex completion --help']);
+  return out;
+}
+
+// Rows of [status, check, detail]; status is ok | warn | fail | skip.
+export function runChecks() {
+  let links;
+  try {
+    links = loadLinks();
+    loadConfig();
+  } catch (err) {
+    return [['fail', 'store', err.message.split('\n')[0]]];
+  }
+  const rows = [['ok', 'store', `${plural(Object.keys(links).length, 'shortcut')} in ${LINKS_FILE}`]];
+
+  const broken = Object.keys(links).filter(n => links[n].path && !fs.existsSync(links[n].path));
+  rows.push(broken.length
+    ? ['warn', 'paths', `${plural(broken.length, 'broken shortcut')}: ${broken.join(', ')} (upex check)`]
+    : ['ok', 'paths', 'all paths exist']);
+
+  const badOpener = Object.keys(links).filter(n => links[n].opener && !openerKey(links[n].opener));
+  if (badOpener.length) rows.push(['warn', 'default openers', `unknown opener on: ${badOpener.join(', ')} (upex edit <name> --no-opener)`]);
+
+  const missing = [];
+  for (const [ws, entries] of Object.entries(loadWorkspaces())) {
+    for (const e of Array.isArray(entries) ? entries : []) {
+      // Subpaths ("web/src") count; fuzzy matches don't.
+      const ok = typeof e?.shortcut === 'string' && resolveTarget(e.shortcut, links)?.exact;
+      if (!ok) missing.push(`${ws}:${e?.shortcut ?? '?'}`);
+    }
+  }
+  if (missing.length) rows.push(['warn', 'workspaces', `missing shortcuts: ${missing.join(', ')}`]);
+
+  // One row per opener; aliases like code/vscode share a display name.
+  const seen = new Set(['Copy path']);
+  for (const [key, app] of Object.entries(getAppMap())) {
+    if (seen.has(app.displayName)) continue;
+    seen.add(app.displayName);
+    const r = checkOpener(key);
+    rows.push(r.ok ? ['ok', app.displayName, r.command] : ['warn', app.displayName, r.message.split('\n')[0]]);
+  }
+
+  return [...rows, ...shellChecks()];
+}
+
+export function registerDoctor(program) {
+  program
+    .command('doctor')
+    .description('Check the store, openers, shell wrapper and completion')
+    .action(() => {
+      ui.heading('upex doctor');
+      const rows = runChecks();
+      ui.table(rows.map(([status, check, detail]) => [ui.tag[status], chalk.bold(check), detail]));
+      ui.blank();
+      const warns = rows.filter(r => r[0] === 'warn').length;
+      const fails = rows.filter(r => r[0] === 'fail').length;
+      if (fails) ui.error(`${plural(fails, 'problem')} found.`);
+      else if (warns) ui.warn(`${plural(warns, 'warning')}, everything else is fine.`);
+      else ui.success('All good.');
+      ui.blank();
+      if (fails) process.exit(1);
+    });
+}

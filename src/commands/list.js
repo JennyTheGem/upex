@@ -50,7 +50,7 @@ export function registerList(program) {
           const filepath = entry.path;
           const appLabel = entry.app
             ? chalk.cyan(nodePath.basename(entry.app).replace(/\.[^.]+$/, ''))
-            : entry.url ? chalk.cyan('url') : chalk.dim('--');
+            : entry.url ? chalk.cyan('url') : chalk.dim(entry.opener || '--');
           const exists = filepath ? fs.existsSync(filepath) : !!(entry.app || entry.url);
           const pathDisplay = filepath
             ? (exists ? filepath : chalk.dim(filepath))

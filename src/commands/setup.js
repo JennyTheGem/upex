@@ -72,7 +72,7 @@ end`;
 // cmd.exe has no profile functions. Instead, an upex.bat placed next to the
 // npm upex.cmd shim wins PATH resolution (.bat before .cmd in PATHEXT), and a
 // cd inside a batch file persists in the parent shell.
-const CMD_WRAPPER = [
+export const CMD_WRAPPER = [
   '@echo off',
   'rem upex cmd.exe wrapper (installed by "upex setup cmd").',
   'if /i "%~1"=="go" if not "%~2"=="" goto :go',
@@ -110,7 +110,7 @@ export function installCmdWrapper(dir) {
   return target;
 }
 
-function findShimDir() {
+export function findShimDir() {
   try {
     const out = execSync('where upex.cmd', { stdio: ['ignore', 'pipe', 'ignore'] }).toString();
     const first = out.split(/\r?\n/).map(s => s.trim()).find(Boolean);

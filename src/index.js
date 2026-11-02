@@ -1,5 +1,5 @@
 /**
- * index.js — Main entry point for the upex CLI
+ * index.js -- Main entry point for the upex CLI
  */
 
 import { readFileSync } from 'node:fs';
@@ -25,6 +25,7 @@ import { registerRun } from './commands/run.js';
 import { registerExport, registerImport } from './commands/transfer.js';
 import { registerLast } from './commands/last.js';
 import { registerWeb } from './commands/web.js';
+import { registerDoctor } from './commands/doctor.js';
 import { runInteractiveMode } from './interactive.js';
 
 const { version } = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf-8'));
@@ -43,7 +44,7 @@ export function createProgram() {
 
   program
     .name('upex')
-    .description('A personal file shortcut manager — instantly open project folders.')
+    .description('A personal file shortcut manager: instantly open project folders.')
     .version(version, '-v, --version')
     .option('-a, --app <app>', 'Preselect app for the interactive selector')
     .enablePositionalOptions()
@@ -73,6 +74,7 @@ export function createProgram() {
   registerImport(program);
   registerLast(program);
   registerWeb(program);
+  registerDoctor(program);
 
   // Default action: upex <name> [app]
   // Commander doesn't support a default positional command well,

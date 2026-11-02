@@ -1,5 +1,5 @@
 /**
- * fuzzy.js — Fuzzy matching utility for shortcut names
+ * fuzzy.js -- Fuzzy matching utility for shortcut names
  */
 
 import Fuse from 'fuse.js';
@@ -27,14 +27,14 @@ export function fuzzyMatch(query, names) {
 }
 
 /**
- * Resolve a shortcut name — exact match first, then fuzzy.
+ * Resolve a shortcut name: exact match first, then fuzzy.
  * Returns { name, exact } or null.
  */
 export function resolveName(query, links) {
   const names = Object.keys(links);
 
   // Exact match
-  if (query in links) {
+  if (Object.hasOwn(links, query)) {
     return { name: query, exact: true };
   }
 
@@ -45,5 +45,22 @@ export function resolveName(query, links) {
   }
 
   return null;
+}
+
+/**
+ * resolveName plus subpaths: "web/src" -> { name: "web", exact, sub: "src" }.
+ * The longest exact name wins, so names containing "/" still work.
+ */
+export function resolveTarget(query, links) {
+  if (Object.hasOwn(links, query)) return { name: query, exact: true, sub: '' };
+  for (const cut of [...query.matchAll(/[/\\]+/g)].reverse()) {
+    const name = query.slice(0, cut.index);
+    if (Object.hasOwn(links, name)) return { name, exact: true, sub: query.slice(cut.index + cut[0].length) };
+  }
+  const m = query.match(/^([^/\\]+)[/\\]+(.+)$/);
+  const head = m && resolveName(m[1], links);
+  if (head) return { ...head, sub: m[2] };
+  const r = resolveName(query, links);
+  return r && { ...r, sub: '' };
 }
 

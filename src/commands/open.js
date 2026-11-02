@@ -9,7 +9,7 @@ import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import chalk from 'chalk';
 import { loadLinks, recordUse } from '../store.js';
-import { resolveName } from '../fuzzy.js';
+import { resolveTarget } from '../fuzzy.js';
 import { launchApp, launchExecutable, launchUrl } from '../launcher.js';
 import * as ui from '../ui.js';
 
@@ -17,14 +17,14 @@ function isFile(p) {
   try { return fs.statSync(p).isFile(); } catch { return false; }
 }
 
-/**
- * Register the hidden __resolve command (for shell cd integration).
- */
+// Folder path of a shortcut plus an optional subpath ("web/src").
+const withSub = (entry, sub) => (entry.path && sub ? path.join(entry.path, sub) : entry.path);
+
 // Resolve a name to a usable folder path and record the use.
 // On failure prints nothing (or `loud` message) and exits 1.
 function resolveFolder(name, { loud = false } = {}) {
   const links = loadLinks();
-  const resolved = resolveName(name, links);
+  const resolved = resolveTarget(name, links);
 
   if (!resolved) {
     if (loud) ui.error(`Shortcut not found: ${name}`);
@@ -32,10 +32,10 @@ function resolveFolder(name, { loud = false } = {}) {
   }
 
   const entry = links[resolved.name];
-  const targetPath = entry.path;
+  const targetPath = withSub(entry, resolved.sub);
 
   if (!targetPath || !fs.existsSync(targetPath)) {
-    if (loud) ui.error(`No valid folder path for "${resolved.name}".`);
+    if (loud) ui.error(targetPath ? `Path does not exist: ${targetPath}` : `No folder path for "${resolved.name}".`);
     process.exit(1);
   }
 
@@ -94,7 +94,7 @@ export async function handleOpen(name, app, count = 1, startCmd = '', { batch = 
   const bail = (fn) => { fn(); if (batch) return true; process.exit(1); };
 
   const links = loadLinks();
-  const resolved = resolveName(name, links);
+  const resolved = resolveTarget(name, links);
 
   if (!resolved) {
     if (bail(() => {
@@ -106,6 +106,10 @@ export async function handleOpen(name, app, count = 1, startCmd = '', { batch = 
 
   const shortcutName = resolved.name;
   const entry = links[shortcutName];
+
+  if (resolved.sub && !entry.path) {
+    if (bail(() => ui.error(`"${shortcutName}" has no folder, so "${resolved.sub}" can't be opened inside it.`))) return false;
+  }
 
   // ── URL shortcut: open in the browser directly ──
   if (entry.url) {
@@ -124,7 +128,7 @@ export async function handleOpen(name, app, count = 1, startCmd = '', { batch = 
   }
 
   // ── App shortcut: launch stored executable directly ──
-  if (entry.app && !app) {
+  if (entry.app && !app && !resolved.sub) {
     const result = launchExecutable(entry.app);
 
     if (!result.ok) {
@@ -147,7 +151,7 @@ export async function handleOpen(name, app, count = 1, startCmd = '', { batch = 
   }
 
   // ── Folder shortcut: open in specified or default opener ──
-  const targetPath = entry.path;
+  const targetPath = withSub(entry, resolved.sub);
 
   if (!targetPath) {
     if (bail(() => {
@@ -163,8 +167,8 @@ export async function handleOpen(name, app, count = 1, startCmd = '', { batch = 
     })) return false;
   }
 
-  // A bare `upex <file>` opens the file in its default app; a folder opens Explorer.
-  const appKey = app || (isFile(targetPath) ? 'open' : 'explorer');
+  // No opener given: the shortcut's own, else a file opens in its default app and a folder in Explorer.
+  const appKey = app || entry.opener || (isFile(targetPath) ? 'open' : 'explorer');
   const result = launchApp(appKey, targetPath, count, startCmd);
 
   if (!result.ok) {
