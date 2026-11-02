@@ -64,7 +64,7 @@ Add your own openers with `upex app`:
 
 ```bash
 upex app cursor cursor          # register "cursor" -> the cursor command
-upex velora cursor              # open a shortcut in Cursor
+upex webapp cursor              # open a shortcut in Cursor
 upex app                        # list custom apps
 upex app cursor --remove        # remove one
 ```
@@ -76,19 +76,19 @@ upex app cursor --remove        # remove one
 upex add myproject
 
 # Save a specific path
-upex add velora /Users/me/projects/velora
+upex add webapp /Users/me/projects/webapp
 
 # Open in file explorer
-upex velora
+upex webapp
 
 # Open in VS Code
-upex velora vscode
+upex webapp vscode
 
 # Open in Command Prompt (Windows, cwd set to path)
-upex velora cmd
+upex webapp cmd
 
-# Fuzzy matching works: "velor" resolves to "velora"
-upex velor vscode
+# Fuzzy matching works: "webap" resolves to "webapp"
+upex webap vscode
 
 # Register an app shortcut (the path is the executable, --app is a flag)
 upex add chrome "C:\Program Files\Google\Chrome\Application\chrome.exe" --app
@@ -100,19 +100,19 @@ upex notes           # opens notes.md
 upex notes explorer  # reveals it in Explorer
 
 # Open a shortcut in 3 terminal windows
-upex cmd velora 3
+upex cmd webapp 3
 
-# Open a terminal at velora and run "claude" in it (window stays open)
-upex cmd velora claude
+# Open a terminal at webapp and run "claude" in it (window stays open)
+upex cmd webapp claude
 
 # Two terminals, each running "dir"
-upex cmd velora 2 dir
+upex cmd webapp 2 dir
 
 # cd into a shortcut (with the shell wrapper from `upex setup`)
-upex go velora
+upex go webapp
 
 # cd into a shortcut and run a command there
-upex go velora npm run dev
+upex go webapp npm run dev
 
 # Open the interactive selector
 upex
@@ -129,9 +129,9 @@ upex check
 Attach tags to organize shortcuts, filter the list, and open a whole group at once.
 
 ```bash
-upex add velora --tag work,web     # tag while adding
-upex tag velora ci                 # add a tag later
-upex tag velora -r web             # remove a tag (--clear drops all)
+upex add webapp --tag work,web     # tag while adding
+upex tag webapp ci                 # add a tag later
+upex tag webapp -r web             # remove a tag (--clear drops all)
 upex tag                           # list every tag with counts
 upex list work                     # only #work shortcuts
 upex open work                     # open every #work shortcut in its default opener
@@ -142,19 +142,19 @@ upex open work                     # open every #work shortcut in its default op
 A workspace is a named set of shortcut+app pairs opened together, e.g. code + a terminal + a browser tab.
 
 ```bash
-upex ws add dev velora vscode      # velora in VS Code
-upex ws add dev velora cmd         # ...and a terminal
+upex ws add dev webapp vscode      # webapp in VS Code
+upex ws add dev webapp cmd         # ...and a terminal
 upex ws add dev docs open          # ...and a URL/file shortcut in its default opener
 upex ws                            # list workspaces
 upex ws dev                        # open the whole workspace
-upex ws rm dev velora              # drop one entry (omit the shortcut to delete the workspace)
+upex ws rm dev webapp              # drop one entry (omit the shortcut to delete the workspace)
 ```
 
 A `cmd` entry accepts the same `[count] [start...]` tail as `upex cmd`, so a workspace can boot a terminal straight into a command (flags pass through):
 
 ```bash
-upex ws add dev velora cmd claude --model sonnet   # terminal running claude
-upex ws add dev velora cmd 2 npm run dev           # two terminals running "npm run dev"
+upex ws add dev webapp cmd claude --model sonnet   # terminal running claude
+upex ws add dev webapp cmd 2 npm run dev           # two terminals running "npm run dev"
 ```
 
 ## URL Shortcuts, run & last
@@ -163,8 +163,8 @@ upex ws add dev velora cmd 2 npm run dev           # two terminals running "npm 
 upex add gh github.com --url       # bare hosts get https:// automatically
 upex gh                            # opens in the browser
 
-upex run velora                    # list package.json scripts (npm/pnpm/yarn/bun auto-detected)
-upex run velora dev                # open a terminal running "<pm> run dev" at velora
+upex run webapp                    # list package.json scripts (npm/pnpm/yarn/bun auto-detected)
+upex run webapp dev                # open a terminal running "<pm> run dev" at webapp
 
 upex -                             # reopen the most recently used shortcut (alias: upex last)
 ```
@@ -244,7 +244,7 @@ upex() {
 upex setup cmd
 ```
 
-Installs an `upex.bat` wrapper next to the npm shim. `.bat` beats `.cmd` in PATHEXT resolution, and a `cd` inside a batch file persists in the parent shell, so `upex go <name>` and bare `upex <name>` cd directly. `upex go <name> <command...>` cds and then runs the command in that folder (e.g. `upex go velora npm run dev`). Works immediately, no profile or restart needed.
+Installs an `upex.bat` wrapper next to the npm shim. `.bat` beats `.cmd` in PATHEXT resolution, and a `cd` inside a batch file persists in the parent shell, so `upex go <name>` and bare `upex <name>` cd directly. `upex go <name> <command...>` cds and then runs the command in that folder (e.g. `upex go webapp npm run dev`). Works immediately, no profile or restart needed.
 
 ### PowerShell (`$PROFILE`)
 
@@ -278,7 +278,7 @@ Each entry is an object with optional fields:
 
 ```json
 {
-  "velora": { "path": "E:\\projects\\velora", "opener": "vscode", "uses": 12, "lastUsed": 1752710400000 },
+  "webapp": { "path": "E:\\projects\\webapp", "opener": "vscode", "uses": 12, "lastUsed": 1752710400000 },
   "chrome": { "app": "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe" }
 }
 ```
