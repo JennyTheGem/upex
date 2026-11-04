@@ -320,4 +320,4 @@ upex <name> webstorm
 
 ## License
 
-MIT
+MIT, see [LICENSE](LICENSE).
