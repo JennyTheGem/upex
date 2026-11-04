@@ -5,7 +5,12 @@ A professional Node.js CLI tool that lets you register named aliases for folder 
 ## Installation
 
 ```bash
-# Clone and install
+npm i -g @uplift-beyond/upex
+```
+
+From source:
+
+```bash
 npm install
 
 # Link globally so you can use "upex" anywhere
