@@ -90,7 +90,7 @@ export function table(rows, { indent = 2, gap = 2, header = false } = {}) {
 /**
  * Minimal ANSI strip (for column width calculation).
  */
-function stripAnsi(str) {
+export function stripAnsi(str) {
   // eslint-disable-next-line no-control-regex
   return str.replace(/\x1B\[[0-9;]*m/g, '');
 }

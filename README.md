@@ -197,7 +197,7 @@ Run `upex` with no arguments to open the interactive selector. Shortcuts are ord
 
 - `Up` / `Down` -- move through shortcuts
 - `Left` / `Right` -- change the selected app (starts on the shortcut's default opener)
-- `Ctrl+Up` / `Ctrl+Down` -- terminal count when a terminal opener (cmd, claude) is selected
+- `Shift+Up` / `Shift+Down` (or `Ctrl`) -- terminal count when a terminal opener (cmd, claude) is selected
 - `Tab` -- cycle the Shortcuts (folders), Apps (app + URL shortcuts) and Workspaces views (Enter opens the whole workspace, `Ctrl+D` deletes it)
 - `Shift+Tab` -- jump to Settings (Left/Right changes the terminal layout, saved right away), again to go back
 - `Enter` -- open the selected shortcut in the selected app

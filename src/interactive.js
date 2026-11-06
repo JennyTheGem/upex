@@ -3,6 +3,7 @@
  */
 
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import readline from 'node:readline';
 import chalk from 'chalk';
@@ -13,6 +14,7 @@ import { describeEntry } from './commands/workspace.js';
 import * as ui from './ui.js';
 
 const MAX_VISIBLE_CHOICES = 8;
+const MAX_WIDTH = 100;
 const DEFAULT_APP_KEY = 'explorer';
 
 function buildChoices() {
@@ -52,24 +54,46 @@ export function filterChoices(choices, query) {
   const fuse = new Fuse(choices, {
     keys: ['name', 'path', 'searchText'],
     threshold: 0.35,
-    includeScore: true,
+    includeMatches: true,
   });
 
-  return fuse.search(trimmed).map(result => result.item);
+  // `hits` = matched char ranges in the name, for highlighting.
+  return fuse.search(trimmed).map(({ item, matches = [] }) => ({ ...item, hits: matches.find(m => m.key === 'name')?.indices }));
 }
 
-function formatName(name, width) {
-  return chalk.bold(name.padEnd(width));
+const HOME = os.homedir();
+
+// Home dir prefix -> "~" (case-insensitive on Windows).
+export function tidyPath(p) {
+  const head = p.slice(0, HOME.length);
+  const same = os.platform() === 'win32' ? head.toLowerCase() === HOME.toLowerCase() : head === HOME;
+  return same && /^([/\\]|$)/.test(p.slice(HOME.length)) ? `~${p.slice(HOME.length)}` : p;
 }
 
-function formatAppChoices(appChoices, selectedAppIndex, cmdCount) {
-  return appChoices
-    .map((choice, index) => {
-      const suffix = isTerminalApp(choice.key) && cmdCount > 1 ? ` x${cmdCount}` : '';
-      const label = `${choice.label}${suffix}`;
-      return index === selectedAppIndex ? chalk.bold(`[${label}]`) : label;
-    })
-    .join('  ');
+const vis = s => ui.stripAnsi(s).length;
+// Selection highlight: dark gray bar (bright black on 16-color terminals).
+const highlight = s => (chalk.level >= 2 ? chalk.bgAnsi256(238) : chalk.bgBlackBright)(s);
+const keyHint = pairs => '  ' + pairs.filter(Boolean).map(([k, label]) => `${k} ${chalk.dim(label)}`).join('  ');
+const underlineHits = (s, hits = []) => [...s].map((ch, i) => (hits.some(([a, b]) => i >= a && i <= b) ? chalk.underline(ch) : ch)).join('');
+
+// Keeps the end of a too-long string, where the folder name is.
+const clipStart = (s, n) => (s.length <= n ? s : n <= 1 ? '…'.slice(0, n) : `…${s.slice(-(n - 1))}`);
+
+// One list row: "› name  path ..... #tags  badge". `style` = path | dim | plain.
+function renderRow({ sel, name, nameWidth, hits, text = '', style = 'path', right = '', cw }) {
+  const nm = chalk.bold(underlineHits(name, hits)) + ' '.repeat(Math.max(0, nameWidth - name.length));
+  const room = cw - 2 - Math.max(nameWidth, name.length) - 2 - (right ? vis(right) + 2 : 0);
+  const t = clipStart(text, Math.max(0, room));
+  const cut = style === 'path' ? Math.max(t.lastIndexOf('/'), t.lastIndexOf('\\')) + 1 : 0;
+  const body = sel || style === 'plain' ? t : style === 'dim' ? chalk.dim(t) : chalk.dim(t.slice(0, cut)) + t.slice(cut);
+  const left = `${sel ? '›' : ' '} ${nm}  ${body}`;
+  const line = sel || right ? left + ' '.repeat(Math.max(right ? 2 : 0, cw - vis(left) - vis(right))) + right : left;
+  return `  ${sel ? highlight(line) : line}`;
+}
+
+function scrollHint(start, end, total) {
+  const parts = [start > 0 && `↑ ${start} more`, end < total && `↓ ${total - end} more`].filter(Boolean);
+  return parts.length ? chalk.dim(`    ${parts.join('   ')}`) : null;
 }
 
 function getVisibleWindow(choices, selectedIndex, maxVisible = MAX_VISIBLE_CHOICES) {
@@ -123,63 +147,56 @@ export function renderInteractiveView({
   flash = '',
   layout = 'windows',
   wt = null,
+  counts = {},
+  width = 80,
 }) {
   const isWs = view === 'workspaces';
   const isSettings = view === 'settings';
   const list = isWs ? workspaces : choices;
   const index = isWs ? wsIndex : selectedIndex;
-  const nameWidth = Math.max(
-    4,
-    ...list.slice(0, MAX_VISIBLE_CHOICES).map(choice => choice.name.length),
-    12,
-  );
-
   const currentChoice = list[index];
+  const w = Math.min(Math.max(width, 20), MAX_WIDTH);
+  const cw = w - 2; // row width after the 2-space indent
+  const rule = chalk.dim(`  ${'─'.repeat(cw)}`);
+  const terminal = isTerminalApp(appChoices[selectedAppIndex]?.key);
 
-  const lines = [];
+  const lines = [''];
+
+  // Header: name, tabs (active one highlighted), Settings on the right.
+  const tab = (key) => {
+    const n = counts[key] != null ? ` ${counts[key]}` : '';
+    return key === view ? highlight(chalk.bold(` ${VIEWS[key]}${n} `)) : ` ${VIEWS[key]}${chalk.dim(n)} `;
+  };
+  const headLeft = `  ${chalk.bold('upex')}   ${CYCLE.map(tab).join(' ')}`;
+  const headRight = `${tab('settings')} ${chalk.dim('S-Tab')}`;
+  lines.push(headLeft + ' '.repeat(Math.max(2, w - vis(headLeft) - vis(headRight))) + headRight);
   lines.push('');
-  lines.push(chalk.dim('  ┌─────────────────────┐'));
-  lines.push(`  ${chalk.dim('│')}  ${chalk.bold('Shortcut Selector')}  ${chalk.dim('│')}`);
-  lines.push(chalk.dim('  └─────────────────────┘'));
-  lines.push('');
-  const label = key => (key === view ? `[${VIEWS[key]}]` : VIEWS[key]);
-  const bold = key => (key === view ? chalk.bold(label(key)) : label(key));
-  // Settings is right-aligned to the end of the rule line (col 78), its key hint below it.
-  const used = 10 + CYCLE.map(label).join('  ').length + label('settings').length;
-  lines.push(`  ${chalk.dim('view')}    ${CYCLE.map(bold).join('  ')}${' '.repeat(Math.max(4, 78 - used))}${bold('settings')}`);
-  lines.push(chalk.dim('shift+tab'.padStart(78)));
-  if (!isSettings) lines.push(`  ${chalk.dim('filter')}  ${query || chalk.dim('(type to search)')}`);
 
-  const tabHint = `Tab=${VIEWS[nextView(view)].toLowerCase()}` + (isSettings ? '  S-Tab=back' : '');
-  if (isSettings) {
-    lines.push(chalk.dim(`  keys    Left/Right=change (saved)  ${tabHint}  Esc=cancel`));
-  } else if (isWs) {
-    lines.push(chalk.dim(`  keys    Enter=open all  ${tabHint}  Up/Down=navigate  ^D=del  Esc=cancel`));
-  } else if (view === 'apps') {
-    lines.push(`  ${chalk.dim('open')}    ${chalk.cyan(currentChoice?.isUrl ? 'open in browser' : 'launch app')}`);
-    lines.push(chalk.dim(`  keys    Enter=open  ${tabHint}  Up/Down=navigate  ^R=rename ^D=del  Esc=cancel`));
-  } else {
-    lines.push(`  ${chalk.dim('open')}    ${formatAppChoices(appChoices, selectedAppIndex, cmdCount)}`);
-    const countHint = isTerminalApp(appChoices[selectedAppIndex]?.key) ? '  ^Up/^Down=count' : '';
-    lines.push(chalk.dim(`  keys    Enter=open  ${tabHint}  Up/Down=navigate  Left/Right=app${countHint}  ^E=edit ^R=rename ^A=add ^D=del  Esc=cancel`));
-  }
-  lines.push(chalk.dim('  ────────────────────────────────────────────────────────────────────────────'));
-
-  // Live-action status line (input prompt / delete confirm / error flash).
+  // Prompt line: filter, or the live action (input / delete confirm).
   if (mode === 'input') {
-    const target = currentChoice?.name || '';
-    lines.push(`  ${chalk.cyan('▸')} ${PROMPT_LABEL[action](target)} ${inputBuffer}${chalk.dim('▏')}`);
+    lines.push(`  ${chalk.bold('›')} ${PROMPT_LABEL[action](currentChoice?.name || '')} ${inputBuffer}${chalk.dim('▏')}`);
   } else if (mode === 'confirm') {
-    lines.push(`  ${chalk.yellow('?')} delete ${isWs ? 'workspace ' : ''}"${currentChoice?.name}"?  ${chalk.dim('(y / n)')}`);
-  } else if (flash) {
-    lines.push(`  ${chalk.yellow(flash)}`);
+    lines.push(chalk.yellow(`  ? delete ${isWs ? 'workspace ' : ''}"${currentChoice?.name}"?`) + chalk.dim('  y / n'));
+  } else if (!isSettings) {
+    lines.push(`  ${chalk.bold('›')} ${query ? `${query}${chalk.dim('▏')}` : chalk.dim('▏type to filter')}`);
   }
+  if (flash) lines.push(chalk.yellow(`    ${flash}`));
+  lines.push(rule);
+
+  const footer = (rows) => {
+    lines.push(rule, ...rows);
+    return lines.join('\n');
+  };
+  const tabKey = ['tab', VIEWS[nextView(view)].toLowerCase()];
+  const nav = (open) => keyHint([['↵', open], ['↑↓', 'move'], tabKey, ['esc', 'quit']]);
 
   if (isSettings) {
-    const opts = Object.entries(LAYOUT_LABELS).map(([k, l]) => (k === layout ? chalk.bold(`[${l}]`) : l)).join('  ');
-    lines.push(`  > ${formatName('Terminals', 12)}  ${opts}`);
+    const opts = Object.entries(LAYOUT_LABELS)
+      .map(([k, l]) => (k === layout ? chalk.bold(`‹ ${l} ›`) : chalk.dim(l)))
+      .join('  ');
+    lines.push(`  › ${chalk.bold('Terminals'.padEnd(12))}${opts}`);
     lines.push(chalk.dim(`    ${layoutNote(layout, wt)}`));
-    return lines.join('\n');
+    return footer([keyHint([['←→', 'change (saved)'], tabKey, ['S-Tab', 'back'], ['esc', 'quit']])]);
   }
 
   if (list.length === 0) {
@@ -188,40 +205,51 @@ export function renderInteractiveView({
       apps: 'No app or URL shortcuts yet. Add one: upex add <name> <exe> --app',
       shortcuts: 'No folder shortcuts yet. Add one with ^A (uses the current folder)',
     };
-    lines.push(query ? `  ${ui.tag.warn}  No matches` : `  ${chalk.dim(empty[view])}`);
-    return lines.join('\n');
-  }
-
-  if (isWs) {
+    lines.push(query ? chalk.yellow('    no matches') : chalk.dim(`    ${empty[view]}`));
+  } else {
+    const nameWidth = Math.min(24, Math.max(12, ...list.map(c => c.name.length)));
     const { start, end } = getVisibleWindow(list, index);
     for (let i = start; i < end; i++) {
-      lines.push(`  ${i === index ? '>' : ' '} ${formatName(list[i].name, nameWidth)}  ${chalk.dim(list[i].path)}`);
+      const c = list[i];
+      const tags = c.tags?.length ? chalk.dim(`#${c.tags.join(' #')}`) : '';
+      const kind = c.isCmd ? 'cmd' : c.isApp ? 'app' : c.isUrl ? 'url' : '';
+      const badge = isWs ? '' : !c.exists ? chalk.red('missing') : chalk.dim(kind);
+      lines.push(renderRow({
+        sel: i === index,
+        name: c.name,
+        nameWidth,
+        hits: c.hits,
+        text: isWs || c.isUrl ? c.path : tidyPath(c.path),
+        style: isWs ? 'dim' : c.isUrl ? 'plain' : 'path',
+        right: [tags, badge].filter(Boolean).join('  '),
+        cw,
+      }));
     }
-    if (list.length > MAX_VISIBLE_CHOICES) {
-      lines.push(chalk.dim(`  showing ${start + 1}-${end} of ${list.length}`));
-    }
-    return lines.join('\n');
+    const more = scrollHint(start, end, list.length);
+    if (more) lines.push(more);
   }
 
-  const { start, end } = getVisibleWindow(choices, selectedIndex);
-  const visibleChoices = choices.slice(start, end);
+  if (isWs) return footer([nav('open all'), keyHint([['^d', 'delete']])]);
 
-  for (let i = 0; i < visibleChoices.length; i++) {
-    const choiceIndex = start + i;
-    const choice = visibleChoices[i];
-    const cursor = choiceIndex === selectedIndex ? '>' : ' ';
-    const status = choice.exists ? ui.tag.ok : ui.tag.fail;
-    const badge = choice.isCmd ? chalk.cyan('[*CMD]') : choice.isApp ? chalk.cyan('[*APP]') : choice.isUrl ? chalk.blue('[*URL]') : status;
-    const tags = choice.tags && choice.tags.length ? chalk.dim(`  #${choice.tags.join(' #')}`) : '';
-    const label = `${formatName(choice.name, nameWidth)}  ${badge}  ${choice.path}${tags}`;
-    lines.push(`  ${cursor} ${label}`);
+  if (view === 'apps') {
+    return footer([
+      nav(currentChoice?.isUrl ? 'open in browser' : 'launch app'),
+      keyHint([['^r', 'rename'], ['^d', 'delete']]),
+    ]);
   }
 
-  if (choices.length > MAX_VISIBLE_CHOICES) {
-    lines.push(chalk.dim(`  showing ${start + 1}-${end} of ${choices.length}`));
-  }
-
-  return lines.join('\n');
+  const openers = appChoices
+    .map((choice, i) => {
+      const label = `${choice.label}${isTerminalApp(choice.key) && cmdCount > 1 ? ` ×${cmdCount}` : ''}`;
+      return i === selectedAppIndex ? chalk.bold(`‹ ${label} ›`) : chalk.dim(label);
+    })
+    .join('  ');
+  return footer([
+    `  ${chalk.dim('open with')}  ${openers}`,
+    '',
+    keyHint([['↵', 'open'], ['↑↓', 'move'], ['←→', 'opener'], terminal && ['S-↑↓', 'windows'], tabKey, ['esc', 'quit']]),
+    keyHint([['^a', 'add'], ['^e', 'edit path'], ['^r', 'rename'], ['^d', 'delete']]),
+  ]);
 }
 
 export async function runInteractiveMode({ preferredApp, stdin = process.stdin, stdout = process.stdout } = {}) {
@@ -282,6 +310,9 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
         const own = appIndex(filteredChoices[selectedIndex]?.opener);
         selectedAppIndex = own >= 0 ? own : Math.max(0, appIndex(DEFAULT_APP_KEY));
       }
+      // Clip to terminal width: a wrapped line occupies 2+ rows, which would
+      // desync renderedLineCount and leave stale rows behind on redraw.
+      const width = Math.max(1, (stdout.columns || 80) - 1);
       const output = renderInteractiveView({
         query,
         choices: filteredChoices,
@@ -298,11 +329,9 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
         flash,
         layout,
         wt,
+        counts: { shortcuts: allChoices.filter(inView('shortcuts')).length, apps: allChoices.filter(inView('apps')).length, workspaces: wsChoices.length },
+        width,
       });
-
-      // Clip to terminal width: a wrapped line occupies 2+ rows, which would
-      // desync renderedLineCount and leave stale rows behind on redraw.
-      const width = Math.max(1, (stdout.columns || 80) - 1);
       const clipped = output.split('\n').map(line => ui.truncate(line, width));
 
       clearRendered();
@@ -547,8 +576,8 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
         return;
       }
 
-      // Ctrl+Up/Down sets the terminal count; plain Up/Down navigates.
-      const countKey = key.ctrl && view === 'shortcuts' && isTerminalApp(appChoices[selectedAppIndex]?.key);
+      // Shift/Ctrl+Up/Down sets the terminal count; otherwise Up/Down (and Shift) navigates.
+      const countKey = (key.shift || key.ctrl) && view === 'shortcuts' && isTerminalApp(appChoices[selectedAppIndex]?.key);
 
       if (key.name === 'up') {
         if (countKey) {

@@ -16,7 +16,7 @@ import { normalizeUrl, caretEscape, wtCommandLine, terminalLayout } from '../src
 import { parseTags } from '../src/commands/add.js';
 import { truncate } from '../src/ui.js';
 import { applyShortcut, cleanEntries } from '../src/commands/web.js';
-import { renderInteractiveView, inView } from '../src/interactive.js';
+import { renderInteractiveView, inView, tidyPath } from '../src/interactive.js';
 import { resolveTarget, suggestNames } from '../src/fuzzy.js';
 
 // -- frecency: recent + used beats old + unused; unused = 0 --
@@ -184,14 +184,26 @@ assert.equal(strip(truncate('abcdefghij', 1)), '…', 'width 1 -> ellipsis only'
 // -- selector: Tab view lists workspaces, hides the opener row --
 const viewArgs = { query: '', choices: [{ name: 's', path: 'P', exists: true }], selectedIndex: 0, appChoices: [{ key: 'explorer', label: 'Explorer' }], selectedAppIndex: 0, cmdCount: 1 };
 const wsView = strip(renderInteractiveView({ ...viewArgs, view: 'workspaces', workspaces: [{ name: 'dev', path: 's:vscode' }] }));
-assert.ok(wsView.includes('[Workspaces]') && wsView.includes('> dev') && wsView.includes('s:vscode'), 'workspace view lists workspaces');
+assert.ok(wsView.includes('tab shortcuts') && wsView.includes('› dev') && wsView.includes('s:vscode'), 'workspace view lists workspaces');
 assert.ok(!wsView.includes('Explorer'), 'no opener row in workspace view');
-assert.ok(strip(renderInteractiveView(viewArgs)).includes('[Shortcuts]'), 'shortcut view is the default');
+assert.ok(strip(renderInteractiveView(viewArgs)).includes('tab apps'), 'shortcut view is the default');
 const appsView = strip(renderInteractiveView({ ...viewArgs, view: 'apps', choices: [{ name: 'g', path: 'x.dev', isUrl: true, exists: true }] }));
-assert.ok(appsView.includes('[Apps]') && appsView.includes('open in browser') && !appsView.includes('Explorer'), 'apps view: no opener row');
+assert.ok(appsView.includes('tab workspaces') && appsView.includes('open in browser') && !appsView.includes('Explorer'), 'apps view: no opener row');
 const setView = strip(renderInteractiveView({ ...viewArgs, view: 'settings', layout: 'tabs', wt: false }));
-assert.ok(setView.includes('[Settings]') && setView.includes('[Tabs]') && setView.includes('not found') && !setView.includes('Explorer'), 'settings view: layout + missing-wt note');
-assert.ok(setView.indexOf('Workspaces') < setView.indexOf('[Settings]'), 'settings tab is last');
+assert.ok(setView.includes('‹ Tabs ›') && setView.includes('not found') && !setView.includes('Explorer'), 'settings view: layout + missing-wt note');
+assert.ok(setView.indexOf('Workspaces') < setView.indexOf('Settings'), 'settings tab is last');
+
+// rows stay inside the given width, the missing badge survives a long path
+const longArgs = (width, exists) => ({ ...viewArgs, width, choices: [{ name: 's', path: 'P/'.repeat(60) + 'leaf', exists }] });
+const longView = strip(renderInteractiveView(longArgs(60, false)));
+assert.ok(longView.split('\n').every(l => l.length <= 60), 'rows fit the width');
+assert.ok(/…[P/]+leaf\s+missing/.test(longView), 'long path clipped from the start, badge kept');
+const selRow = (width, exists) => strip(renderInteractiveView(longArgs(width, exists))).split('\n').find(l => l.startsWith('  › s '));
+assert.equal(selRow(60, true).length, 60, 'selected row without a badge fills the width exactly');
+assert.equal(selRow(30, false).length, 30, 'narrow terminal: row still fits');
+assert.equal(tidyPath(path.join(os.homedir(), 'x')), path.join('~', 'x'), 'home -> ~');
+assert.equal(tidyPath(os.homedir() + 'x'), os.homedir() + 'x', 'home prefix of another name untouched');
+if (os.platform() === 'win32') assert.equal(tidyPath(os.homedir().toUpperCase() + '\\x'), '~\\x', 'windows: home match ignores case');
 
 // -- applyShortcut: add, rename in place, clashes, path checks --
 const yes = () => true;
