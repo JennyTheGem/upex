@@ -9,8 +9,8 @@ import os from 'node:os';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { loadLinks, saveLinks, loadWorkspaces, saveWorkspaces, pruneBroken, targetField, nameError, frecency, loadConfig, saveConfig } from '../store.js';
-import { getInteractiveAppChoices, launchUrl, openerKey, isTerminalApp, terminalLayout, TERMINAL_LAYOUTS, hasWindowsTerminal } from '../launcher.js';
-import { handleOpen } from './open.js';
+import { getInteractiveAppChoices, launchUrl, openerKey, isTerminalApp, SETTINGS, readSettings, hasWindowsTerminal } from '../launcher.js';
+import { handleOpen, isFile } from './open.js';
 import { openEntries } from './workspace.js';
 import { parseTags } from './add.js';
 import * as ui from '../ui.js';
@@ -97,11 +97,13 @@ function state() {
         lastUsed: e.lastUsed || 0,
         score: frecency(e),
         broken: Boolean(e.path) && !fs.existsSync(e.path),
+        // A file opens in its default app, not the default opener.
+        file: field === 'path' && isFile(e.path),
       };
     }),
     workspaces: loadWorkspaces(),
     apps: getInteractiveAppChoices().map(a => ({ ...a, terminal: isTerminalApp(a.key) })),
-    settings: { terminalLayout: terminalLayout() },
+    settings: readSettings(),
     wt: hasWindowsTerminal(),
     home: os.homedir(),
     sep: path.sep,
@@ -133,9 +135,19 @@ const routes = {
     return {};
   },
 
+  // Any subset of settings; all are checked before any is saved.
   'PUT /api/settings': (b) => {
-    if (!TERMINAL_LAYOUTS.includes(b.terminalLayout)) throw new HttpError(400, `Terminal layout must be one of: ${TERMINAL_LAYOUTS.join(', ')}.`);
-    saveConfig({ ...loadConfig(), terminalLayout: b.terminalLayout });
+    const next = {};
+    for (const [k, v] of Object.entries(b)) {
+      if (k === 'defaultOpener') {
+        next[k] = typeof v === 'string' && openerKey(v);
+        if (!next[k] || next[k] === 'copy') throw new HttpError(400, `Unknown opener "${v}".`);
+      } else if (Object.hasOwn(SETTINGS, k)) {
+        if (!SETTINGS[k].includes(v)) throw new HttpError(400, `${k} must be one of: ${SETTINGS[k].join(', ')}.`);
+        next[k] = v;
+      } else throw new HttpError(400, `Unknown setting "${k}".`);
+    }
+    saveConfig({ ...loadConfig(), ...next });
     return {};
   },
 

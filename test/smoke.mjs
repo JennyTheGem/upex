@@ -12,7 +12,7 @@ import { spawn, spawnSync, execSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { frecency, pruneBroken, mergeLinks, lastUsedName, nameError } from '../src/store.js';
 import { installCmdWrapper } from '../src/commands/setup.js';
-import { normalizeUrl, caretEscape, wtCommandLine, terminalLayout } from '../src/launcher.js';
+import { normalizeUrl, caretEscape, wtCommandLine, setting, shellCommand, defaultOpener } from '../src/launcher.js';
 import { parseTags } from '../src/commands/add.js';
 import { truncate } from '../src/ui.js';
 import { applyShortcut, cleanEntries } from '../src/commands/web.js';
@@ -189,8 +189,12 @@ assert.ok(!wsView.includes('Explorer'), 'no opener row in workspace view');
 assert.ok(strip(renderInteractiveView(viewArgs)).includes('tab apps'), 'shortcut view is the default');
 const appsView = strip(renderInteractiveView({ ...viewArgs, view: 'apps', choices: [{ name: 'g', path: 'x.dev', isUrl: true, exists: true }] }));
 assert.ok(appsView.includes('tab workspaces') && appsView.includes('open in browser') && !appsView.includes('Explorer'), 'apps view: no opener row');
-const setView = strip(renderInteractiveView({ ...viewArgs, view: 'settings', layout: 'tabs', wt: false }));
-assert.ok(setView.includes('‹ Tabs ›') && setView.includes('not found') && !setView.includes('Explorer'), 'settings view: layout + missing-wt note');
+const setArgs = { ...viewArgs, view: 'settings', settings: { terminalLayout: 'tabs', paneSplit: 'auto', terminalShell: 'pwsh', defaultOpener: 'explorer' }, wt: false };
+const setView = strip(renderInteractiveView(setArgs));
+assert.ok(setView.includes('‹ Tabs ›') && setView.includes('‹ PowerShell 7 ›') && setView.includes('‹ Explorer ›') && setView.includes('not found'), 'settings view: all rows + missing-wt note');
+assert.ok(!setView.includes('Pane split'), 'pane split hidden unless split panes');
+assert.ok(strip(renderInteractiveView({ ...setArgs, settings: { ...setArgs.settings, terminalLayout: 'panes' } })).includes('Pane split'), 'pane split shown for split panes');
+assert.ok(strip(renderInteractiveView({ ...setArgs, settingIndex: 2 })).includes('no opener of their own'), 'note follows the picked row');
 assert.ok(setView.indexOf('Workspaces') < setView.indexOf('Settings'), 'settings tab is last');
 
 // rows stay inside the given width, the missing badge survives a long path
@@ -247,7 +251,18 @@ assert.equal(wtCommandLine('C:\\a b\\', '', 2, 'tabs'), String.raw`-w 0 new-tab 
 assert.equal(wtCommandLine(String.raw`C:\x`, 'a; b', 2, 'panes'), String.raw`-w 0 new-tab -d C:\x cmd /s /k "a\; b" ; split-pane -d C:\x cmd /s /k "a\; b"`, 'panes, escaped ;');
 assert.equal(wtCommandLine(String.raw`C:\x`, String.raw`code "C:\a b\" && x`, 1, 'tabs'), String.raw`-w 0 new-tab -d C:\x cmd /s /k "code \"C:\a b\\\" && x"`, 'start cmd is one arg, inner quotes escaped');
 assert.equal(wtCommandLine(String.raw`C:\x`, 'claude', 1, 'tabs'), String.raw`-w 0 new-tab -d C:\x cmd /s /k claude`, 'plain start cmd unquoted');
-assert.equal(terminalLayout({ terminalLayout: 'bogus' }), 'windows', 'unknown layout falls back to windows');
+assert.equal(wtCommandLine(String.raw`C:\x`, '', 2, 'panes', 'cmd', 'vertical'), String.raw`-w 0 new-tab -d C:\x cmd ; split-pane -V -d C:\x cmd`, 'pane split direction');
+assert.equal(wtCommandLine(String.raw`C:\x`, '', 1, 'windows', 'profile'), String.raw`-w new new-tab -d C:\x`, 'default profile: no command, own window');
+assert.equal(wtCommandLine(String.raw`C:\x`, 'claude', 1, 'tabs', 'profile'), String.raw`-w 0 new-tab -d C:\x cmd /s /k claude`, 'default profile + start command runs in cmd');
+const ps = shellCommand('pwsh', 'echo "a; b" & x', s => s);
+assert.equal(Buffer.from(ps.split(' ').pop(), 'base64').toString('utf16le'), 'echo "a; b" & x', 'powershell start command round-trips');
+assert.ok(ps.startsWith('pwsh -NoExit -EncodedCommand ') && !/[\s;"]/.test(ps.split(' ').pop()), 'encoded command has nothing to quote');
+assert.equal(shellCommand('powershell', '', s => s), 'powershell', 'plain powershell');
+assert.equal(setting('terminalLayout', { terminalLayout: 'bogus' }), 'windows', 'unknown layout falls back to windows');
+assert.equal(setting('terminalShell', {}), 'cmd', 'shell defaults to cmd');
+assert.equal(defaultOpener({ defaultOpener: 'Code' }), 'vscode', 'default opener alias normalized');
+assert.equal(defaultOpener({ defaultOpener: 'nope' }), 'explorer', 'unknown default opener falls back to explorer');
+assert.equal(defaultOpener({ defaultOpener: 'copy' }), 'explorer', 'copy is no default opener');
 
 // -- upex ui: token + host guard, add via API writes the store --
 const webHome = fs.mkdtempSync(path.join(os.tmpdir(), 'upex-web-'));
@@ -292,16 +307,32 @@ try {
   assert.equal(rename.status, 200, 'workspace renamed');
   const cfg = JSON.parse(fs.readFileSync(path.join(webHome, '.upex', 'config.json'), 'utf-8'));
   assert.deepEqual(Object.keys(cfg.workspaces), ['work'], 'old workspace name gone');
-  const putSet = (terminalLayout) => fetch(base + '/api/settings', {
+  const putSet = (body) => fetch(base + '/api/settings', {
     method: 'PUT',
     headers: { 'content-type': 'application/json', 'x-upex-token': token },
-    body: JSON.stringify({ terminalLayout }),
+    body: JSON.stringify(body),
   });
-  assert.equal((await putSet('nope')).status, 400, 'bad layout refused');
-  assert.equal((await putSet('panes')).status, 200, 'layout saved');
+  assert.equal((await putSet({ terminalLayout: 'nope' })).status, 400, 'bad layout refused');
+  assert.equal((await putSet({ paneSplit: 'vertical', bogus: 1 })).status, 400, 'unknown setting refused');
+  assert.equal((await putSet({ defaultOpener: 'nope' })).status, 400, 'unknown opener refused');
+  assert.equal((await putSet({ defaultOpener: 'copy' })).status, 400, 'copy refused as default opener');
+  assert.equal((await putSet({ terminalLayout: 'panes', paneSplit: 'horizontal', terminalShell: 'powershell', defaultOpener: 'code' })).status, 200, 'settings saved');
   const cfg2 = JSON.parse(fs.readFileSync(path.join(webHome, '.upex', 'config.json'), 'utf-8'));
   assert.equal(cfg2.terminalLayout, 'panes', 'layout written to config');
+  assert.equal(cfg2.paneSplit, 'horizontal', 'refused request saved nothing, later one did');
+  assert.equal(cfg2.defaultOpener, 'vscode', 'default opener stored as its key');
+  const st2 = await (await fetch(base + '/api/state', { headers: { 'x-upex-token': token } })).json();
+  assert.deepEqual(st2.settings, { terminalLayout: 'panes', paneSplit: 'horizontal', terminalShell: 'powershell', defaultOpener: 'vscode' }, 'state reports settings');
   assert.deepEqual(Object.keys(cfg2.workspaces), ['work'], 'settings save keeps workspaces');
+  const note = path.join(webHome, 'note.txt');
+  fs.writeFileSync(note, '');
+  await fetch(base + '/api/links', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'x-upex-token': token },
+    body: JSON.stringify({ kind: 'folder', name: 'nt', target: note }),
+  });
+  const st3 = await (await fetch(base + '/api/state', { headers: { 'x-upex-token': token } })).json();
+  assert.ok(st3.links.find(l => l.name === 'nt').file && !st3.links.find(l => l.name === 'gh').file, 'file shortcuts flagged (they skip the default opener)');
 } finally {
   // Already exited (e.g. crashed on start): waiting for 'exit' again would never settle.
   if (srv.exitCode === null && srv.signalCode === null) {
@@ -311,4 +342,4 @@ try {
   fs.rmSync(webHome, { recursive: true, force: true });
 }
 
-console.log('ok - frecency + prune + cmd wrapper + resolve guard + go args + safe store + edit url + merge + lastUsed + url + tags + truncate + web ui + subpaths + opener + doctor + apps tab + names + ws rename + cmd quoting + wt layout + settings');
+console.log('ok - frecency + prune + cmd wrapper + resolve guard + go args + safe store + edit url + merge + lastUsed + url + tags + truncate + web ui + subpaths + opener + doctor + apps tab + names + ws rename + cmd quoting + wt layout + settings + shells + default opener');

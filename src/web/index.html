@@ -145,6 +145,7 @@ h1 { font-size: 20px; letter-spacing: -.015em; margin: 8px 0 4px; }
 .form .row > input { flex: 1 1 160px; }
 .form .row > .wide { flex: 3 1 260px; }
 .form .err { color: var(--danger); margin: 0; font-size: 13px; }
+.form .set-label { min-width: 104px; color: var(--muted); }
 .seg { display: inline-flex; border: 1px solid var(--line-strong); border-radius: var(--r); padding: 2px; gap: 2px; }
 .seg label { display: flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 4px; cursor: pointer; color: var(--muted); }
 .seg input { position: absolute; opacity: 0; pointer-events: none; }
@@ -269,7 +270,11 @@ const KINDS = { folder: 'Folder', app: 'App', cmd: 'Command', url: 'URL' };
 // Kinds each list tab can add; folders on Shortcuts, the rest on Apps.
 const TAB_KINDS = { links: ['folder'], apps: ['app', 'cmd', 'url'] };
 const TITLES = { links: 'Shortcuts', apps: 'Apps', ws: 'Workspaces', settings: 'Settings' };
-const LAYOUTS = { windows: 'Separate windows', tabs: 'Tabs', panes: 'Split panes' };
+const SETTING_OPTS = {
+  terminalLayout: { windows: 'Separate windows', tabs: 'Tabs', panes: 'Split panes' },
+  paneSplit: { auto: 'Auto', vertical: 'Side by side', horizontal: 'Stacked' },
+  terminalShell: { cmd: 'cmd', powershell: 'PowerShell', pwsh: 'PowerShell 7', profile: 'WT default profile' },
+};
 const tabLinks = () => S.links.filter(l => l.tab === S.view);
 const COPY_WORD = { folder: 'path', app: 'path', cmd: 'command', url: 'URL' };
 function savedSort() {
@@ -391,6 +396,8 @@ function placeholder(kind) {
 
 const appLabel = key => (S.apps.find(a => a.key === key) || {}).label || key;
 const isTerm = key => Boolean((S.apps.find(a => a.key === key) || {}).terminal);
+// What "Default" opens a folder shortcut in; false = a file's default app.
+const dflt = l => l.opener || (!l.file && S.settings.defaultOpener);
 
 // Default opener picker for folder shortcuts ('' = none). Shows the current one even if it's copy or unknown.
 const openerSelect = (value, set) => h('select', { 'aria-label': 'Default opener', onchange: e => set(e.target.value) },
@@ -494,16 +501,16 @@ function row(l) {
       btn('Keep', 'ghost', () => { S.confirming = null; render(); }));
   } else {
     // Window count and start command only show for a terminal opener.
-    const term = isTerm(S.openWith[l.name] || l.opener);
+    const term = isTerm(S.openWith[l.name] || dflt(l));
     const count = h('input', { type: 'number', class: 'count', min: 1, max: 9, placeholder: 'x1', value: S.openCount[l.name] || '',
       hidden: !term, 'aria-label': `Windows for ${l.name}`, oninput: e => (S.openCount[l.name] = e.target.value) });
     const start = h('input', { type: 'text', class: 'start mono', placeholder: 'start command', value: S.openStart[l.name] || '',
       hidden: !term, spellcheck: 'false', 'aria-label': `Start command for ${l.name}`, oninput: e => (S.openStart[l.name] = e.target.value) });
     const openWith = l.kind === 'folder' && h('select', { 'aria-label': `Open ${l.name} with`, onchange: e => {
         S.openWith[l.name] = e.target.value;
-        count.hidden = start.hidden = !isTerm(e.target.value || l.opener);
+        count.hidden = start.hidden = !isTerm(e.target.value || dflt(l));
       } },
-      h('option', { value: '' }, l.opener ? 'Default: ' + appLabel(l.opener) : 'Default'),
+      h('option', { value: '' }, dflt(l) ? 'Default: ' + appLabel(dflt(l)) : 'Default app'),
       S.apps.map(a => h('option', { value: a.key, selected: S.openWith[l.name] === a.key }, a.label)));
     const open = () => act(() => api('POST', 'open', {
       name: l.name, app: S.openWith[l.name] || undefined, ...(!count.hidden && { count: count.value, start: start.value }),
@@ -726,21 +733,42 @@ function wsView() {
 // ---------- Settings view ----------
 
 function settingsView() {
-  const cur = S.settings.terminalLayout || 'windows';
-  const note = S.wt === null ? 'Windows only. Other systems always open separate windows.'
-    : !S.wt && cur !== 'windows' ? 'Windows Terminal (wt) was not found, so terminals open as separate windows.'
-    : '';
-  return [h('section', { class: 'form', 'aria-labelledby': 'set-term' },
-    h('h2', { id: 'set-term', style: 'font-size:15px;margin:0' }, 'Terminals'),
-    h('p', { class: 'lede', style: 'margin:0' }, 'When a terminal opener opens more than one window, add them to your current Windows Terminal window as tabs or split panes.'),
-    h('div', { class: 'row' }, h('div', { class: 'seg', role: 'radiogroup', 'aria-label': 'Terminal layout' },
-      Object.entries(LAYOUTS).map(([k, label]) => [
-        h('input', { type: 'radio', name: 'layout', id: 'l-' + k, checked: cur === k, onchange: () =>
-          act(() => api('PUT', 'settings', { terminalLayout: k }), `Terminals open as ${label.toLowerCase()}`)
-            .then(() => document.getElementById('l-' + S.settings.terminalLayout)?.focus()) }),
-        h('label', { for: 'l-' + k }, label),
-      ]))),
-    note && h('p', { class: 'tag', style: 'margin:0' }, note))];
+  const s = S.settings;
+  // One labelled radio group per setting; saves on change and keeps focus on the picked option.
+  const seg = (key, title, msg) => h('div', { class: 'row' },
+    h('span', { class: 'set-label', id: 'lbl-' + key }, title),
+    h('div', { class: 'seg', role: 'radiogroup', 'aria-labelledby': 'lbl-' + key },
+      Object.entries(SETTING_OPTS[key]).map(([k, label]) => [
+        h('input', { type: 'radio', name: key, id: `${key}-${k}`, checked: s[key] === k, onchange: () =>
+          act(() => api('PUT', 'settings', { [key]: k }), msg(label))
+            .then(() => document.getElementById(`${key}-${S.settings[key]}`)?.focus()) }),
+        h('label', { for: `${key}-${k}` }, label),
+      ])));
+  const notes = [
+    S.wt === null && 'Windows only. Other systems use their own terminal.',
+    S.wt === false && s.terminalLayout !== 'windows' && 'Windows Terminal (wt) was not found, so terminals open as separate windows.',
+    S.wt === false && s.terminalShell === 'profile' && 'Without Windows Terminal, the default profile falls back to cmd.',
+    S.wt && s.terminalShell === 'profile' && 'A start command (like claude) runs in cmd, since upex cannot know which shell your default profile uses.',
+  ].filter(Boolean);
+  const pickOpener = e => act(() => api('PUT', 'settings', { defaultOpener: e.target.value }), `Folders open in ${appLabel(e.target.value)}`)
+    .then(() => document.getElementById('set-opener')?.focus());
+  return [
+    h('section', { class: 'form', 'aria-labelledby': 'set-term' },
+      h('h2', { id: 'set-term', style: 'font-size:15px;margin:0' }, 'Terminals'),
+      h('p', { class: 'lede', style: 'margin:0' }, 'The shell terminal openers start, and whether several of them go into your current Windows Terminal window as tabs or split panes.'),
+      seg('terminalLayout', 'Layout', l => `Terminals open as ${l.toLowerCase()}`),
+      s.terminalLayout === 'panes' && seg('paneSplit', 'Pane split', l => `Panes split: ${l.toLowerCase()}`),
+      seg('terminalShell', 'Shell', l => `Terminals start ${l}`),
+      notes.map(n => h('p', { class: 'tag', style: 'margin:0' }, n))),
+    h('section', { class: 'form', 'aria-labelledby': 'set-open' },
+      h('h2', { id: 'set-open', style: 'font-size:15px;margin:0' }, 'Opening'),
+      h('p', { class: 'lede', style: 'margin:0' }, 'Folder shortcuts without their own opener open in this app. Files still open in their default app.'),
+      h('div', { class: 'row' },
+        h('label', { class: 'set-label', for: 'set-opener' }, 'Default opener'),
+        h('select', { id: 'set-opener', onchange: pickOpener },
+          S.apps.filter(a => a.key !== 'copy').map(a => h('option', { value: a.key, selected: s.defaultOpener === a.key }, a.label)),
+          !S.apps.some(a => a.key === s.defaultOpener) && h('option', { value: s.defaultOpener, selected: true }, s.defaultOpener)))),
+  ];
 }
 
 // ---------- Shell ----------

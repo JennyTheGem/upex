@@ -8,14 +8,13 @@ import path from 'node:path';
 import readline from 'node:readline';
 import chalk from 'chalk';
 import Fuse from 'fuse.js';
-import { getInteractiveAppChoices, getAppMap, isTerminalApp, TERMINAL_LAYOUTS, terminalLayout, hasWindowsTerminal } from './launcher.js';
+import { getInteractiveAppChoices, getAppMap, isTerminalApp, hasWindowsTerminal, defaultOpener, readSettings } from './launcher.js';
 import { loadLinks, frecency, removeLink, setLink, renameLink, linkExists, loadWorkspaces, removeWorkspace, nameError, loadConfig, saveConfig } from './store.js';
 import { describeEntry } from './commands/workspace.js';
 import * as ui from './ui.js';
 
 const MAX_VISIBLE_CHOICES = 8;
 const MAX_WIDTH = 100;
-const DEFAULT_APP_KEY = 'explorer';
 
 function buildChoices() {
   // Most-used / most-recent first, ties alphabetical.
@@ -123,12 +122,30 @@ const VIEWS = { shortcuts: 'Shortcuts', apps: 'Apps', workspaces: 'Workspaces', 
 // Tab cycles these; Settings sits outside the cycle on Shift+Tab, so Tab from it goes to Shortcuts.
 const CYCLE = ['shortcuts', 'apps', 'workspaces'];
 const nextView = (view) => CYCLE[(CYCLE.indexOf(view) + 1) % CYCLE.length];
-const LAYOUT_LABELS = { windows: 'Separate windows', tabs: 'Tabs', panes: 'Split panes' };
+const SETTING_ROWS = [
+  { key: 'terminalLayout', label: 'Terminals', names: { windows: 'Separate windows', tabs: 'Tabs', panes: 'Split panes' } },
+  { key: 'paneSplit', label: 'Pane split', names: { auto: 'Auto', vertical: 'Side by side', horizontal: 'Stacked' } },
+  { key: 'terminalShell', label: 'Shell', names: { cmd: 'cmd', powershell: 'PowerShell', pwsh: 'PowerShell 7', profile: 'WT profile' } },
+  { key: 'defaultOpener', label: 'Default opener' },
+];
+// Pane split only matters for split panes.
+const visibleRows = s => SETTING_ROWS.filter(r => r.key !== 'paneSplit' || s.terminalLayout === 'panes');
+// [key, label] options of a settings row; copy is no way to open a folder.
+const rowOptions = (row, appChoices) => (row.names
+  ? Object.entries(row.names)
+  : appChoices.filter(c => c.key !== 'copy').map(c => [c.key, c.label]));
 
-function layoutNote(layout, wt) {
-  if (wt === null) return 'Windows only. Other systems always open separate windows.';
-  if (!wt && layout !== 'windows') return 'Windows Terminal (wt) not found, so terminals open as separate windows.';
-  return 'How several terminal windows open: separate, or as tabs or panes in your current Windows Terminal window.';
+function settingNote(key, s, wt) {
+  if (key === 'defaultOpener') return 'Opens folder shortcuts that have no opener of their own.';
+  if (wt === null) return 'Windows only. Other systems use their own terminal.';
+  if (key === 'terminalLayout') {
+    return !wt && s.terminalLayout !== 'windows'
+      ? 'Windows Terminal (wt) not found, so terminals open as separate windows.'
+      : 'How several terminals open: separate windows, or tabs or panes in your current Windows Terminal window.';
+  }
+  if (key === 'paneSplit') return 'Where each new pane goes.';
+  if (s.terminalShell !== 'profile') return 'The shell terminal openers start.';
+  return wt ? 'Your Windows Terminal default profile. A start command (like claude) runs in cmd.' : 'Windows Terminal (wt) not found, so cmd opens instead.';
 }
 
 export function renderInteractiveView({
@@ -145,7 +162,8 @@ export function renderInteractiveView({
   action = null,
   inputBuffer = '',
   flash = '',
-  layout = 'windows',
+  settings = {},
+  settingIndex = 0,
   wt = null,
   counts = {},
   width = 80,
@@ -191,12 +209,16 @@ export function renderInteractiveView({
   const nav = (open) => keyHint([['↵', open], ['↑↓', 'move'], tabKey, ['esc', 'quit']]);
 
   if (isSettings) {
-    const opts = Object.entries(LAYOUT_LABELS)
-      .map(([k, l]) => (k === layout ? chalk.bold(`‹ ${l} ›`) : chalk.dim(l)))
-      .join('  ');
-    lines.push(`  › ${chalk.bold('Terminals'.padEnd(12))}${opts}`);
-    lines.push(chalk.dim(`    ${layoutNote(layout, wt)}`));
-    return footer([keyHint([['←→', 'change (saved)'], tabKey, ['S-Tab', 'back'], ['esc', 'quit']])]);
+    const rows = visibleRows(settings);
+    rows.forEach((row, i) => {
+      const opts = rowOptions(row, appChoices)
+        .map(([k, l]) => (k === settings[row.key] ? chalk.bold(`‹ ${l} ›`) : chalk.dim(l)))
+        .join('  ');
+      const sel = i === settingIndex;
+      lines.push(`  ${sel ? '›' : ' '} ${(sel ? chalk.bold : chalk.dim)(row.label.padEnd(16))}${opts}`);
+    });
+    lines.push('', chalk.dim(`    ${settingNote(rows[settingIndex].key, settings, wt)}`));
+    return footer([keyHint([['↑↓', 'setting'], ['←→', 'change (saved)'], tabKey, ['S-Tab', 'back'], ['esc', 'quit']])]);
   }
 
   if (list.length === 0) {
@@ -257,7 +279,8 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
   const appChoices = getInteractiveAppChoices();
   // A default opener outside the usual row (e.g. "open") still needs a slot to preselect.
   const appMap = getAppMap();
-  for (const key of new Set(allChoices.map(c => c.opener))) {
+  let fallback = defaultOpener();
+  for (const key of new Set([fallback, ...allChoices.map(c => c.opener)])) {
     if (key && Object.hasOwn(appMap, key) && !appChoices.some(c => c.key === key)) {
       appChoices.push({ key, label: appMap[key].displayName });
     }
@@ -290,10 +313,11 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
     let inputBuffer = '';
     let flash = '';
     let backView = 'shortcuts'; // where Shift+Tab returns from Settings
-    let layout = 'windows';
+    let settings = {};
+    let settingIndex = 0;
     let wt = null;
     const appIndex = (key) => appChoices.findIndex(choice => choice.key === key);
-    let selectedAppIndex = Math.max(0, appIndex(preferredApp || DEFAULT_APP_KEY));
+    let selectedAppIndex = Math.max(0, appIndex(preferredApp || fallback));
     // Until Left/Right (or --app) picks one, the opener follows the shortcut's default opener.
     let appPicked = !!preferredApp;
 
@@ -308,7 +332,7 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
     const redraw = () => {
       if (!appPicked && view === 'shortcuts') {
         const own = appIndex(filteredChoices[selectedIndex]?.opener);
-        selectedAppIndex = own >= 0 ? own : Math.max(0, appIndex(DEFAULT_APP_KEY));
+        selectedAppIndex = own >= 0 ? own : Math.max(0, appIndex(fallback));
       }
       // Clip to terminal width: a wrapped line occupies 2+ rows, which would
       // desync renderedLineCount and leave stale rows behind on redraw.
@@ -327,7 +351,8 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
         action,
         inputBuffer,
         flash,
-        layout,
+        settings,
+        settingIndex,
         wt,
         counts: { shortcuts: allChoices.filter(inView('shortcuts')).length, apps: allChoices.filter(inView('apps')).length, workspaces: wsChoices.length },
         width,
@@ -487,7 +512,9 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
         const to = !key.shift ? nextView(view) : view === 'settings' ? backView : 'settings';
         if (to === 'settings') {
           backView = view;
-          layout = terminalLayout();
+          settings = readSettings();
+          // The pane split row may have gone since last time (layout changed elsewhere).
+          settingIndex = Math.min(settingIndex, visibleRows(settings).length - 1);
           wt = hasWindowsTerminal();
         }
         view = to;
@@ -499,12 +526,22 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
         return;
       }
 
-      // Settings: Left/Right changes and saves the layout; everything else is ignored.
+      // Settings: Up/Down picks a row, Left/Right changes and saves it; everything else is ignored.
       if (view === 'settings') {
-        if (key.name === 'left' || key.name === 'right') {
-          const n = TERMINAL_LAYOUTS.length;
-          layout = TERMINAL_LAYOUTS[(TERMINAL_LAYOUTS.indexOf(layout) + (key.name === 'left' ? n - 1 : 1)) % n];
-          saveConfig({ ...loadConfig(), terminalLayout: layout });
+        const rows = visibleRows(settings);
+        if (key.name === 'up' || key.name === 'down') {
+          const n = rows.length;
+          settingIndex = (settingIndex + (key.name === 'up' ? n - 1 : 1)) % n;
+          redraw();
+        } else if (key.name === 'left' || key.name === 'right') {
+          // Only the layout row (always first) changes which rows show, so the index stays put.
+          const row = rows[settingIndex];
+          const keys = rowOptions(row, appChoices).map(([k]) => k);
+          const at = Math.max(0, keys.indexOf(settings[row.key]));
+          const next = keys[(at + (key.name === 'left' ? keys.length - 1 : 1)) % keys.length];
+          settings = { ...settings, [row.key]: next };
+          saveConfig({ ...loadConfig(), [row.key]: next });
+          if (row.key === 'defaultOpener') fallback = next;
           redraw();
         }
         return;
@@ -566,7 +603,7 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
           return;
         }
 
-        const appKey = appChoices[selectedAppIndex]?.key || DEFAULT_APP_KEY;
+        const appKey = appChoices[selectedAppIndex]?.key || fallback;
         finish({
           status: 'selected',
           name: selected.name,

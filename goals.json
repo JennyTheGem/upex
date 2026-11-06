@@ -396,6 +396,39 @@
       "note": "config.json terminalLayout windows|tabs|panes; one 'wt -w new' call with new-tab/split-pane; falls back to cmd windows without wt. New Settings tab in upex ui (PUT /api/settings)."
     },
     {
+      "id": "terminal-shell-setting",
+      "section": 2,
+      "title": "Terminal shell setting",
+      "body": "Pick the shell terminal openers start: cmd, PowerShell, pwsh, or the Windows Terminal default profile (wt -p). Today it is always cmd.",
+      "phase": "now",
+      "status": "done",
+      "created": "2026-11-06",
+      "updated": "2026-11-06",
+      "note": "config terminalShell cmd|powershell|pwsh|profile; PowerShell gets -EncodedCommand; profile + start command runs in cmd, no wt falls back to cmd. In TUI + web Settings."
+    },
+    {
+      "id": "split-direction-for-panes",
+      "section": 2,
+      "title": "Split direction for panes",
+      "body": "panes layout uses wt auto split. Add auto, vertical, horizontal (split-pane -V/-H).",
+      "phase": "now",
+      "status": "done",
+      "created": "2026-11-06",
+      "updated": "2026-11-06",
+      "note": "config paneSplit auto|vertical|horizontal -> split-pane -V/-H; setting only shown when layout is split panes."
+    },
+    {
+      "id": "default-opener-setting",
+      "section": 2,
+      "title": "Default opener setting",
+      "body": "Selector preselects Explorer (DEFAULT_APP_KEY in interactive.js). Make the fallback opener for shortcuts without their own opener a setting.",
+      "phase": "now",
+      "status": "done",
+      "created": "2026-11-06",
+      "updated": "2026-11-06",
+      "note": "config defaultOpener (openerKey-validated, fallback explorer) used by upex <name>, selector preselect, workspaces; files still open in default app."
+    },
+    {
       "id": "exact-then-fuzzy-name-resolution-fuse-js",
       "section": 3,
       "title": "Exact-then-fuzzy name resolution (fuse.js)",
@@ -461,6 +494,26 @@
       "created": "2026-11-02",
       "updated": "2026-11-02",
       "note": "done in web/cli batch"
+    },
+    {
+      "id": "upex-config-get-set",
+      "section": 3,
+      "title": "upex config get/set",
+      "body": "CLI for settings (upex config set terminalLayout tabs), so they work without the TUI or web UI and in scripts.",
+      "phase": "now",
+      "status": "planned",
+      "created": "2026-11-06",
+      "updated": "2026-11-06"
+    },
+    {
+      "id": "default-sort-and-view",
+      "section": 3,
+      "title": "Default sort and view",
+      "body": "Persist the start view and sort (most used vs A to Z) in config so the selector and web UI share it; the web keeps sort only in localStorage today.",
+      "phase": "next",
+      "status": "planned",
+      "created": "2026-11-06",
+      "updated": "2026-11-06"
     },
     {
       "id": "cd-support-via-wrapper-hidden-resolve-public-go",
@@ -659,6 +712,16 @@
       "created": "2026-11-02",
       "updated": "2026-11-02",
       "note": "done in web/cli batch"
+    },
+    {
+      "id": "custom-openers-in-settings",
+      "section": 7,
+      "title": "Custom openers in Settings",
+      "body": "Manage config.json apps (cursor, sublime, ...) from the web Settings tab instead of upex app or hand-editing.",
+      "phase": "now",
+      "status": "planned",
+      "created": "2026-11-06",
+      "updated": "2026-11-06"
     },
     {
       "id": "publish-to-npm",

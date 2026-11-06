@@ -60,7 +60,7 @@ npm link
 |---|---|
 | `vscode` / `code` | VS Code |
 | `webstorm` | WebStorm |
-| `cmd` | Command Prompt (Windows) / Terminal |
+| `cmd` | Terminal (cmd, PowerShell or a WT profile on Windows, see `terminalShell`) |
 | `claude` | Terminal running Claude Code (`claude`) |
 | `finder` / `explorer` | System File Manager (reveals a file shortcut) |
 | `open` | OS default handler (opens a file in its default app) |
@@ -306,7 +306,12 @@ Config is stored in `~/.upex/config.json`, including custom openers under `apps`
 }
 ```
 
-`"terminalLayout"` (Windows) sets how several terminals open: `"windows"` (default, separate cmd windows), `"tabs"` or `"panes"` (added to your current Windows Terminal window). Falls back to windows when `wt` is missing. Also on the Settings tab of `upex ui` and the selector (`Shift+Tab`).
+Settings, also on the Settings tab of `upex ui` and the selector (`Shift+Tab`):
+
+- `"terminalLayout"` (Windows): how several terminals open. `"windows"` (default, separate windows), `"tabs"` or `"panes"` (added to your current Windows Terminal window). Falls back to windows when `wt` is missing.
+- `"paneSplit"` (Windows, panes layout): `"auto"` (default), `"vertical"` (side by side) or `"horizontal"` (stacked).
+- `"terminalShell"` (Windows): the shell terminal openers start. `"cmd"` (default), `"powershell"`, `"pwsh"`, or `"profile"` (your Windows Terminal default profile; a start command like `claude` then runs in cmd, and without `wt` it falls back to cmd).
+- `"defaultOpener"`: opener for folder shortcuts without their own `opener`, e.g. `"vscode"`. Default `"explorer"`. Files still open in their default app.
 
 ### WebStorm on Windows (without `setx`)
 

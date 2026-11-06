@@ -71,7 +71,7 @@ const APP_MAP = {
       if (platform === 'darwin') return 'open -a Terminal';
       return 'x-terminal-emulator';
     },
-    displayName: platform === 'win32' ? 'Command Prompt' : 'Terminal',
+    displayName: 'Terminal',
     installHint: 'This is a system app and should be available by default.',
   },
   claude: {
@@ -93,29 +93,47 @@ const INTERACTIVE_APP_KEYS = [
 // Openers that open terminal windows (and so take a window count).
 export const isTerminalApp = key => key === 'cmd' || key === 'claude';
 
-// How N Windows terminals open: separate cmd windows, or tabs/panes in one Windows Terminal window.
-export const TERMINAL_LAYOUTS = ['windows', 'tabs', 'panes'];
-export function terminalLayout(config = loadConfig()) {
-  return TERMINAL_LAYOUTS.includes(config.terminalLayout) ? config.terminalLayout : 'windows';
-}
-// Is wt on PATH? null off Windows, where the layout setting doesn't apply.
+// Windows terminal settings in config.json; the first value is the default.
+// Layout: separate windows, or tabs/panes in one Windows Terminal window. Shell 'profile' = wt default profile.
+export const SETTINGS = {
+  terminalLayout: ['windows', 'tabs', 'panes'],
+  paneSplit: ['auto', 'vertical', 'horizontal'],
+  terminalShell: ['cmd', 'powershell', 'pwsh', 'profile'],
+};
+export const setting = (key, config = loadConfig()) => (SETTINGS[key].includes(config[key]) ? config[key] : SETTINGS[key][0]);
+// Is wt on PATH? null off Windows, where these settings don't apply.
 export const hasWindowsTerminal = () => (platform === 'win32' ? commandExists('wt') : null);
 
 // Quote one wt argument (CommandLineToArgvW rules: \" for inner quotes, double backslashes before a quote).
 const wtQuote = s => (/[\s"]/.test(s) || !s ? `"${s.replace(/(\\*)"/g, '$1$1\\"').replace(/(\\*)$/, '$1$1')}"` : s);
 
 /**
- * Raw wt.exe command line opening `n` cmd shells at `cwd` as tabs or panes in the current
- * (most recent) Windows Terminal window; wt opens a new one if none is running.
+ * Command line for one terminal shell. `quote` wraps a cmd start command for its context.
+ * PowerShell gets the command base64-encoded, so no quoting can break it.
+ * '' = no command, so wt opens its default profile; with a start command that runs in cmd.
+ */
+export function shellCommand(shell, runCmd, quote) {
+  if (shell === 'powershell' || shell === 'pwsh') {
+    return runCmd ? `${shell} -NoExit -EncodedCommand ${Buffer.from(runCmd, 'utf16le').toString('base64')}` : shell;
+  }
+  if (!runCmd) return shell === 'profile' ? '' : 'cmd';
+  return `cmd /s /k ${quote(runCmd)}`;
+}
+
+const SPLIT_FLAG = { auto: '', vertical: ' -V', horizontal: ' -H' };
+
+/**
+ * Raw wt.exe command line opening `n` shells at `cwd` as tabs or panes in the current
+ * (most recent) Windows Terminal window, or in a new window for the 'windows' layout.
  * wt splits sub-commands on `;`, so the user's own `;` is escaped. The start command goes
  * in as one argument: wt re-wraps it in quotes and `cmd /s /k` strips them, so it runs as typed.
  */
-export function wtCommandLine(cwd, runCmd, n, layout) {
-  const shell = runCmd ? `cmd /s /k ${wtQuote(runCmd.replace(/;/g, '\\;'))}` : 'cmd';
-  const sub = layout === 'panes' ? 'split-pane' : 'new-tab';
+export function wtCommandLine(cwd, runCmd, n, layout, shell = 'cmd', split = 'auto') {
+  const cmdLine = shellCommand(shell, runCmd, s => wtQuote(s.replace(/;/g, '\\;')));
+  const sub = layout === 'panes' ? `split-pane${SPLIT_FLAG[split] || ''}` : 'new-tab';
   const dir = wtQuote(cwd.replace(/;/g, '\\;'));
-  const parts = Array.from({ length: n }, (_, i) => `${i ? sub : 'new-tab'} -d ${dir} ${shell}`);
-  return `-w 0 ${parts.join(' ; ')}`;
+  const parts = Array.from({ length: n }, (_, i) => `${i ? sub : 'new-tab'} -d ${dir}${cmdLine && ` ${cmdLine}`}`);
+  return `-w ${layout === 'windows' ? 'new' : '0'} ${parts.join(' ; ')}`;
 }
 
 // User-defined openers from ~/.upex/config.json { "apps": { "cursor": "cursor" } }.
@@ -328,6 +346,18 @@ export function openerKey(name) {
   return INTERACTIVE_APP_KEYS.find(same) || key;
 }
 
+// Opener for folder shortcuts without their own: config.defaultOpener, else Explorer. Copy opens nothing.
+export function defaultOpener(config = loadConfig()) {
+  const key = typeof config.defaultOpener === 'string' && openerKey(config.defaultOpener);
+  return key && key !== 'copy' ? key : 'explorer';
+}
+
+// Every setting with its current value (defaults filled in), for the Settings tabs.
+export function readSettings(config = loadConfig()) {
+  const out = Object.fromEntries(Object.keys(SETTINGS).map(k => [k, setting(k, config)]));
+  return { ...out, defaultOpener: defaultOpener(config) };
+}
+
 // Is this opener usable here? For `upex doctor`. Copy needs no command.
 export function checkOpener(key) {
   const app = getAppMap()[key];
@@ -388,22 +418,38 @@ export function launchApp(appName, folderPath, count = 1, startCmd = '') {
   // A terminal at a file means "sit in that file's folder".
   const terminalCwd = targetIsFile ? path.dirname(folderPath) : folderPath;
 
+  // Windows terminal settings. The default profile needs wt; without it, cmd.
+  let win;
+  if (platform === 'win32' && isTerminal) {
+    const config = loadConfig();
+    const layout = setting('terminalLayout', config);
+    let shell = setting('terminalShell', config);
+    const wt = (layout !== 'windows' || shell === 'profile') && hasWindowsTerminal();
+    if (shell === 'profile' && !wt) shell = 'cmd';
+    if (shell !== 'cmd' && shell !== 'profile' && !commandExists(shell)) {
+      return { ok: false, message: `Shell "${shell}" not found. Pick another one on the Settings tab (upex ui, or Shift+Tab in upex).` };
+    }
+    win = { layout, shell, wt, split: setting('paneSplit', config) };
+  }
+
   try {
-    const layout = platform === 'win32' && isTerminal ? terminalLayout() : 'windows';
-    if (layout !== 'windows' && hasWindowsTerminal()) {
-      // One wt call opens them all. Verbatim: wt parses its own command line; no shell in between.
-      const r = spawnSync('wt', [wtCommandLine(terminalCwd, runCmd, repeat, layout)],
-        { stdio: 'ignore', windowsVerbatimArguments: true });
-      if (r.error) throw r.error;
-    } else if (platform === 'win32' && isTerminal) {
-      // Open N independent Command Prompt windows at the target path.
+    if (win?.wt) {
+      // One wt call per window. Verbatim: wt parses its own command line; no shell in between.
+      const calls = win.layout === 'windows' ? Array(repeat).fill(1) : [repeat];
+      for (const n of calls) {
+        const r = spawnSync('wt', [wtCommandLine(terminalCwd, runCmd, n, win.layout, win.shell, win.split)],
+          { stdio: 'ignore', windowsVerbatimArguments: true });
+        if (r.error) throw r.error;
+      }
+    } else if (win) {
+      // Open N independent console windows at the target path.
       // `start` gives each its own console and returns immediately, so the
       // window outlives upex. Run it synchronously (no `detached`) to avoid
       // CREATE_NEW_PROCESS_GROUP, which would disable Ctrl+C inside the window.
       // `cmd /k <start>` runs the start command and keeps the window open.
       // Quoted with /s so && and | run in the new window, not in this shell;
       // carets cover the parts the user quoted themselves ("a & b").
-      const inner = runCmd ? `cmd /s /k "${caretEscape(runCmd)}"` : 'cmd';
+      const inner = shellCommand(win.shell, runCmd, s => `"${caretEscape(s)}"`);
       for (let i = 0; i < repeat; i++) {
         execSync(`start "" ${inner}`, { cwd: terminalCwd, stdio: 'ignore' });
       }

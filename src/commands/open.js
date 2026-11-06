@@ -11,10 +11,10 @@ import { spawnSync } from 'node:child_process';
 import chalk from 'chalk';
 import { loadLinks, recordUse } from '../store.js';
 import { resolveTarget, didYouMean } from '../fuzzy.js';
-import { launchApp, launchExecutable, launchUrl } from '../launcher.js';
+import { launchApp, launchExecutable, launchUrl, defaultOpener } from '../launcher.js';
 import * as ui from '../ui.js';
 
-function isFile(p) {
+export function isFile(p) {
   try { return fs.statSync(p).isFile(); } catch { return false; }
 }
 
@@ -170,8 +170,8 @@ export async function handleOpen(name, app, count = 1, startCmd = '', { batch = 
     })) return false;
   }
 
-  // No opener given: the shortcut's own, else a file opens in its default app and a folder in Explorer.
-  const appKey = app || entry.opener || (isFile(targetPath) ? 'open' : 'explorer');
+  // No opener given: the shortcut's own, else a file opens in its default app and a folder in the default opener.
+  const appKey = app || entry.opener || (isFile(targetPath) ? 'open' : defaultOpener());
   const result = launchApp(appKey, targetPath, count, startCmd);
 
   if (!result.ok) {
