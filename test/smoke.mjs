@@ -12,7 +12,7 @@ import { spawn, spawnSync, execSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { frecency, pruneBroken, mergeLinks, lastUsedName, nameError } from '../src/store.js';
 import { installCmdWrapper } from '../src/commands/setup.js';
-import { normalizeUrl, caretEscape } from '../src/launcher.js';
+import { normalizeUrl, caretEscape, wtCommandLine, terminalLayout } from '../src/launcher.js';
 import { parseTags } from '../src/commands/add.js';
 import { truncate } from '../src/ui.js';
 import { applyShortcut, cleanEntries } from '../src/commands/web.js';
@@ -189,6 +189,9 @@ assert.ok(!wsView.includes('Explorer'), 'no opener row in workspace view');
 assert.ok(strip(renderInteractiveView(viewArgs)).includes('[Shortcuts]'), 'shortcut view is the default');
 const appsView = strip(renderInteractiveView({ ...viewArgs, view: 'apps', choices: [{ name: 'g', path: 'x.dev', isUrl: true, exists: true }] }));
 assert.ok(appsView.includes('[Apps]') && appsView.includes('open in browser') && !appsView.includes('Explorer'), 'apps view: no opener row');
+const setView = strip(renderInteractiveView({ ...viewArgs, view: 'settings', layout: 'tabs', wt: false }));
+assert.ok(setView.includes('[Settings]') && setView.includes('[Tabs]') && setView.includes('not found') && !setView.includes('Explorer'), 'settings view: layout + missing-wt note');
+assert.ok(setView.indexOf('Workspaces') < setView.indexOf('[Settings]'), 'settings tab is last');
 
 // -- applyShortcut: add, rename in place, clashes, path checks --
 const yes = () => true;
@@ -226,6 +229,13 @@ assert.equal(cleanEntries([{ shortcut: '' }]), null, 'empty shortcut rejected');
 assert.equal(cleanEntries([{ shortcut: 's', count: 0 }]), null, 'count 0 rejected');
 assert.equal(cleanEntries('x'), null, 'non-array rejected');
 assert.equal(cleanEntries([null]), null, 'null entry rejected, not thrown');
+
+// -- wt: N shells in one wt call; trailing backslash, user `;` and quotes survive wt's parser --
+assert.equal(wtCommandLine('C:\\a b\\', '', 2, 'tabs'), String.raw`-w 0 new-tab -d "C:\a b\\" cmd ; new-tab -d "C:\a b\\" cmd`, 'tabs, quoted dir');
+assert.equal(wtCommandLine(String.raw`C:\x`, 'a; b', 2, 'panes'), String.raw`-w 0 new-tab -d C:\x cmd /s /k "a\; b" ; split-pane -d C:\x cmd /s /k "a\; b"`, 'panes, escaped ;');
+assert.equal(wtCommandLine(String.raw`C:\x`, String.raw`code "C:\a b\" && x`, 1, 'tabs'), String.raw`-w 0 new-tab -d C:\x cmd /s /k "code \"C:\a b\\\" && x"`, 'start cmd is one arg, inner quotes escaped');
+assert.equal(wtCommandLine(String.raw`C:\x`, 'claude', 1, 'tabs'), String.raw`-w 0 new-tab -d C:\x cmd /s /k claude`, 'plain start cmd unquoted');
+assert.equal(terminalLayout({ terminalLayout: 'bogus' }), 'windows', 'unknown layout falls back to windows');
 
 // -- upex ui: token + host guard, add via API writes the store --
 const webHome = fs.mkdtempSync(path.join(os.tmpdir(), 'upex-web-'));
@@ -270,6 +280,16 @@ try {
   assert.equal(rename.status, 200, 'workspace renamed');
   const cfg = JSON.parse(fs.readFileSync(path.join(webHome, '.upex', 'config.json'), 'utf-8'));
   assert.deepEqual(Object.keys(cfg.workspaces), ['work'], 'old workspace name gone');
+  const putSet = (terminalLayout) => fetch(base + '/api/settings', {
+    method: 'PUT',
+    headers: { 'content-type': 'application/json', 'x-upex-token': token },
+    body: JSON.stringify({ terminalLayout }),
+  });
+  assert.equal((await putSet('nope')).status, 400, 'bad layout refused');
+  assert.equal((await putSet('panes')).status, 200, 'layout saved');
+  const cfg2 = JSON.parse(fs.readFileSync(path.join(webHome, '.upex', 'config.json'), 'utf-8'));
+  assert.equal(cfg2.terminalLayout, 'panes', 'layout written to config');
+  assert.deepEqual(Object.keys(cfg2.workspaces), ['work'], 'settings save keeps workspaces');
 } finally {
   // Already exited (e.g. crashed on start): waiting for 'exit' again would never settle.
   if (srv.exitCode === null && srv.signalCode === null) {
@@ -279,4 +299,4 @@ try {
   fs.rmSync(webHome, { recursive: true, force: true });
 }
 
-console.log('ok - frecency + prune + cmd wrapper + resolve guard + go args + safe store + edit url + merge + lastUsed + url + tags + truncate + web ui + subpaths + opener + doctor + apps tab + names + ws rename + cmd quoting');
+console.log('ok - frecency + prune + cmd wrapper + resolve guard + go args + safe store + edit url + merge + lastUsed + url + tags + truncate + web ui + subpaths + opener + doctor + apps tab + names + ws rename + cmd quoting + wt layout + settings');

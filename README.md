@@ -199,6 +199,7 @@ Run `upex` with no arguments to open the interactive selector. Shortcuts are ord
 - `Left` / `Right` -- change the selected app (starts on the shortcut's default opener)
 - `Ctrl+Up` / `Ctrl+Down` -- terminal count when a terminal opener (cmd, claude) is selected
 - `Tab` -- cycle the Shortcuts (folders), Apps (app + URL shortcuts) and Workspaces views (Enter opens the whole workspace, `Ctrl+D` deletes it)
+- `Shift+Tab` -- jump to Settings (Left/Right changes the terminal layout, saved right away), again to go back
 - `Enter` -- open the selected shortcut in the selected app
 - Type -- fuzzy-filter the list
 - `Ctrl+A` -- add a shortcut for the current directory
@@ -304,6 +305,8 @@ Config is stored in `~/.upex/config.json`, including custom openers under `apps`
   "apps": { "cursor": "cursor", "sublime": "C:\\...\\sublime_text.exe" }
 }
 ```
+
+`"terminalLayout"` (Windows) sets how several terminals open: `"windows"` (default, separate cmd windows), `"tabs"` or `"panes"` (added to your current Windows Terminal window). Falls back to windows when `wt` is missing. Also on the Settings tab of `upex ui` and the selector (`Shift+Tab`).
 
 ### WebStorm on Windows (without `setx`)
 

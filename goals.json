@@ -1,5 +1,5 @@
 {
-  "$schema": "file:///E:/Downloads/Projects/Assets/upgo/goals.schema.json",
+  "$schema": "https://raw.githubusercontent.com/JennyTheGem/upgo/main/goals.schema.json",
   "version": 1,
   "project": "upex",
   "purpose": "a personal CLI to register named aliases for folder/app paths and instantly open them in Explorer, an IDE, a terminal, or a custom app.",
@@ -116,6 +116,185 @@
       "note": "done in web/cli batch"
     },
     {
+      "id": "auto-backup",
+      "section": 1,
+      "title": "Auto backup",
+      "body": "Back up links.json before every write, keep the last 10.",
+      "phase": "next",
+      "status": "planned",
+      "size": "S",
+      "scope": [
+        "store"
+      ],
+      "pointers": {
+        "files": [
+          "src/store.js"
+        ],
+        "how": [
+          "Copy links.json to ~/.upex/backups/links-<timestamp>.json inside saveLinks before the rename, delete all but the newest 10."
+        ],
+        "check": [
+          "Smoke assert: 12 saves leave 10 backups, newest matches the previous file."
+        ]
+      },
+      "created": "2026-11-06",
+      "updated": "2026-11-06"
+    },
+    {
+      "id": "archive-instead-of-delete",
+      "section": 1,
+      "title": "Archive instead of delete",
+      "body": "rm --archive hides a shortcut but keeps it restorable.",
+      "phase": "next",
+      "status": "planned",
+      "size": "M",
+      "scope": [
+        "store",
+        "cli",
+        "selector",
+        "web"
+      ],
+      "pointers": {
+        "files": [
+          "src/commands/remove.js",
+          "src/store.js"
+        ],
+        "how": [
+          "archived: true on the entry; hidden from list, selector, completion and fuzzy resolve; upex restore <name> clears it; ls --archived shows them."
+        ]
+      },
+      "created": "2026-11-06",
+      "updated": "2026-11-06"
+    },
+    {
+      "id": "stale-report",
+      "section": 1,
+      "title": "Stale report",
+      "body": "List shortcuts not opened in N days and offer to archive them.",
+      "phase": "next",
+      "status": "planned",
+      "size": "S",
+      "scope": [
+        "cli"
+      ],
+      "pointers": {
+        "files": [
+          "src/commands/check.js"
+        ],
+        "depends": [
+          "archive-instead-of-delete"
+        ],
+        "how": [
+          "upex stale [days=60] lists shortcuts by lastUsed (never-used first), offers to archive each."
+        ]
+      },
+      "created": "2026-11-06",
+      "updated": "2026-11-06"
+    },
+    {
+      "id": "aliases",
+      "section": 1,
+      "title": "Aliases",
+      "body": "Give one shortcut several names (velora, vd).",
+      "phase": "next",
+      "status": "planned",
+      "size": "M",
+      "scope": [
+        "store",
+        "cli",
+        "selector",
+        "web"
+      ],
+      "pointers": {
+        "files": [
+          "src/store.js",
+          "src/fuzzy.js",
+          "src/commands/add.js"
+        ],
+        "trap": [
+          "Renames, remove, workspaces and transfer must follow aliases to the real name."
+        ],
+        "how": [
+          "Entry gets aliases: []; resolveName and __names include them; nameError rejects a name or alias already used by another shortcut."
+        ]
+      },
+      "created": "2026-11-06",
+      "updated": "2026-11-06"
+    },
+    {
+      "id": "upex-stats",
+      "section": 1,
+      "title": "upex stats",
+      "body": "Most used shortcuts and openers over time.",
+      "phase": "next",
+      "status": "planned",
+      "size": "M",
+      "scope": [
+        "store",
+        "cli"
+      ],
+      "pointers": {
+        "files": [
+          "src/store.js"
+        ],
+        "how": [
+          "Only uses/lastUsed exist today. Over time and per opener needs a small append-only log (~/.upex/history.jsonl: ts, name, opener) written in recordUse."
+        ]
+      },
+      "created": "2026-11-06",
+      "updated": "2026-11-06"
+    },
+    {
+      "id": "upex-note-name-text",
+      "section": 1,
+      "title": "upex note <name> \"text\"",
+      "body": "Short note per shortcut, shown in ls and the selector.",
+      "phase": "maybe",
+      "status": "planned",
+      "size": "S",
+      "scope": [
+        "store",
+        "cli",
+        "selector",
+        "web"
+      ],
+      "created": "2026-11-06",
+      "updated": "2026-11-06"
+    },
+    {
+      "id": "ls-dirty",
+      "section": 1,
+      "title": "ls --dirty",
+      "body": "Only show repos with uncommitted changes or unpushed commits.",
+      "phase": "maybe",
+      "status": "planned",
+      "size": "M",
+      "scope": [
+        "cli"
+      ],
+      "pointers": {
+        "files": [
+          "src/commands/list.js"
+        ],
+        "how": [
+          "git status --porcelain and rev-list @{u}..HEAD per folder, run in parallel; skip non-repos."
+        ]
+      },
+      "created": "2026-11-06",
+      "updated": "2026-11-06"
+    },
+    {
+      "id": "web-ui-drag-and-drop",
+      "section": 1,
+      "title": "Web UI drag and drop",
+      "body": "Drop a folder onto the page to add it as a shortcut.",
+      "phase": "now",
+      "status": "dropped",
+      "created": "2026-11-06",
+      "updated": "2026-11-06",
+      "note": "Browsers only expose a dropped folder's name, not its full path, so a drop cannot reliably create a shortcut."
+    },
+    {
       "id": "open-in-explorer-default-app-vs-code-webstorm",
       "section": 2,
       "title": "Open in Explorer / default app / VS Code / WebStorm / terminal",
@@ -169,6 +348,52 @@
       "created": "2026-11-02",
       "updated": "2026-11-02",
       "note": "add/edit --opener, --no-opener; selector preselects it; list shows it"
+    },
+    {
+      "id": "upex-web-name",
+      "section": 2,
+      "title": "upex web <name>",
+      "body": "Open the project's GitHub page from its git remote.",
+      "phase": "next",
+      "status": "planned",
+      "size": "S",
+      "scope": [
+        "cli"
+      ],
+      "pointers": {
+        "files": [
+          "src/launcher.js"
+        ],
+        "how": [
+          "git -C <path> remote get-url origin, turn ssh/git@ into https, strip .git, launchUrl."
+        ]
+      },
+      "created": "2026-11-06",
+      "updated": "2026-11-06"
+    },
+    {
+      "id": "windows-terminal-tabs-and-panes",
+      "section": 2,
+      "title": "Windows Terminal tabs and panes",
+      "body": "Open N terminals as tabs or split panes in one wt window. as a setting",
+      "phase": "next",
+      "status": "done",
+      "size": "M",
+      "scope": [
+        "launcher",
+        "windows"
+      ],
+      "pointers": {
+        "files": [
+          "src/launcher.js"
+        ],
+        "how": [
+          "config.json terminalLayout: windows|tabs|panes; build one wt.exe call chaining new-tab or split-pane with -d <path>; fall back to cmd windows when wt is missing."
+        ]
+      },
+      "created": "2026-11-06",
+      "updated": "2026-11-06",
+      "note": "config.json terminalLayout windows|tabs|panes; one 'wt -w new' call with new-tab/split-pane; falls back to cmd windows without wt. New Settings tab in upex ui (PUT /api/settings)."
     },
     {
       "id": "exact-then-fuzzy-name-resolution-fuse-js",
@@ -265,6 +490,50 @@
       "updated": "2026-10-16"
     },
     {
+      "id": "explorer-context-menu",
+      "section": 4,
+      "title": "Explorer context menu",
+      "body": "Right click a folder, Add to upex.",
+      "phase": "next",
+      "status": "dropped",
+      "size": "M",
+      "scope": [
+        "windows",
+        "cli"
+      ],
+      "pointers": {
+        "files": [
+          "src/commands/setup.js"
+        ],
+        "how": [
+          "upex setup --context-menu writes HKCU\\Software\\Classes\\Directory\\shell\\upex (and Directory\\Background) running upex add <basename> %V; --remove undoes it. Windows only."
+        ]
+      },
+      "created": "2026-11-06",
+      "updated": "2026-11-06",
+      "note": "Not needed, Jenny decided against it"
+    },
+    {
+      "id": "upex-pick",
+      "section": 4,
+      "title": "upex pick",
+      "body": "Selector that prints the chosen path to stdout for scripts and pipes.",
+      "phase": "maybe",
+      "status": "planned",
+      "size": "S",
+      "scope": [
+        "cli",
+        "selector"
+      ],
+      "pointers": {
+        "how": [
+          "Reuse the selector, print the chosen path to stdout, UI to stderr so pipes stay clean."
+        ]
+      },
+      "created": "2026-11-06",
+      "updated": "2026-11-06"
+    },
+    {
       "id": "windows-macos-linux-launch-paths",
       "section": 5,
       "title": "Windows / macOS / Linux launch paths",
@@ -295,10 +564,20 @@
       "id": "broader-test-coverage-fuzzy-resolution-launcher",
       "section": 6,
       "title": "Broader test coverage (fuzzy resolution, launcher branching per platform)",
+      "body": "resolveName/resolveTarget edge cases and launchApp command building per platform, with os.platform stubbed.",
       "phase": "maybe",
       "status": "planned",
+      "size": "M",
+      "scope": [
+        "tests"
+      ],
+      "pointers": {
+        "files": [
+          "test/smoke.mjs"
+        ]
+      },
       "created": "2026-10-16",
-      "updated": "2026-10-21"
+      "updated": "2026-11-06"
     },
     {
       "id": "upex-doctor",
@@ -386,11 +665,12 @@
       "section": 8,
       "title": "Publish to npm so a new PC only needs npm i -g upex",
       "body": "Check the name is free, fill author/repository/files in package.json, drop the em dash in description, npm publish.",
-      "phase": "later",
-      "status": "planned",
+      "phase": "maybe",
+      "status": "done",
       "size": "S",
       "created": "2026-11-02",
-      "updated": "2026-11-02"
+      "updated": "2026-11-06",
+      "note": "Published as @uplift-beyond/upex (commit 0e61f84)."
     }
   ]
 }

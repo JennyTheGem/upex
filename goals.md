@@ -6,12 +6,25 @@ a personal CLI to register named aliases for folder/app paths and instantly open
 
 Open work only. Full item: `upgo show <id>`. Any slice: `upgo list --phase later,wayLater,maybe`, `--status done,dropped`, `--section <n>`, `--search <text>`.
 
-Closed sections: §1 Shortcut management · §2 Opening · §3 Resolution & UX · §4 Shell integration · §5 Platform support · §7 Web UI
+Closed sections: §3 Resolution & UX · §5 Platform support · §7 Web UI · §8 Distribution
+
+## 1. Shortcut management
+
+- `auto-backup` Auto backup (next)
+- `archive-instead-of-delete` Archive instead of delete (next)
+- `stale-report` Stale report (next)
+- `aliases` Aliases (next)
+- `upex-stats` upex stats (next)
+- Plus 2 maybe: `upgo list --section 1 --phase maybe`
+
+## 2. Opening
+
+- `upex-web-name` upex web <name> (next)
+
+## 4. Shell integration
+
+- Plus 1 maybe: `upgo list --section 4 --phase maybe`
 
 ## 6. Quality
 
 - Plus 1 maybe: `upgo list --section 6 --phase maybe`
-
-## 8. Distribution
-
-- `publish-to-npm` Publish to npm so a new PC only needs npm i -g upex (later)

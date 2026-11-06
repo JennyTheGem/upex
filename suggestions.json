@@ -1,0 +1,47 @@
+{
+  "version": 1,
+  "suggestions": [
+    {
+      "id": "terminal-shell-setting",
+      "title": "Terminal shell setting",
+      "body": "Pick the shell terminal openers start: cmd, PowerShell, pwsh, or the Windows Terminal default profile (wt -p). Today it is always cmd.",
+      "created": "2026-11-06"
+    },
+    {
+      "id": "split-direction-for-panes",
+      "title": "Split direction for panes",
+      "body": "panes layout uses wt auto split. Add auto, vertical, horizontal (split-pane -V/-H).",
+      "created": "2026-11-06"
+    },
+    {
+      "id": "default-opener-setting",
+      "title": "Default opener setting",
+      "body": "Selector preselects Explorer (DEFAULT_APP_KEY in interactive.js). Make the fallback opener for shortcuts without their own opener a setting.",
+      "created": "2026-11-06"
+    },
+    {
+      "id": "custom-openers-in-settings",
+      "title": "Custom openers in Settings",
+      "body": "Manage config.json apps (cursor, sublime, ...) from the web Settings tab instead of upex app or hand-editing.",
+      "created": "2026-11-06"
+    },
+    {
+      "id": "webstorm-path-in-settings",
+      "title": "WebStorm path in Settings",
+      "body": "Edit config.webstormPath from Settings, with a found/not-found check like upex doctor.",
+      "created": "2026-11-06"
+    },
+    {
+      "id": "upex-config-get-set",
+      "title": "upex config get/set",
+      "body": "CLI for settings (upex config set terminalLayout tabs), so they work without the TUI or web UI and in scripts.",
+      "created": "2026-11-06"
+    },
+    {
+      "id": "default-sort-and-view",
+      "title": "Default sort and view",
+      "body": "Persist the start view and sort (most used vs A to Z) in config so the selector and web UI share it; the web keeps sort only in localStorage today.",
+      "created": "2026-11-06"
+    }
+  ]
+}

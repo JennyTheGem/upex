@@ -8,8 +8,8 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import crypto from 'node:crypto';
-import { loadLinks, saveLinks, loadWorkspaces, saveWorkspaces, pruneBroken, targetField, nameError, frecency } from '../store.js';
-import { getInteractiveAppChoices, launchUrl, openerKey, isTerminalApp } from '../launcher.js';
+import { loadLinks, saveLinks, loadWorkspaces, saveWorkspaces, pruneBroken, targetField, nameError, frecency, loadConfig, saveConfig } from '../store.js';
+import { getInteractiveAppChoices, launchUrl, openerKey, isTerminalApp, terminalLayout, TERMINAL_LAYOUTS, hasWindowsTerminal } from '../launcher.js';
 import { handleOpen } from './open.js';
 import { openEntries } from './workspace.js';
 import { parseTags } from './add.js';
@@ -101,6 +101,8 @@ function state() {
     }),
     workspaces: loadWorkspaces(),
     apps: getInteractiveAppChoices().map(a => ({ ...a, terminal: isTerminalApp(a.key) })),
+    settings: { terminalLayout: terminalLayout() },
+    wt: hasWindowsTerminal(),
     home: os.homedir(),
     sep: path.sep,
   };
@@ -128,6 +130,12 @@ const routes = {
     if (!e) throw new HttpError(400, 'Window count must be at least 1.');
     const ok = await handleOpen(name, e.app, e.count || 1, e.start || '', { batch: true });
     if (!ok) throw new HttpError(422, `Could not open "${b.name}". Details are in the upex ui terminal.`);
+    return {};
+  },
+
+  'PUT /api/settings': (b) => {
+    if (!TERMINAL_LAYOUTS.includes(b.terminalLayout)) throw new HttpError(400, `Terminal layout must be one of: ${TERMINAL_LAYOUTS.join(', ')}.`);
+    saveConfig({ ...loadConfig(), terminalLayout: b.terminalLayout });
     return {};
   },
 

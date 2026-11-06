@@ -93,6 +93,31 @@ const INTERACTIVE_APP_KEYS = [
 // Openers that open terminal windows (and so take a window count).
 export const isTerminalApp = key => key === 'cmd' || key === 'claude';
 
+// How N Windows terminals open: separate cmd windows, or tabs/panes in one Windows Terminal window.
+export const TERMINAL_LAYOUTS = ['windows', 'tabs', 'panes'];
+export function terminalLayout(config = loadConfig()) {
+  return TERMINAL_LAYOUTS.includes(config.terminalLayout) ? config.terminalLayout : 'windows';
+}
+// Is wt on PATH? null off Windows, where the layout setting doesn't apply.
+export const hasWindowsTerminal = () => (platform === 'win32' ? commandExists('wt') : null);
+
+// Quote one wt argument (CommandLineToArgvW rules: \" for inner quotes, double backslashes before a quote).
+const wtQuote = s => (/[\s"]/.test(s) || !s ? `"${s.replace(/(\\*)"/g, '$1$1\\"').replace(/(\\*)$/, '$1$1')}"` : s);
+
+/**
+ * Raw wt.exe command line opening `n` cmd shells at `cwd` as tabs or panes in the current
+ * (most recent) Windows Terminal window; wt opens a new one if none is running.
+ * wt splits sub-commands on `;`, so the user's own `;` is escaped. The start command goes
+ * in as one argument: wt re-wraps it in quotes and `cmd /s /k` strips them, so it runs as typed.
+ */
+export function wtCommandLine(cwd, runCmd, n, layout) {
+  const shell = runCmd ? `cmd /s /k ${wtQuote(runCmd.replace(/;/g, '\\;'))}` : 'cmd';
+  const sub = layout === 'panes' ? 'split-pane' : 'new-tab';
+  const dir = wtQuote(cwd.replace(/;/g, '\\;'));
+  const parts = Array.from({ length: n }, (_, i) => `${i ? sub : 'new-tab'} -d ${dir} ${shell}`);
+  return `-w 0 ${parts.join(' ; ')}`;
+}
+
 // User-defined openers from ~/.upex/config.json { "apps": { "cursor": "cursor" } }.
 function customApps() {
   const { apps } = loadConfig();
@@ -364,7 +389,13 @@ export function launchApp(appName, folderPath, count = 1, startCmd = '') {
   const terminalCwd = targetIsFile ? path.dirname(folderPath) : folderPath;
 
   try {
-    if (platform === 'win32' && isTerminal) {
+    const layout = platform === 'win32' && isTerminal ? terminalLayout() : 'windows';
+    if (layout !== 'windows' && hasWindowsTerminal()) {
+      // One wt call opens them all. Verbatim: wt parses its own command line; no shell in between.
+      const r = spawnSync('wt', [wtCommandLine(terminalCwd, runCmd, repeat, layout)],
+        { stdio: 'ignore', windowsVerbatimArguments: true });
+      if (r.error) throw r.error;
+    } else if (platform === 'win32' && isTerminal) {
       // Open N independent Command Prompt windows at the target path.
       // `start` gives each its own console and returns immediately, so the
       // window outlives upex. Run it synchronously (no `detached`) to avoid

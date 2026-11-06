@@ -7,8 +7,8 @@ import path from 'node:path';
 import readline from 'node:readline';
 import chalk from 'chalk';
 import Fuse from 'fuse.js';
-import { getInteractiveAppChoices, getAppMap, isTerminalApp } from './launcher.js';
-import { loadLinks, frecency, removeLink, setLink, renameLink, linkExists, loadWorkspaces, removeWorkspace, nameError } from './store.js';
+import { getInteractiveAppChoices, getAppMap, isTerminalApp, TERMINAL_LAYOUTS, terminalLayout, hasWindowsTerminal } from './launcher.js';
+import { loadLinks, frecency, removeLink, setLink, renameLink, linkExists, loadWorkspaces, removeWorkspace, nameError, loadConfig, saveConfig } from './store.js';
 import { describeEntry } from './commands/workspace.js';
 import * as ui from './ui.js';
 
@@ -95,9 +95,17 @@ const PROMPT_LABEL = {
   add: () => 'new shortcut name (path = cwd):',
 };
 
-const VIEWS = { shortcuts: 'Shortcuts', apps: 'Apps', workspaces: 'Workspaces' };
-const VIEW_KEYS = Object.keys(VIEWS);
-const nextView = (view) => VIEW_KEYS[(VIEW_KEYS.indexOf(view) + 1) % VIEW_KEYS.length];
+const VIEWS = { shortcuts: 'Shortcuts', apps: 'Apps', workspaces: 'Workspaces', settings: 'Settings' };
+// Tab cycles these; Settings sits outside the cycle on Shift+Tab, so Tab from it goes to Shortcuts.
+const CYCLE = ['shortcuts', 'apps', 'workspaces'];
+const nextView = (view) => CYCLE[(CYCLE.indexOf(view) + 1) % CYCLE.length];
+const LAYOUT_LABELS = { windows: 'Separate windows', tabs: 'Tabs', panes: 'Split panes' };
+
+function layoutNote(layout, wt) {
+  if (wt === null) return 'Windows only. Other systems always open separate windows.';
+  if (!wt && layout !== 'windows') return 'Windows Terminal (wt) not found, so terminals open as separate windows.';
+  return 'How several terminal windows open: separate, or as tabs or panes in your current Windows Terminal window.';
+}
 
 export function renderInteractiveView({
   query,
@@ -113,8 +121,11 @@ export function renderInteractiveView({
   action = null,
   inputBuffer = '',
   flash = '',
+  layout = 'windows',
+  wt = null,
 }) {
   const isWs = view === 'workspaces';
+  const isSettings = view === 'settings';
   const list = isWs ? workspaces : choices;
   const index = isWs ? wsIndex : selectedIndex;
   const nameWidth = Math.max(
@@ -131,12 +142,18 @@ export function renderInteractiveView({
   lines.push(`  ${chalk.dim('│')}  ${chalk.bold('Shortcut Selector')}  ${chalk.dim('│')}`);
   lines.push(chalk.dim('  └─────────────────────┘'));
   lines.push('');
-  const tabs = Object.entries(VIEWS).map(([key, label]) => (key === view ? chalk.bold(`[${label}]`) : label)).join('  ');
-  lines.push(`  ${chalk.dim('view')}    ${tabs}`);
-  lines.push(`  ${chalk.dim('filter')}  ${query || chalk.dim('(type to search)')}`);
+  const label = key => (key === view ? `[${VIEWS[key]}]` : VIEWS[key]);
+  const bold = key => (key === view ? chalk.bold(label(key)) : label(key));
+  // Settings is right-aligned to the end of the rule line (col 78), its key hint below it.
+  const used = 10 + CYCLE.map(label).join('  ').length + label('settings').length;
+  lines.push(`  ${chalk.dim('view')}    ${CYCLE.map(bold).join('  ')}${' '.repeat(Math.max(4, 78 - used))}${bold('settings')}`);
+  lines.push(chalk.dim('shift+tab'.padStart(78)));
+  if (!isSettings) lines.push(`  ${chalk.dim('filter')}  ${query || chalk.dim('(type to search)')}`);
 
-  const tabHint = `Tab=${VIEWS[nextView(view)].toLowerCase()}`;
-  if (isWs) {
+  const tabHint = `Tab=${VIEWS[nextView(view)].toLowerCase()}` + (isSettings ? '  S-Tab=back' : '');
+  if (isSettings) {
+    lines.push(chalk.dim(`  keys    Left/Right=change (saved)  ${tabHint}  Esc=cancel`));
+  } else if (isWs) {
     lines.push(chalk.dim(`  keys    Enter=open all  ${tabHint}  Up/Down=navigate  ^D=del  Esc=cancel`));
   } else if (view === 'apps') {
     lines.push(`  ${chalk.dim('open')}    ${chalk.cyan(currentChoice?.isUrl ? 'open in browser' : 'launch app')}`);
@@ -156,6 +173,13 @@ export function renderInteractiveView({
     lines.push(`  ${chalk.yellow('?')} delete ${isWs ? 'workspace ' : ''}"${currentChoice?.name}"?  ${chalk.dim('(y / n)')}`);
   } else if (flash) {
     lines.push(`  ${chalk.yellow(flash)}`);
+  }
+
+  if (isSettings) {
+    const opts = Object.entries(LAYOUT_LABELS).map(([k, l]) => (k === layout ? chalk.bold(`[${l}]`) : l)).join('  ');
+    lines.push(`  > ${formatName('Terminals', 12)}  ${opts}`);
+    lines.push(chalk.dim(`    ${layoutNote(layout, wt)}`));
+    return lines.join('\n');
   }
 
   if (list.length === 0) {
@@ -237,6 +261,9 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
     let action = null;     // 'edit' | 'rename' | 'add'
     let inputBuffer = '';
     let flash = '';
+    let backView = 'shortcuts'; // where Shift+Tab returns from Settings
+    let layout = 'windows';
+    let wt = null;
     const appIndex = (key) => appChoices.findIndex(choice => choice.key === key);
     let selectedAppIndex = Math.max(0, appIndex(preferredApp || DEFAULT_APP_KEY));
     // Until Left/Right (or --app) picks one, the opener follows the shortcut's default opener.
@@ -269,6 +296,8 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
         action,
         inputBuffer,
         flash,
+        layout,
+        wt,
       });
 
       // Clip to terminal width: a wrapped line occupies 2+ rows, which would
@@ -426,12 +455,29 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
       }
 
       if (key.name === 'tab') {
-        view = nextView(view);
+        const to = !key.shift ? nextView(view) : view === 'settings' ? backView : 'settings';
+        if (to === 'settings') {
+          backView = view;
+          layout = terminalLayout();
+          wt = hasWindowsTerminal();
+        }
+        view = to;
         query = '';
         choices = allChoices.filter(inView(view));
         selectedIndex = 0;
         updateFilter();
         redraw();
+        return;
+      }
+
+      // Settings: Left/Right changes and saves the layout; everything else is ignored.
+      if (view === 'settings') {
+        if (key.name === 'left' || key.name === 'right') {
+          const n = TERMINAL_LAYOUTS.length;
+          layout = TERMINAL_LAYOUTS[(TERMINAL_LAYOUTS.indexOf(layout) + (key.name === 'left' ? n - 1 : 1)) % n];
+          saveConfig({ ...loadConfig(), terminalLayout: layout });
+          redraw();
+        }
         return;
       }
 

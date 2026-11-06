@@ -248,6 +248,7 @@ h1 { font-size: 20px; letter-spacing: -.015em; margin: 8px 0 4px; }
       <button class="tab" data-view="links" aria-current="page">Shortcuts <span class="n" id="n-links"></span></button>
       <button class="tab" data-view="apps">Apps <span class="n" id="n-apps"></span></button>
       <button class="tab" data-view="ws">Workspaces <span class="n" id="n-ws"></span></button>
+      <button class="tab" data-view="settings">Settings</button>
     </nav>
     <div class="search">
       <svg class="i" aria-hidden="true"><use href="#i-search"/></svg>
@@ -267,7 +268,8 @@ const NS = 'http://www.w3.org/2000/svg';
 const KINDS = { folder: 'Folder', app: 'App', cmd: 'Command', url: 'URL' };
 // Kinds each list tab can add; folders on Shortcuts, the rest on Apps.
 const TAB_KINDS = { links: ['folder'], apps: ['app', 'cmd', 'url'] };
-const TITLES = { links: 'Shortcuts', apps: 'Apps', ws: 'Workspaces' };
+const TITLES = { links: 'Shortcuts', apps: 'Apps', ws: 'Workspaces', settings: 'Settings' };
+const LAYOUTS = { windows: 'Separate windows', tabs: 'Tabs', panes: 'Split panes' };
 const tabLinks = () => S.links.filter(l => l.tab === S.view);
 const COPY_WORD = { folder: 'path', app: 'path', cmd: 'command', url: 'URL' };
 function savedSort() {
@@ -275,7 +277,7 @@ function savedSort() {
 }
 
 const S = {
-  links: [], workspaces: {}, apps: [], home: '', sep: '/',
+  links: [], workspaces: {}, apps: [], settings: {}, wt: null, home: '', sep: '/',
   view: 'links', q: '', tag: null, sort: savedSort(),
   adding: false, addKind: 'folder', addErr: '', add: { name: '', target: '', tags: '', opener: '' },
   editing: null, draft: null, editErr: '',
@@ -295,7 +297,7 @@ function h(tag, attrs, ...kids) {
     else if (k === 'value') el.value = v;
     else el.setAttribute(k, v === true ? '' : v);
   }
-  for (const kid of kids.flat()) if (kid != null && kid !== false) el.append(kid);
+  for (const kid of kids.flat(Infinity)) if (kid != null && kid !== false) el.append(kid);
   return el;
 }
 function icon(name) {
@@ -721,6 +723,26 @@ function wsView() {
   return out;
 }
 
+// ---------- Settings view ----------
+
+function settingsView() {
+  const cur = S.settings.terminalLayout || 'windows';
+  const note = S.wt === null ? 'Windows only. Other systems always open separate windows.'
+    : !S.wt && cur !== 'windows' ? 'Windows Terminal (wt) was not found, so terminals open as separate windows.'
+    : '';
+  return [h('section', { class: 'form', 'aria-labelledby': 'set-term' },
+    h('h2', { id: 'set-term', style: 'font-size:15px;margin:0' }, 'Terminals'),
+    h('p', { class: 'lede', style: 'margin:0' }, 'When a terminal opener opens more than one window, add them to your current Windows Terminal window as tabs or split panes.'),
+    h('div', { class: 'row' }, h('div', { class: 'seg', role: 'radiogroup', 'aria-label': 'Terminal layout' },
+      Object.entries(LAYOUTS).map(([k, label]) => [
+        h('input', { type: 'radio', name: 'layout', id: 'l-' + k, checked: cur === k, onchange: () =>
+          act(() => api('PUT', 'settings', { terminalLayout: k }), `Terminals open as ${label.toLowerCase()}`)
+            .then(() => document.getElementById('l-' + S.settings.terminalLayout)?.focus()) }),
+        h('label', { for: 'l-' + k }, label),
+      ]))),
+    note && h('p', { class: 'tag', style: 'margin:0' }, note))];
+}
+
 // ---------- Shell ----------
 
 function render() {
@@ -730,12 +752,13 @@ function render() {
   document.querySelectorAll('.tab').forEach(t =>
     t.dataset.view === S.view ? t.setAttribute('aria-current', 'page') : t.removeAttribute('aria-current'));
   document.getElementById('q').placeholder = S.view === 'ws' ? 'Search workspaces' : 'Search names, paths, tags';
+  document.querySelector('.search').hidden = S.view === 'settings';
 
   const main = document.getElementById('main');
   main.removeAttribute('aria-busy');
   main.replaceChildren(
     h('h1', null, TITLES[S.view]),
-    ...(S.view === 'ws' ? wsView() : linksView()));
+    ...(S.view === 'ws' ? wsView() : S.view === 'settings' ? settingsView() : linksView()));
 }
 
 document.querySelectorAll('.tab').forEach(t => t.addEventListener('click', () => {
@@ -755,8 +778,8 @@ window.addEventListener('focus', () => { if (!busy()) load(busy); });
 document.getElementById('q').addEventListener('input', e => { S.q = e.target.value; render(); });
 document.addEventListener('keydown', e => {
   const typing = /^(INPUT|SELECT|TEXTAREA)$/.test(document.activeElement?.tagName);
-  if (e.key === '/' && !typing) { e.preventDefault(); document.getElementById('q').focus(); }
-  else if (e.key === 'n' && !typing && !e.ctrlKey && !e.metaKey && S.view !== 'ws') { e.preventDefault(); openPanel('adding', 'add-name'); }
+  if (e.key === '/' && !typing && S.view !== 'settings') { e.preventDefault(); document.getElementById('q').focus(); }
+  else if (e.key === 'n' && !typing && !e.ctrlKey && !e.metaKey && TAB_KINDS[S.view]) { e.preventDefault(); openPanel('adding', 'add-name'); }
   else if (e.key === 'Escape' && document.activeElement?.id === 'q') { e.target.value = S.q = ''; e.target.blur(); render(); }
 });
 
