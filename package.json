@@ -1,6 +1,6 @@
 {
   "name": "@uplift-beyond/upex",
-  "version": "1.6.4",
+  "version": "1.6.5",
   "description": "A personal file shortcut manager: register named aliases for folder paths and instantly open them.",
   "type": "module",
   "main": "src/index.js",
@@ -14,7 +14,7 @@
     "LICENSE"
   ],
   "scripts": {
-    "test": "node test/smoke.mjs"
+    "test": "node test/smoke.mjs && node test/edges.mjs"
   },
   "keywords": [
     "cli",

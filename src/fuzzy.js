@@ -42,6 +42,8 @@ export function didYouMean(query, names) {
  * Returns { name, exact } or null.
  */
 export function resolveName(query, links) {
+  // Fuse matches anything for a blank query.
+  if (!query?.trim()) return null;
   const names = Object.keys(links);
 
   // Exact match

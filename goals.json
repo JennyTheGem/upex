@@ -430,6 +430,16 @@
       "note": "config defaultOpener (openerKey-validated, fallback explorer) used by upex <name>, selector preselect, workspaces; files still open in default app."
     },
     {
+      "id": "macos-webstorm-gets-a-stray-r-for-a-file-target",
+      "section": 2,
+      "title": "macOS WebStorm gets a stray -R for a file target",
+      "body": "launcher.js: on darwin webstorm's cmd starts with open, so it hits the system file manager branch and a file yields open -na \"WebStorm\" --args -R \"<file>\". Found by the edges.mjs review.",
+      "phase": "later",
+      "status": "planned",
+      "created": "2026-11-06",
+      "updated": "2026-11-06"
+    },
+    {
       "id": "exact-then-fuzzy-name-resolution-fuse-js",
       "section": 3,
       "title": "Exact-then-fuzzy name resolution (fuse.js)",
@@ -621,7 +631,7 @@
       "title": "Broader test coverage (fuzzy resolution, launcher branching per platform)",
       "body": "resolveName/resolveTarget edge cases and launchApp command building per platform, with os.platform stubbed.",
       "phase": "maybe",
-      "status": "planned",
+      "status": "done",
       "size": "M",
       "scope": [
         "tests"
@@ -632,7 +642,8 @@
         ]
       },
       "created": "2026-10-16",
-      "updated": "2026-11-06"
+      "updated": "2026-11-06",
+      "note": "test/edges.mjs: fuzzy edge cases + launchApp/launchExecutable/launchUrl/copy per platform with os.platform and child_process stubbed. Fixed blank query fuzzy-matching a random shortcut."
     },
     {
       "id": "upex-doctor",

@@ -8,7 +8,7 @@ Goals live in goals.json, managed by upgo; goals.md is generated and auto-loaded
 
 ## Commands
 
-- `npm test`: run the smoke asserts (`node test/smoke.mjs`). Covers the non-trivial pure logic plus CLI round-trips against a temp home. There is no build or lint step.
+- `npm test`: run the smoke asserts (`node test/smoke.mjs`, the non-trivial pure logic plus CLI round-trips against a temp home) and `test/edges.mjs` (fuzzy edge cases, launcher command building per platform with `os.platform` and `child_process` stubbed, in its own process). There is no build or lint step.
 - `npm link` then `upex ...`: install globally and exercise the CLI end-to-end. This is the primary way to verify behavior.
 - `node bin/upex.js <args>`: run without linking.
 
