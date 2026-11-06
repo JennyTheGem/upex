@@ -2,9 +2,139 @@
   "version": 1,
   "suggestions": [
     {
-      "id": "webstorm-path-in-settings",
-      "title": "WebStorm path in Settings",
-      "body": "Edit config.webstormPath from Settings, with a found/not-found check like upex doctor.",
+      "id": "path-variables",
+      "title": "Path variables",
+      "body": "Store paths like $PROJECTS/upex with roots in config.json. Moving the projects folder or a drive letter means one edit, not 40.",
+      "section": 1,
+      "size": "M",
+      "created": "2026-11-06"
+    },
+    {
+      "id": "per-machine-path-mapping",
+      "title": "Per-machine path mapping",
+      "body": "Same links.json on two PCs where E:\\ on one is D:\\ on the other. Map roots per hostname so export/import just works.",
+      "section": 1,
+      "size": "M",
+      "created": "2026-11-06"
+    },
+    {
+      "id": "upex-sync",
+      "title": "upex sync",
+      "body": "Keep links.json + config.json in a git repo or cloud folder and pull/push on demand. Builds on export/import.",
+      "section": 1,
+      "size": "M",
+      "created": "2026-11-06"
+    },
+    {
+      "id": "upex-undo",
+      "title": "upex undo",
+      "body": "Keep the last N store versions and roll back the last add/edit/rm/prune. Cheap safety net next to auto-backup.",
+      "section": 1,
+      "size": "S",
+      "created": "2026-11-06"
+    },
+    {
+      "id": "selector-preview-line",
+      "title": "Selector preview line",
+      "body": "Show the highlighted shortcut's full path, git branch and last-used time under the list. Less guessing between similar names.",
+      "section": 3,
+      "size": "S",
+      "created": "2026-11-06"
+    },
+    {
+      "id": "on-open-hooks-per-shortcut",
+      "title": "On-open hooks per shortcut",
+      "body": "Optional command run when a shortcut opens (git pull, docker compose up, nvm use). Turns opening a project into starting it.",
+      "section": 2,
+      "size": "M",
+      "created": "2026-11-06"
+    },
+    {
+      "id": "per-shortcut-env-vars",
+      "title": "Per-shortcut env vars",
+      "body": "Env vars injected into terminals opened from a shortcut (NODE_ENV, PORT, API keys from a file). Pairs with cmd and claude openers.",
+      "section": 2,
+      "size": "M",
+      "created": "2026-11-06"
+    },
+    {
+      "id": "project-type-detection",
+      "title": "Project type detection",
+      "body": "Spot package.json, .sln, Cargo.toml, pyproject and suggest the matching opener or run scripts. Better defaults with no config.",
+      "section": 2,
+      "size": "M",
+      "created": "2026-11-06"
+    },
+    {
+      "id": "script-picker-in-selector",
+      "title": "Script picker in selector",
+      "body": "From a highlighted shortcut, open a list of its package.json scripts and run one. upex run already exists, this makes it discoverable.",
+      "section": 3,
+      "size": "M",
+      "created": "2026-11-06"
+    },
+    {
+      "id": "import-from-other-tools",
+      "title": "Import from other tools",
+      "body": "Seed shortcuts from VS Code recent workspaces, zoxide/autojump history or Windows Terminal profiles.",
+      "section": 1,
+      "size": "M",
+      "created": "2026-11-06"
+    },
+    {
+      "id": "wsl-and-remote-openers",
+      "title": "WSL and remote openers",
+      "body": "Open a shortcut in a WSL terminal (path translated) or in VS Code Remote-SSH / dev container.",
+      "section": 5,
+      "size": "L",
+      "created": "2026-11-06"
+    },
+    {
+      "id": "upex-new-name-template",
+      "title": "upex new <name> --template",
+      "body": "Create a folder from a template (copy dir or git clone), register it and open it in one step.",
+      "section": 1,
+      "size": "M",
+      "created": "2026-11-06"
+    },
+    {
+      "id": "temporary-shortcuts",
+      "title": "Temporary shortcuts",
+      "body": "add --ttl 7d for short-lived folders (downloads, client handoffs). Expired ones get flagged or archived automatically.",
+      "section": 1,
+      "size": "S",
+      "created": "2026-11-06"
+    },
+    {
+      "id": "global-hotkey-launcher",
+      "title": "Global hotkey launcher",
+      "body": "PowerToys Run / Raycast / Alfred plugin that queries upex __names and opens the pick. Opens projects without a terminal.",
+      "section": 4,
+      "size": "L",
+      "created": "2026-11-06"
+    },
+    {
+      "id": "faster-startup-for-go",
+      "title": "Faster startup for go",
+      "body": "Lazy-load commander/fuse.js on the hot path of go and __resolve so cd via the wrapper feels instant. Measure first.",
+      "section": 6,
+      "size": "S",
+      "created": "2026-11-06"
+    },
+    {
+      "id": "json-output-flag",
+      "title": "JSON output flag",
+      "body": "list, go, tag and doctor print machine-readable JSON with --json. Makes upex scriptable from other tools and agents.",
+      "section": 4,
+      "size": "S",
+      "created": "2026-11-06"
+    },
+    {
+      "id": "dry-run-for-openers",
+      "title": "Dry run for openers",
+      "body": "A dry-run flag prints the exact command upex would spawn instead of running it. Debugs custom openers and platform quirks fast.",
+      "section": 2,
+      "size": "S",
       "created": "2026-11-06"
     }
   ]

@@ -14,6 +14,10 @@ Goals live in goals.json, managed by upgo; goals.md is generated and auto-loaded
 
 Do not start the interactive selector (`upex` with no args) in an automated context; it takes over stdin/stdout with raw readline. Jenny verifies the TUI herself.
 
+## Release
+
+After every push of a version-bumped commit, also publish it to npm as `@uplift-beyond/upex`: `npm publish`. It needs Jenny's security key in the browser, so ask her to run `! npm publish` herself.
+
 ## Architecture
 
 ESM Node CLI (`"type": "module"`) built on `commander`. Entry is `bin/upex.js` â†’ `createProgram()` in `src/index.js`.
@@ -44,3 +48,4 @@ ESM Node CLI (`"type": "module"`) built on `commander`. Entry is `bin/upex.js` â
 - Cross-platform is a hard requirement: any launch/path logic must branch on `os.platform()` and be considered for all three platforms.
 - Preserve backward compatibility of the on-disk format (the legacy-string migration exists for this reason).
 - Non-trivial pure logic that could regress belongs in `test/smoke.mjs` as a plain `assert` (no framework).
+- Keep the upex skill (`skill/SKILL.md`, linked into `~/.claude/skills/upex`) in sync: any added, renamed or removed command, option or behavior updates its Rules and Commands table in the same change.
