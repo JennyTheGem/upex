@@ -7,7 +7,7 @@
 
 import fs from 'node:fs';
 import {
-  loadLinks, saveLinks, loadConfig, saveConfig, mergeLinks,
+  loadLinks, saveLinks, loadConfig, saveConfig, mergeLinks, aliasClashes,
 } from '../store.js';
 import * as ui from '../ui.js';
 
@@ -71,5 +71,7 @@ export function registerImport(program) {
       ui.success(`Imported: ${added.length} added, ${updated.length} updated.`);
       if (added.length) ui.dim(`Added: ${added.join(', ')}`);
       if (updated.length) ui.dim(`Updated: ${updated.join(', ')}`);
+      const clashes = aliasClashes(merged);
+      if (clashes.length) ui.warn(`Names used twice: ${clashes.join('; ')}. Fix with: upex alias <name> -r <alias>`);
     });
 }

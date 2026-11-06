@@ -6,7 +6,7 @@
  */
 
 import os from 'node:os';
-import { loadLinks } from '../store.js';
+import { loadLinks, activeLinks, aliasesOf } from '../store.js';
 import * as ui from '../ui.js';
 
 // SUBCOMMANDS comes from the registered commands, so new ones complete with no manual list.
@@ -55,7 +55,8 @@ export function registerCompletion(program) {
     .command('__names', { hidden: true })
     .description('(internal) Print all shortcut names for completion')
     .action(() => {
-      process.stdout.write(Object.keys(loadLinks()).join('\n'));
+      const links = activeLinks(loadLinks());
+      process.stdout.write(Object.entries(links).flatMap(([n, e]) => [n, ...aliasesOf(e)]).join('\n'));
     });
 
   program

@@ -10,15 +10,14 @@ Closed sections: §5 Platform support · §6 Quality · §8 Distribution
 
 ## 1. Shortcut management
 
-- `archive-instead-of-delete` Archive instead of delete (next)
 - `stale-report` Stale report (next)
-- `aliases` Aliases (next)
 - `upex-stats` upex stats (next)
-- Plus 2 maybe: `upgo list --section 1 --phase maybe`
+- `add-with-no-name-uses-cwd` add with no name uses cwd (next)
+- `pinned-favorites` Pinned favorites (next)
+- Plus 3 maybe: `upgo list --section 1 --phase maybe`
 
 ## 2. Opening
 
-- `upex-web-name` upex web <name> (next)
 - `macos-webstorm-gets-a-stray-r-for-a-file-target` macOS WebStorm gets a stray -R for a file target (later)
 
 ## 3. Resolution & UX

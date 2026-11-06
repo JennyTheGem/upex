@@ -11,7 +11,8 @@
  */
 
 import chalk from 'chalk';
-import { loadWorkspaces, saveWorkspaces, removeWorkspace, linkExists, nameError } from '../store.js';
+import { loadWorkspaces, saveWorkspaces, removeWorkspace, loadLinks, nameError } from '../store.js';
+import { resolveTarget } from '../fuzzy.js';
 import { handleOpen } from './open.js';
 import * as ui from '../ui.js';
 
@@ -88,7 +89,7 @@ export function registerWorkspace(program) {
           ui.error(bad);
           process.exit(1);
         }
-        if (!linkExists(shortcut)) {
+        if (!resolveTarget(shortcut, loadLinks())?.exact) {
           ui.warn(`Shortcut "${shortcut}" doesn't exist yet, adding anyway.`);
         }
         // A leading integer in the tail is the terminal count; the rest is the start command.

@@ -239,6 +239,7 @@ h1 { font-size: 20px; letter-spacing: -.015em; margin: 8px 0 4px; }
   <symbol id="i-copy" viewBox="0 0 24 24"><rect x="8.5" y="8.5" width="11" height="11" rx="1.5"/><path d="M15.5 8.5v-3a1 1 0 0 0-1-1h-9a1 1 0 0 0-1 1v9a1 1 0 0 0 1 1h3"/></symbol>
   <symbol id="i-up" viewBox="0 0 24 24"><path d="m6 14 6-6 6 6"/></symbol>
   <symbol id="i-down" viewBox="0 0 24 24"><path d="m6 10 6 6 6-6"/></symbol>
+  <symbol id="i-archive" viewBox="0 0 24 24"><rect x="3.5" y="4.5" width="17" height="4" rx="1"/><path d="M5 8.5v10a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-10M10 12.5h4"/></symbol>
   <symbol id="i-x" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></symbol>
 </svg>
 
@@ -277,14 +278,15 @@ const SETTING_OPTS = {
   paneSplit: { auto: 'Auto', vertical: 'Side by side', horizontal: 'Stacked' },
   terminalShell: { cmd: 'cmd', powershell: 'PowerShell', pwsh: 'PowerShell 7', profile: 'WT default profile' },
 };
-const tabLinks = () => S.links.filter(l => l.tab === S.view);
+// The archived toggle swaps the tab's list for its archived shortcuts.
+const tabLinks = (archived = S.archived) => S.links.filter(l => l.tab === S.view && l.archived === archived);
 const COPY_WORD = { folder: 'path', app: 'path', cmd: 'command', url: 'URL' };
 // config startView -> page tab
 const START_TAB = { shortcuts: 'links', apps: 'apps', workspaces: 'ws' };
 
 const S = {
   links: [], workspaces: {}, apps: [], settings: {}, wt: null, home: '', sep: '/',
-  view: null, q: '', tag: null,
+  view: null, q: '', tag: null, archived: false,
   adding: false, addKind: 'folder', addErr: '', add: { name: '', target: '', tags: '', opener: '' },
   editing: null, draft: null, editErr: '',
   confirming: null, confirmWs: null, editWs: null, renamingWs: null, wsNewName: '',
@@ -416,7 +418,7 @@ function visibleLinks() {
   const q = S.q.trim().toLowerCase();
   return tabLinks()
     .filter(l => !S.tag || l.tags.includes(S.tag))
-    .filter(l => !q || [l.name, l.target, ...l.tags].some(s => s.toLowerCase().includes(q)))
+    .filter(l => !q || [l.name, l.target, ...l.tags, ...l.aliases].some(s => s.toLowerCase().includes(q)))
     .sort((a, b) => (S.settings.sort === 'name' ? 0 : b.score - a.score) || a.name.localeCompare(b.name));
 }
 
@@ -487,6 +489,7 @@ function editRow(l) {
         name,
         field('target', { class: 'wide mono', 'aria-label': KINDS[l.kind] + ' target', placeholder: placeholder(l.kind) }),
         field('tags', { 'aria-label': 'Tags', placeholder: 'tags, comma separated' }),
+        field('aliases', { 'aria-label': 'Aliases', placeholder: 'aliases, comma separated' }),
         // Opener is only sent once changed, so a stale one doesn't block saving other edits.
         l.kind === 'folder' && openerSelect(d.opener ?? l.opener, v => (d.opener = v))),
       h('div', { class: 'row' },
@@ -499,11 +502,16 @@ function row(l) {
   if (S.editing === l.name) return editRow(l);
 
   let actions;
+  const archive = (on) => act(() => api('PUT', 'archive', { name: l.name, archived: on }), `${on ? 'Archived' : 'Restored'} ${l.name}`);
   if (S.confirming === l.name) {
     actions = h('div', { class: 'actions confirm' },
       h('span', null, `Delete ${l.name}?`),
       btn('Delete', 'danger solid', () => { S.confirming = null; act(() => api('DELETE', 'links', { name: l.name }), `Deleted ${l.name}`); }),
       btn('Keep', 'ghost', () => { S.confirming = null; render(); }));
+  } else if (l.archived) {
+    actions = h('div', { class: 'actions' },
+      btn('Restore', '', () => archive(false), 'archive'),
+      iconBtn('trash', `Delete ${l.name}`, 'danger', () => { S.confirming = l.name; render(); }));
   } else {
     // Window count and start command only show for a terminal opener.
     const term = isTerm(S.openWith[l.name] || dflt(l));
@@ -528,10 +536,11 @@ function row(l) {
       iconBtn('copy', `Copy ${COPY_WORD[l.kind]} of ${l.name}`, '', copy),
       iconBtn('edit', `Edit ${l.name}`, '', () => {
         S.editing = l.name; S.editErr = '';
-        S.draft = { name: l.name, target: l.target, tags: l.tags.join(', ') };
+        S.draft = { name: l.name, target: l.target, tags: l.tags.join(', '), aliases: l.aliases.join(', ') };
         render();
         document.getElementById('edit-name')?.focus();
       }),
+      iconBtn('archive', `Archive ${l.name} (hide it, restore any time)`, '', () => archive(true)),
       iconBtn('trash', `Delete ${l.name}`, 'danger', () => { S.confirming = l.name; render(); }));
   }
 
@@ -539,7 +548,9 @@ function row(l) {
     h('span', { class: 'kind', title: l.broken ? 'Path missing' : KINDS[l.kind] }, icon(l.broken ? 'alert' : l.kind)),
     h('div', { class: 'nm' },
       h('div', { class: 'name', title: l.name }, l.name),
-      l.tags.length > 0 && h('div', { class: 'tags' }, l.tags.map(t => h('span', { class: 'tag' }, '#' + t)))),
+      (l.tags.length > 0 || l.aliases.length > 0) && h('div', { class: 'tags' },
+        l.aliases.length > 0 && h('span', { class: 'tag', title: 'Aliases' }, 'aka ' + l.aliases.join(', ')),
+        l.tags.map(t => h('span', { class: 'tag' }, '#' + t)))),
     h('div', { class: 'target mono', title: l.target }, l.broken && h('span', { class: 'miss' }, 'missing'), l.target),
     h('div', { class: 'when', title: 'Last opened' }, ago(l.lastUsed)),
     actions);
@@ -547,10 +558,12 @@ function row(l) {
 
 function linksView() {
   const out = [];
+  const shelved = tabLinks(true);
+  if (!shelved.length) S.archived = false;
   const mine = tabLinks();
   const isApps = S.view === 'apps';
   const newLabel = isApps ? 'New app' : 'New shortcut';
-  const broken = S.links.filter(l => l.broken);
+  const broken = S.links.filter(l => l.broken && !l.archived);
   const tags = [...new Set(mine.flatMap(l => l.tags))].sort();
 
   out.push(h('div', { class: 'toolbar' },
@@ -558,10 +571,12 @@ function linksView() {
       tags.map(t => h('button', { type: 'button', class: 'chip', 'aria-pressed': String(S.tag === t),
         onclick: () => { S.tag = S.tag === t ? null : t; render(); } }, '#' + t))),
     h('div', { class: 'grow' }),
+    shelved.length > 0 && h('button', { type: 'button', class: 'chip', 'aria-pressed': String(S.archived),
+      onclick: () => { S.archived = !S.archived; S.tag = null; S.adding = false; render(); } }, `Archived ${shelved.length}`),
     h('select', { id: 'sort', 'aria-label': 'Sort', onchange: e =>
         act(() => api('PUT', 'settings', { sort: e.target.value })).then(() => document.getElementById('sort')?.focus()) },
       Object.entries(SETTING_OPTS.sort).map(([k, label]) => h('option', { value: k, selected: S.settings.sort === k }, label))),
-    !S.adding && btn(newLabel, 'primary', () => openPanel('adding', 'add-name'), 'plus', { 'aria-keyshortcuts': 'n' })));
+    !S.adding && !S.archived && btn(newLabel, 'primary', () => openPanel('adding', 'add-name'), 'plus', { 'aria-keyshortcuts': 'n' })));
 
   if (broken.length) {
     out.push(h('div', { class: 'notice', role: 'region', 'aria-label': 'Missing paths' },
@@ -588,7 +603,7 @@ function linksView() {
   } else if (!list.length) {
     out.push(h('div', { class: 'list' }, h('div', { class: 'empty' },
       h('strong', null, 'Nothing matches'),
-      `No shortcut has "${S.q || '#' + S.tag}" in its name, target or tags.`,
+      `No shortcut has "${S.q || '#' + S.tag}" in its name, alias, target or tags.`,
       h('div', null, btn('Clear filters', '', () => { S.q = ''; S.tag = null; document.getElementById('q').value = ''; render(); })))));
   } else {
     out.push(h('div', { class: 'list' }, list.map(row)));
@@ -602,7 +617,7 @@ function linksView() {
 function entryForm(key, init, onSubmit, editing) {
   const d = S.wsDraft[key] ||= { shortcut: '', app: '', count: '', start: '', ...init };
   const set = k => e => (d[k] = e.target.value);
-  const names = S.links.map(l => l.name).sort((a, b) => a.localeCompare(b));
+  const names = S.links.filter(l => !l.archived).map(l => l.name).sort((a, b) => a.localeCompare(b));
   // Keep a missing shortcut selectable so editing doesn't silently drop it.
   if (d.shortcut && !names.includes(d.shortcut)) names.unshift(d.shortcut);
   const cancel = () => { delete S.wsDraft[key]; S.editWs = null; render(); };
@@ -658,7 +673,8 @@ function wsHead(name, entries) {
 }
 
 function wsBlock(name, entries) {
-  const known = new Set(S.links.map(l => l.name));
+  const known = new Set(S.links.filter(l => !l.archived).flatMap(l => [l.name, ...l.aliases]));
+  const shelved = new Set(S.links.filter(l => l.archived).flatMap(l => [l.name, ...l.aliases]));
   const move = async (i, by) => {
     const next = [...entries];
     [next[i], next[i + by]] = [next[i + by], next[i]];
@@ -681,7 +697,9 @@ function wsBlock(name, entries) {
             return ok;
           }, true)
       : h('div', { class: 'ws-entry' },
-        h('span', { class: 'name' }, e.shortcut, !known.has(e.shortcut) && h('span', { class: 'tag', title: 'No shortcut with this name' }, ' (missing)')),
+        h('span', { class: 'name' }, e.shortcut, !known.has(e.shortcut) && (shelved.has(e.shortcut)
+          ? h('span', { class: 'tag', title: 'Restore it to open it here' }, ' (archived)')
+          : h('span', { class: 'tag', title: 'No shortcut with this name' }, ' (missing)'))),
         h('span', { class: 'muted' }, (e.app ? appLabel(e.app) : 'Default') + (e.count > 1 ? ` x${e.count}` : '')),
         h('span', { class: 'muted mono start', title: e.start || '' }, e.start || ''),
         h('div', { class: 'actions' },
@@ -779,8 +797,8 @@ function settingsView() {
 // ---------- Shell ----------
 
 function render() {
-  document.getElementById('n-links').textContent = S.links.filter(l => l.tab === 'links').length;
-  document.getElementById('n-apps').textContent = S.links.filter(l => l.tab === 'apps').length;
+  document.getElementById('n-links').textContent = S.links.filter(l => l.tab === 'links' && !l.archived).length;
+  document.getElementById('n-apps').textContent = S.links.filter(l => l.tab === 'apps' && !l.archived).length;
   document.getElementById('n-ws').textContent = Object.keys(S.workspaces).length;
   document.querySelectorAll('.tab').forEach(t =>
     t.dataset.view === S.view ? t.setAttribute('aria-current', 'page') : t.removeAttribute('aria-current'));
@@ -798,7 +816,7 @@ document.querySelectorAll('.tab').forEach(t => t.addEventListener('click', () =>
   if (S.view === t.dataset.view) return;
   S.view = t.dataset.view;
   // Per-tab state: an open add form or tag filter belongs to the tab it was opened on.
-  S.adding = false; S.addErr = ''; S.tag = null; S.editing = null; S.confirming = null;
+  S.adding = false; S.addErr = ''; S.tag = null; S.editing = null; S.confirming = null; S.archived = false;
   S.editWs = null; S.renamingWs = null; S.confirmWs = null;
   if (TAB_KINDS[S.view]) S.addKind = TAB_KINDS[S.view][0];
   render();
@@ -812,7 +830,7 @@ document.getElementById('q').addEventListener('input', e => { S.q = e.target.val
 document.addEventListener('keydown', e => {
   const typing = /^(INPUT|SELECT|TEXTAREA)$/.test(document.activeElement?.tagName);
   if (e.key === '/' && !typing && S.view !== 'settings') { e.preventDefault(); document.getElementById('q').focus(); }
-  else if (e.key === 'n' && !typing && !e.ctrlKey && !e.metaKey && TAB_KINDS[S.view]) { e.preventDefault(); openPanel('adding', 'add-name'); }
+  else if (e.key === 'n' && !typing && !e.ctrlKey && !e.metaKey && TAB_KINDS[S.view] && !S.archived) { e.preventDefault(); openPanel('adding', 'add-name'); }
   else if (e.key === 'Escape' && document.activeElement?.id === 'q') { e.target.value = S.q = ''; e.target.blur(); render(); }
 });
 

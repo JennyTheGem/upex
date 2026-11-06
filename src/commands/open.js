@@ -100,7 +100,7 @@ export async function handleOpen(name, app, count = 1, startCmd = '', { batch = 
   if (!resolved) {
     if (bail(() => {
       ui.error(`Shortcut not found: ${name}`);
-      const hint = didYouMean(name, Object.keys(links));
+      const hint = didYouMean(name, links);
       if (hint) ui.dim(hint);
     })) return false;
   }

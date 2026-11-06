@@ -10,14 +10,15 @@ import path from 'node:path';
 import http from 'node:http';
 import { spawn, spawnSync, execSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { frecency, pruneBroken, mergeLinks, lastUsedName, nameError } from '../src/store.js';
+import { frecency, pruneBroken, mergeLinks, lastUsedName, nameError, takenError, checkAliases, aliasClashes } from '../src/store.js';
+import { remoteWebUrl } from '../src/git.js';
 import { installCmdWrapper } from '../src/commands/setup.js';
 import { normalizeUrl, caretEscape, wtCommandLine, setting, shellCommand, defaultOpener } from '../src/launcher.js';
 import { parseTags } from '../src/commands/add.js';
 import { truncate } from '../src/ui.js';
 import { applyShortcut, cleanEntries } from '../src/commands/web.js';
 import { renderInteractiveView, inView, tidyPath, byOrder } from '../src/interactive.js';
-import { resolveTarget, suggestNames } from '../src/fuzzy.js';
+import { resolveTarget, resolveName, suggestNames } from '../src/fuzzy.js';
 
 // -- frecency: recent + used beats old + unused; unused = 0 --
 const now = Date.now();
@@ -138,6 +139,25 @@ assert.deepEqual(backups(), before, 'usage bumps make no backup');
 assert.equal(upexIn('edit', 'b0', home).status, 0, 'edit works');
 assert.deepEqual(backups(), before, 'a no-op save makes no backup');
 
+// -- aliases + archive: an alias works like the name, archived ones hide until restored --
+fs.writeFileSync(linksFile, JSON.stringify({ velora: { path: home }, other: { path: home } }));
+assert.equal(upexIn('alias', 'velora', 'vd', 'v2').status, 0, 'aliases added');
+assert.deepEqual(stored().velora.aliases, ['vd', 'v2'], 'aliases stored');
+assert.equal(upexIn('go', 'vd').stdout, home, 'go follows an alias');
+assert.equal(upexIn('alias', 'other', 'vd').status, 1, 'alias owned by another shortcut rejected');
+upexIn('add', 'v2', home);
+assert.ok(!stored().v2, 'add refuses a name that is an alias');
+assert.equal(upexIn('add', 'x', home, '--alias', 'other').status, 1, 'add --alias clash rejected');
+assert.equal(upexIn('rename', 'vd', 'vel').status, 0, 'rename via alias');
+assert.ok(stored().vel && !stored().velora, 'alias rename renames the real shortcut');
+assert.equal(upexIn('rm', 'vel', '--archive').status, 0, 'archive');
+assert.equal(stored().vel.archived, true, 'archived flag stored');
+assert.equal(upexIn('go', 'vd').status, 1, 'archived shortcut no longer resolves');
+assert.ok(!upexIn('__names').stdout.includes('v'), 'archived names and aliases hidden from completion');
+assert.match(upexIn('ls', '--archived').stdout, /vel/, 'ls --archived lists it');
+assert.equal(upexIn('restore', 'v2').status, 0, 'restore via alias');
+assert.equal(upexIn('go', 'vd').stdout, home, 'restored shortcut resolves again');
+
 fs.rmSync(home, { recursive: true, force: true });
 
 // -- mergeLinks: merge overwrites on clash, replace swaps the set --
@@ -164,6 +184,36 @@ assert.equal(resolveTarget('wbe/src', rl).name, 'web', 'fuzzy head keeps the sub
 assert.deepEqual(resolveTarget('a/b', rl), { name: 'a/b', exact: true, sub: '' }, 'full name with a slash wins');
 assert.deepEqual(resolveTarget('a/b/c', rl), { name: 'a/b', exact: true, sub: 'c' }, 'slash-named shortcut takes a subpath');
 assert.equal(resolveTarget('zzzzzz', rl), null, 'no match -> null');
+
+// -- aliases + archive in resolution and name checks --
+const al = { velora: { aliases: ['vd'] }, vdx: {}, old: { archived: true, aliases: ['o'] } };
+assert.deepEqual(resolveName('vd', al), { name: 'velora', exact: true }, 'alias resolves exactly');
+assert.deepEqual(resolveTarget('vd/src', al), { name: 'velora', exact: true, sub: 'src' }, 'alias takes a subpath');
+assert.equal(resolveName('old', al), null, 'archived hidden from resolve');
+assert.deepEqual(resolveName('o', al, true), { name: 'old', exact: true }, 'archived-only search finds it by alias');
+assert.equal(takenError(al, 'vd'), '"vd" is an alias of velora.', 'alias blocks a new name');
+assert.match(takenError(al, 'old'), /archived/, 'archived name blocks with a restore hint');
+assert.equal(takenError(al, 'vd', 'velora'), null, 'own alias is not taken');
+assert.deepEqual(checkAliases(al, 'vdx', ['a', 'a', 'vdx']), { aliases: ['a'] }, 'dupes and own name dropped');
+assert.match(checkAliases(al, 'vdx', ['vd']).error, /alias of velora/, 'alias of another rejected');
+assert.deepEqual(aliasClashes({ a: { aliases: ['b'] }, b: {}, c: { aliases: ['x'] }, d: { aliases: ['x'] } }), ['b: b, a', 'x: c, d'], 'clashes found');
+assert.equal(lastUsedName({ x: { lastUsed: 9, archived: true }, y: { lastUsed: 1 } }), 'y', 'last skips archived');
+assert.deepEqual(aliasClashes({ x: { aliases: ['x', 'y', 'y'] } }), [], 'self alias and repeats are no clash');
+const pa = { proj: { path: '/p', archived: true }, proj2: { path: '/p2' } };
+assert.equal(resolveName('proj', pa), null, 'archived exact name does not fuzzy-match a neighbour');
+assert.equal(resolveTarget('proj/src', pa), null, 'archived exact head does not fuzzy-match a neighbour');
+assert.equal(resolveName('proj2', pa, true), null, 'restore of a live name finds nothing');
+assert.deepEqual(Object.keys(pruneBroken(pa, () => false).kept), ['proj'], 'prune keeps archived shortcuts');
+
+// -- remoteWebUrl: ssh/scp/https remotes to a web page, credentials dropped, local paths null --
+assert.equal(remoteWebUrl('git@github.com:me/x.git'), 'https://github.com/me/x', 'scp-style');
+assert.equal(remoteWebUrl('ssh://git@host.dev:2222/me/x.git'), 'https://host.dev/me/x', 'ssh url, port dropped');
+assert.equal(remoteWebUrl('https://u:tok@github.com/me/x/'), 'https://github.com/me/x', 'credentials + slash dropped');
+assert.equal(remoteWebUrl('http://git.lan:8080/a/b.git'), 'http://git.lan:8080/a/b', 'http port kept');
+assert.equal(remoteWebUrl('https://github.com/me/a"b'), 'https://github.com/me/a%22b', 'quote encoded');
+for (const local of [String.raw`C:\repos\x`,'C:/repos/x', '/home/me/x', '../x', 'file:///c/x']) assert.equal(remoteWebUrl(local), null, `local ${local}`);
+for (const evil of ['git@h.com:me/$(id).git', 'git@h.com:me/x?`id`', 'ssh://git@e"&calc&"x.com/r', 'git@h.com:%USERNAME%/x']) assert.equal(remoteWebUrl(evil), null, `shell-unsafe ${evil}`);
+assert.equal(remoteWebUrl('https://dev.azure.com/o/My%20Proj/_git/r'), 'https://dev.azure.com/o/My%20Proj/_git/r', 'percent escapes kept');
 
 // -- selector tabs: folders on Shortcuts, apps + URLs on Apps --
 const tabbed = [{ name: 'f' }, { name: 'a', isApp: true }, { name: 'u', isUrl: true }];
@@ -252,6 +302,11 @@ assert.equal(applyShortcut(op, 'a', { name: 'a', target: '/A', opener: '' }, yes
 assert.equal(applyShortcut(op, 'a', { name: 'a', target: '/A' }, yes).links.a.opener, 'vscode', 'missing opener kept');
 assert.match(applyShortcut(op, 'b', { name: 'b', target: 'x.dev', opener: 'cmd' }, yes).error, /folder/, 'opener on URL rejected');
 assert.match(applyShortcut(op, 'a', { name: 'a', target: '/A', opener: 'nope' }, yes).error, /Unknown/, 'unknown opener rejected');
+const ab = { a: { path: '/A' }, b: { url: 'x', aliases: ['bb'] } };
+assert.deepEqual(applyShortcut(ab, 'a', { name: 'a', target: '/A', aliases: 'p, q' }, yes).links.a.aliases, ['p', 'q'], 'aliases set');
+assert.match(applyShortcut(ab, 'a', { name: 'a', target: '/A', aliases: 'bb' }, yes).error, /alias of b/, 'taken alias rejected');
+assert.match(applyShortcut(ab, 'a', { name: 'bb', target: '/A' }, yes).error, /alias of b/, 'rename onto an alias rejected');
+assert.equal(applyShortcut(ab, 'b', { name: 'bb', target: 'x' }, yes).links.bb.aliases, undefined, 'rename to own alias drops it');
 
 // -- names: one rule for CLI, selector and web --
 assert.equal(nameError('dev'), null, 'plain name ok');
@@ -357,6 +412,13 @@ try {
   });
   const st3 = await (await fetch(base + '/api/state', { headers: { 'x-upex-token': token } })).json();
   assert.ok(st3.links.find(l => l.name === 'nt').file && !st3.links.find(l => l.name === 'gh').file, 'file shortcuts flagged (they skip the default opener)');
+  const send = (method, route, body) => fetch(base + '/api/' + route, {
+    method, headers: { 'content-type': 'application/json', 'x-upex-token': token }, body: JSON.stringify(body),
+  });
+  assert.equal((await send('PUT', 'archive', { name: 'gh', archived: true })).status, 200, 'archive via api');
+  assert.equal((await send('POST', 'open', { name: 'gh' })).status, 404, 'archived shortcut cannot be opened');
+  assert.equal((await send('PUT', 'archive', { name: 'gh', archived: false })).status, 200, 'restore via api');
+  assert.equal(JSON.parse(fs.readFileSync(path.join(webHome, '.upex', 'links.json'), 'utf-8')).gh.archived, undefined, 'restore clears the flag');
 } finally {
   // Already exited (e.g. crashed on start): waiting for 'exit' again would never settle.
   if (srv.exitCode === null && srv.signalCode === null) {
@@ -366,4 +428,4 @@ try {
   fs.rmSync(webHome, { recursive: true, force: true });
 }
 
-console.log('ok - frecency + prune + cmd wrapper + resolve guard + go args + safe store + edit url + merge + lastUsed + url + tags + truncate + web ui + subpaths + opener + doctor + apps tab + names + ws rename + cmd quoting + wt layout + settings + shells + default opener + auto-backup');
+console.log('ok - frecency + prune + cmd wrapper + resolve guard + go args + safe store + edit url + merge + lastUsed + url + tags + truncate + web ui + subpaths + opener + doctor + apps tab + names + ws rename + cmd quoting + wt layout + settings + shells + default opener + auto-backup + aliases + archive + remote url');

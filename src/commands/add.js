@@ -7,7 +7,7 @@
 
 import path from 'node:path';
 import fs from 'node:fs';
-import { setLink, linkExists, nameError } from '../store.js';
+import { setLink, loadLinks, nameError, takenError, checkAliases } from '../store.js';
 import { withOpener } from './edit.js';
 import * as ui from '../ui.js';
 
@@ -28,6 +28,7 @@ export function registerAdd(program) {
     .option('--cmd', 'Treat <target> as a command line to run in a terminal window')
     .option('-t, --tag <tags>', 'Comma-separated tags to attach')
     .option('-o, --opener <app>', 'Open this folder shortcut in <app> by default')
+    .option('--alias <names>', 'Comma-separated extra names for the shortcut')
     .action((name, targetPath, options) => {
       if (options.opener && (options.app || options.url || options.cmd)) {
         ui.error('A default opener only applies to folder shortcuts.');
@@ -40,12 +41,21 @@ export function registerAdd(program) {
         process.exit(1);
       }
 
-      if (linkExists(name)) {
-        ui.warn(`"${name}" already exists. Use "upex edit ${name}" to update.`);
+      const links = loadLinks();
+      const taken = takenError(links, name);
+      if (taken) {
+        ui.warn(taken);
+        if (Object.hasOwn(links, name) && !links[name].archived) ui.dim(`Use "upex edit ${name}" to update.`);
         return;
       }
 
+      const { aliases, error } = checkAliases(links, undefined, parseTags(options.alias) || [], name);
+      if (error) {
+        ui.error(error);
+        process.exit(1);
+      }
       const tags = parseTags(options.tag);
+      const extra = { ...(tags && { tags }), ...(aliases.length && { aliases }) };
 
       // URL shortcut: the positional is a URL, opened in the browser.
       if (options.url) {
@@ -53,7 +63,7 @@ export function registerAdd(program) {
           ui.error('Provide the URL: upex add <name> <url> --url');
           process.exit(1);
         }
-        setLink(name, { url: targetPath, ...(tags && { tags }) });
+        setLink(name, { url: targetPath, ...extra });
         ui.success(`Added: ${name} --> ${targetPath}`);
         return;
       }
@@ -67,7 +77,7 @@ export function registerAdd(program) {
             : 'Provide the app path or command: upex add <name> <app> --app');
           process.exit(1);
         }
-        setLink(name, { app: targetPath, ...(options.cmd && { terminal: true }), ...(tags && { tags }) });
+        setLink(name, { app: targetPath, ...(options.cmd && { terminal: true }), ...extra });
         ui.success(`Added: ${name} --> ${targetPath}`);
         return;
       }
@@ -78,7 +88,7 @@ export function registerAdd(program) {
         ui.error(`Path does not exist: ${resolved}`);
         process.exit(1);
       }
-      let entry = { path: resolved, ...(tags && { tags }) };
+      let entry = { path: resolved, ...extra };
       if (options.opener) entry = withOpener(entry, options.opener);
       if (!entry) process.exit(1);
       setLink(name, entry);

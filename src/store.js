@@ -151,16 +151,63 @@ export function removeLink(name) {
 export function renameLink(oldName, newName) {
   const links = loadLinks();
   if (!Object.hasOwn(links, oldName)) return { ok: false, reason: 'not_found' };
-  if (Object.hasOwn(links, newName)) return { ok: false, reason: 'exists' };
-  links[newName] = links[oldName];
-  delete links[oldName];
-  saveLinks(links);
+  const taken = takenError(links, newName, oldName);
+  if (taken) return { ok: false, reason: 'exists', message: taken };
+  // Rebuild so the shortcut keeps its position; renaming to an own alias drops that alias.
+  const out = {};
+  for (const [k, v] of Object.entries(links)) {
+    if (k !== oldName) { out[k] = v; continue; }
+    const aliases = aliasesOf(v).filter(a => a !== newName);
+    const { aliases: _old, ...rest } = v;
+    out[newName] = aliases.length ? { ...rest, aliases } : rest;
+  }
+  saveLinks(out);
   return { ok: true };
 }
 
-export function linkExists(name) {
-  return Object.hasOwn(loadLinks(), name);
+export const aliasesOf = (e) => (Array.isArray(e?.aliases) ? e.aliases.filter(a => typeof a === 'string') : []);
+
+// Shortcut that owns `name` as its name or an alias, or null. Archived ones count.
+export function nameOwner(links, name) {
+  if (Object.hasOwn(links, name)) return name;
+  return Object.keys(links).find(k => aliasesOf(links[k]).includes(name)) ?? null;
 }
+
+// Why `name` is taken by a shortcut other than `self`, or null.
+export function takenError(links, name, self) {
+  const owner = nameOwner(links, name);
+  if (!owner || owner === self) return null;
+  if (owner !== name) return `"${name}" is an alias of ${owner}.`;
+  return links[owner].archived ? `"${name}" is archived. Restore it with: upex restore ${name}` : `"${name}" already exists.`;
+}
+
+// Cleaned alias list for `owner` (called `name` after a rename), or { error }.
+export function checkAliases(links, owner, list, name = owner) {
+  const aliases = [];
+  for (const a of list) {
+    if (a === name || aliases.includes(a)) continue;
+    const bad = nameError(a) || takenError(links, a, owner);
+    if (bad) return { error: bad };
+    aliases.push(a);
+  }
+  return { aliases };
+}
+
+// Names claimed twice, e.g. after an import: ["vd: velora, vibe"].
+export function aliasClashes(links) {
+  const owners = new Map();
+  for (const [n, e] of Object.entries(links)) {
+    for (const a of aliasesOf(e)) {
+      if (!owners.has(a)) owners.set(a, Object.hasOwn(links, a) ? [a] : []);
+      if (!owners.get(a).includes(n)) owners.get(a).push(n);
+    }
+  }
+  return [...owners].filter(([, o]) => o.length > 1).map(([a, o]) => `${a}: ${o.join(', ')}`);
+}
+
+// Everything except archived shortcuts (or only those, with archived = true).
+export const activeLinks = (links, archived = false) =>
+  Object.fromEntries(Object.entries(links).filter(([, e]) => !!e.archived === archived));
 
 // Why a new shortcut or workspace name is invalid, or null when it's fine.
 export function nameError(name) {
@@ -202,7 +249,8 @@ export function pruneBroken(links, exists = (p) => fs.existsSync(p)) {
   const kept = {};
   const removed = [];
   for (const [name, entry] of Object.entries(links)) {
-    if (entry.path && !exists(entry.path)) {
+    // Archived ones stay restorable.
+    if (entry.path && !entry.archived && !exists(entry.path)) {
       if (entry.app) {
         const { path: _dead, ...rest } = entry;
         kept[name] = rest;
@@ -223,7 +271,7 @@ export function lastUsedName(links = loadLinks()) {
   let best = null;
   let bestTime = 0;
   for (const [name, entry] of Object.entries(links)) {
-    if (entry.lastUsed && entry.lastUsed > bestTime) {
+    if (!entry.archived && entry.lastUsed && entry.lastUsed > bestTime) {
       bestTime = entry.lastUsed;
       best = name;
     }

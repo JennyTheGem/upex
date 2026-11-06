@@ -18,7 +18,7 @@ export function registerCopy(program) {
 
       if (!resolved) {
         ui.error(`Shortcut not found: ${name}`);
-        const hint = didYouMean(name, Object.keys(links));
+        const hint = didYouMean(name, links);
         if (hint) ui.dim(hint);
         process.exit(1);
       }

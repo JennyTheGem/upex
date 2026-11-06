@@ -9,7 +9,7 @@ import readline from 'node:readline';
 import chalk from 'chalk';
 import Fuse from 'fuse.js';
 import { getInteractiveAppChoices, getAppMap, isTerminalApp, hasWindowsTerminal, defaultOpener, readSettings, setting } from './launcher.js';
-import { loadLinks, frecency, removeLink, setLink, renameLink, linkExists, loadWorkspaces, removeWorkspace, nameError, loadConfig, saveConfig } from './store.js';
+import { loadLinks, activeLinks, aliasesOf, takenError, frecency, removeLink, setLink, renameLink, loadWorkspaces, removeWorkspace, nameError, loadConfig, saveConfig } from './store.js';
 import { describeEntry } from './commands/workspace.js';
 import * as ui from './ui.js';
 
@@ -17,7 +17,7 @@ const MAX_VISIBLE_CHOICES = 8;
 const MAX_WIDTH = 100;
 
 function buildChoices() {
-  return Object.entries(loadLinks())
+  return Object.entries(activeLinks(loadLinks()))
     .map(([name, entry]) => ({
       name,
       path: entry.path || entry.app || entry.url || '',
@@ -28,7 +28,7 @@ function buildChoices() {
       tags: entry.tags || [],
       opener: entry.opener ? String(entry.opener).toLowerCase() : null,
       exists: entry.path ? fs.existsSync(entry.path) : !!(entry.app || entry.url),
-      searchText: `${name} ${entry.path || ''} ${entry.app || ''} ${entry.url || ''} ${(entry.tags || []).join(' ')}`,
+      searchText: `${name} ${aliasesOf(entry).join(' ')} ${entry.path || ''} ${entry.app || ''} ${entry.url || ''} ${(entry.tags || []).join(' ')}`,
       score: frecency(entry),
     }))
     .sort(byOrder(setting('sort')));
@@ -427,7 +427,8 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
       if (action === 'add') {
         const bad = nameError(buf);
         if (bad) { flash = bad.toLowerCase().replace(/\.$/, ''); return false; }
-        if (linkExists(buf)) { flash = `"${buf}" already exists`; return false; }
+        const taken = takenError(loadLinks(), buf);
+        if (taken) { flash = taken.replace(/\.$/, ''); return false; }
         setLink(buf, { path: process.cwd() });
         rebuild(buf);
         return true;
@@ -447,7 +448,7 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
         if (bad) { flash = bad.toLowerCase().replace(/\.$/, ''); return false; }
         const result = renameLink(target, buf);
         if (!result.ok) {
-          flash = result.reason === 'exists' ? `"${buf}" already exists` : 'not found';
+          flash = result.message?.replace(/\.$/, '') || 'not found';
           return false;
         }
         rebuild(buf);

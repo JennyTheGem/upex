@@ -19,12 +19,14 @@ import { registerCmd } from './commands/cmd.js';
 import { registerApp } from './commands/app.js';
 import { registerCompletion } from './commands/completion.js';
 import { registerTag, registerOpenGroup } from './commands/tag.js';
+import { registerAlias } from './commands/alias.js';
 import { registerWorkspace, openWorkspace } from './commands/workspace.js';
 import { loadWorkspaces } from './store.js';
 import { registerRun } from './commands/run.js';
 import { registerExport, registerImport } from './commands/transfer.js';
 import { registerLast } from './commands/last.js';
 import { registerWeb } from './commands/web.js';
+import { registerWebPage } from './commands/webpage.js';
 import { registerDoctor } from './commands/doctor.js';
 import { runInteractiveMode } from './interactive.js';
 
@@ -67,6 +69,7 @@ export function createProgram() {
   registerApp(program);
   registerCompletion(program);
   registerTag(program);
+  registerAlias(program);
   registerOpenGroup(program);
   registerWorkspace(program);
   registerRun(program);
@@ -74,6 +77,7 @@ export function createProgram() {
   registerImport(program);
   registerLast(program);
   registerWeb(program);
+  registerWebPage(program);
   registerDoctor(program);
 
   // Default action: upex <name> [app]

@@ -50,6 +50,8 @@ export function registerEdit(program) {
         return;
       }
 
+      // An alias edits the shortcut it belongs to.
+      name = resolved.name;
       const entry = links[name];
       const field = targetField(entry);
 

@@ -8,7 +8,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import crypto from 'node:crypto';
-import { loadLinks, saveLinks, loadWorkspaces, saveWorkspaces, pruneBroken, targetField, nameError, frecency, loadConfig, saveConfig } from '../store.js';
+import { loadLinks, saveLinks, loadWorkspaces, saveWorkspaces, pruneBroken, targetField, nameError, takenError, checkAliases, aliasesOf, frecency, loadConfig, saveConfig } from '../store.js';
 import { getInteractiveAppChoices, launchUrl, openerKey, isTerminalApp, SETTINGS, readSettings, hasWindowsTerminal } from '../launcher.js';
 import { handleOpen, isFile } from './open.js';
 import { openEntries } from './workspace.js';
@@ -22,14 +22,15 @@ const DEFAULT_PORT = 4545;
  * Add (old undefined) or edit/rename (old = current name) one shortcut.
  * Pure: returns { links } with the new set, or { error }.
  */
-export function applyShortcut(links, old, { kind, name, target, tags, opener } = {}, exists = fs.existsSync) {
+export function applyShortcut(links, old, { kind, name, target, tags, aliases, opener } = {}, exists = fs.existsSync) {
   name = String(name ?? '').trim();
   target = String(target ?? '').trim();
   // Old CLI names may hold spaces; only new names are checked so those stay editable.
   const bad = name !== old && nameError(name);
   if (bad) return { error: bad };
   if (old !== undefined && !Object.hasOwn(links, old)) return { error: `Shortcut not found: ${old}` };
-  if (name !== old && Object.hasOwn(links, name)) return { error: `"${name}" already exists.` };
+  const taken = name !== old && takenError(links, name, old);
+  if (taken) return { error: taken };
 
   const prev = old === undefined ? {} : links[old];
   const field = old === undefined ? { folder: 'path', app: 'app', cmd: 'app', url: 'url' }[kind] : targetField(prev);
@@ -45,6 +46,11 @@ export function applyShortcut(links, old, { kind, name, target, tags, opener } =
   const entry = { ...prev, [field]: target };
   const t = parseTags(Array.isArray(tags) ? tags.join(',') : String(tags ?? ''));
   if (t) entry.tags = t; else delete entry.tags;
+  // undefined leaves aliases alone (minus one that became the name).
+  const al = aliases === undefined ? { aliases: aliasesOf(prev).filter(a => a !== name) }
+    : checkAliases(links, old, parseTags(Array.isArray(aliases) ? aliases.join(',') : String(aliases ?? '')) || [], name);
+  if (al.error) return { error: al.error };
+  if (al.aliases.length) entry.aliases = al.aliases; else delete entry.aliases;
   // undefined leaves the opener alone, '' clears it.
   if (opener) {
     if (field !== 'path') return { error: 'A default opener only applies to folder shortcuts.' };
@@ -93,6 +99,8 @@ function state() {
         tab: e.app || e.url ? 'apps' : 'links',
         target: e[field] ?? '',
         tags: e.tags || [],
+        aliases: aliasesOf(e),
+        archived: Boolean(e.archived),
         opener: e.opener || '',
         lastUsed: e.lastUsed || 0,
         score: frecency(e),
@@ -124,10 +132,19 @@ const routes = {
     return {};
   },
 
+  'PUT /api/archive': (b) => {
+    const links = loadLinks();
+    if (!Object.hasOwn(links, String(b.name))) throw new HttpError(404, `Shortcut not found: ${b.name}`);
+    if (b.archived) links[b.name].archived = true; else delete links[b.name].archived;
+    saveLinks(links);
+    return {};
+  },
+
   'POST /api/open': async (b) => {
     const name = String(b.name ?? '');
     // Exact only: a stale name must not fuzzy-open some other shortcut.
-    if (!Object.hasOwn(loadLinks(), name)) throw new HttpError(404, `Shortcut not found: ${name}`);
+    const links = loadLinks();
+    if (!Object.hasOwn(links, name) || links[name].archived) throw new HttpError(404, `Shortcut not found: ${name}`);
     const [e] = cleanEntries([{ shortcut: name, app: b.app, count: b.count, start: b.start }]) || [];
     if (!e) throw new HttpError(400, 'Window count must be at least 1.');
     const ok = await handleOpen(name, e.app, e.count || 1, e.start || '', { batch: true });

@@ -8,7 +8,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import chalk from 'chalk';
-import { loadLinks, loadConfig, loadWorkspaces, LINKS_FILE } from '../store.js';
+import { loadLinks, loadConfig, loadWorkspaces, aliasClashes, LINKS_FILE } from '../store.js';
 import { getAppMap, checkOpener, openerKey } from '../launcher.js';
 import { CMD_WRAPPER, findShimDir } from './setup.js';
 import { resolveTarget } from '../fuzzy.js';
@@ -80,13 +80,16 @@ export function runChecks() {
   }
   const rows = [['ok', 'store', `${plural(Object.keys(links).length, 'shortcut')} in ${LINKS_FILE}`]];
 
-  const broken = Object.keys(links).filter(n => links[n].path && !fs.existsSync(links[n].path));
+  const broken = Object.keys(links).filter(n => links[n].path && !links[n].archived && !fs.existsSync(links[n].path));
   rows.push(broken.length
     ? ['warn', 'paths', `${plural(broken.length, 'broken shortcut')}: ${broken.join(', ')} (upex check)`]
     : ['ok', 'paths', 'all paths exist']);
 
   const badOpener = Object.keys(links).filter(n => links[n].opener && !openerKey(links[n].opener));
   if (badOpener.length) rows.push(['warn', 'default openers', `unknown opener on: ${badOpener.join(', ')} (upex edit <name> --no-opener)`]);
+
+  const clashes = aliasClashes(links);
+  if (clashes.length) rows.push(['warn', 'aliases', `names used twice: ${clashes.join('; ')} (upex alias <name> -r <alias>)`]);
 
   const missing = [];
   for (const [ws, entries] of Object.entries(loadWorkspaces())) {

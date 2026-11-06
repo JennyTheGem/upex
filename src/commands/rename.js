@@ -32,16 +32,13 @@ export function registerRename(program) {
         return;
       }
 
-      const result = renameLink(oldName, newName);
+      // An alias renames the shortcut it belongs to.
+      const result = renameLink(resolved.name, newName);
       if (!result.ok) {
-        if (result.reason === 'exists') {
-          ui.error(`"${newName}" already exists. Remove it first or pick a different name.`);
-        } else {
-          ui.error(`Shortcut not found: ${oldName}`);
-        }
+        ui.error(result.message || `Shortcut not found: ${resolved.name}`);
         return;
       }
 
-      ui.success(`Renamed: ${oldName} --> ${newName}`);
+      ui.success(`Renamed: ${resolved.name} --> ${newName}`);
     });
 }

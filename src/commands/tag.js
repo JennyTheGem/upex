@@ -8,7 +8,7 @@
  */
 
 import chalk from 'chalk';
-import { loadLinks, setLink } from '../store.js';
+import { loadLinks, setLink, activeLinks } from '../store.js';
 import { resolveName } from '../fuzzy.js';
 import { handleOpen } from './open.js';
 import * as ui from '../ui.js';
@@ -28,7 +28,8 @@ export function registerTag(program) {
     .option('-r, --remove', 'Remove the listed tags instead of adding')
     .option('--clear', 'Remove all tags from the shortcut')
     .action((name, tags, options) => {
-      const links = loadLinks();
+      const all = loadLinks();
+      const links = activeLinks(all);
 
       // No name: list every tag with a count.
       if (!name) {
@@ -47,7 +48,7 @@ export function registerTag(program) {
         return;
       }
 
-      const resolved = resolveName(name, links);
+      const resolved = resolveName(name, all);
       if (!resolved) {
         ui.error(`Shortcut not found: ${name}`);
         process.exit(1);
@@ -83,7 +84,7 @@ export function registerOpenGroup(program) {
     .description('Open every shortcut carrying <tag> in its default opener')
     .summary('Open every shortcut tagged <tag>')
     .action(async (tag) => {
-      const links = loadLinks();
+      const links = activeLinks(loadLinks());
       const matches = Object.keys(links).filter(n => (links[n].tags || []).includes(tag));
 
       if (!matches.length) {

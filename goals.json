@@ -147,7 +147,7 @@
       "title": "Archive instead of delete",
       "body": "rm --archive hides a shortcut but keeps it restorable.",
       "phase": "next",
-      "status": "planned",
+      "status": "done",
       "size": "M",
       "scope": [
         "store",
@@ -165,7 +165,8 @@
         ]
       },
       "created": "2026-11-06",
-      "updated": "2026-11-06"
+      "updated": "2026-11-06",
+      "note": "rm --archive, upex restore, ls --archived; hidden from selector, completion, resolve, last, open <tag>; web Archive button + Archived filter with Restore"
     },
     {
       "id": "stale-report",
@@ -198,7 +199,7 @@
       "title": "Aliases",
       "body": "Give one shortcut several names (velora, vd).",
       "phase": "next",
-      "status": "planned",
+      "status": "done",
       "size": "M",
       "scope": [
         "store",
@@ -220,7 +221,8 @@
         ]
       },
       "created": "2026-11-06",
-      "updated": "2026-11-06"
+      "updated": "2026-11-06",
+      "note": "upex alias + add --alias; resolve/go/rm/rename/edit/ws follow aliases; clashes blocked in add/rename/selector/web, flagged by doctor and import; web edit field"
     },
     {
       "id": "upex-stats",
@@ -296,6 +298,37 @@
       "note": "Browsers only expose a dropped folder's name, not its full path, so a drop cannot reliably create a shortcut."
     },
     {
+      "id": "upex-scan-dir",
+      "section": 1,
+      "title": "upex scan <dir>",
+      "body": "Find git repos/projects under a folder and bulk-add them as shortcuts (pick which in a checklist). Fast setup on a new PC.",
+      "phase": "maybe",
+      "status": "planned",
+      "size": "M",
+      "created": "2026-11-06",
+      "updated": "2026-11-06"
+    },
+    {
+      "id": "add-with-no-name-uses-cwd",
+      "section": 1,
+      "title": "add with no name uses cwd",
+      "body": "upex add (or upex add .) registers the current folder named after its basename. Most common add case, zero typing.",
+      "phase": "next",
+      "status": "planned",
+      "created": "2026-11-06",
+      "updated": "2026-11-06"
+    },
+    {
+      "id": "pinned-favorites",
+      "section": 1,
+      "title": "Pinned favorites",
+      "body": "Pin shortcuts to the top of the selector and web UI regardless of frecency. Some projects matter even when used rarely.",
+      "phase": "next",
+      "status": "planned",
+      "created": "2026-11-06",
+      "updated": "2026-11-06"
+    },
+    {
       "id": "open-in-explorer-default-app-vs-code-webstorm",
       "section": 2,
       "title": "Open in Explorer / default app / VS Code / WebStorm / terminal",
@@ -356,7 +389,7 @@
       "title": "upex web <name>",
       "body": "Open the project's GitHub page from its git remote.",
       "phase": "next",
-      "status": "planned",
+      "status": "done",
       "size": "S",
       "scope": [
         "cli"
@@ -370,7 +403,8 @@
         ]
       },
       "created": "2026-11-06",
-      "updated": "2026-11-06"
+      "updated": "2026-11-06",
+      "note": "upex web <name>: git remote origin to https (scp/ssh/https, creds dropped), CLI only, not a TUI opener"
     },
     {
       "id": "windows-terminal-tabs-and-panes",

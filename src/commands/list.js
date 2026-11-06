@@ -6,7 +6,7 @@
 import fs from 'node:fs';
 import nodePath from 'node:path';
 import chalk from 'chalk';
-import { loadLinks } from '../store.js';
+import { loadLinks, activeLinks, aliasesOf } from '../store.js';
 import { gitStatus } from '../git.js';
 import * as ui from '../ui.js';
 
@@ -23,9 +23,12 @@ export function registerList(program) {
     .alias('ls')
     .description('List all saved shortcuts (optionally filtered by tag)')
     .option('-g, --git', 'Show each folder\'s current git branch')
+    .option('--archived', 'List archived shortcuts instead (upex restore <name> brings one back)')
     .action((tag, options) => {
       const showGit = !!options.git;
-      const links = loadLinks();
+      const all = loadLinks();
+      const links = activeLinks(all, !!options.archived);
+      const archivedCount = options.archived ? 0 : Object.keys(all).length - Object.keys(links).length;
       let entries = Object.entries(links);
       if (tag) {
         entries = entries.filter(([, e]) => Array.isArray(e.tags) && e.tags.includes(tag));
@@ -33,12 +36,13 @@ export function registerList(program) {
 
       if (entries.length === 0) {
         ui.blank();
-        ui.info(tag ? `No shortcuts tagged "${tag}".` : 'No shortcuts saved. Use: upex add <name> [path]');
+        ui.info(tag ? `No shortcuts tagged "${tag}".` : options.archived ? 'No archived shortcuts.' : 'No shortcuts saved. Use: upex add <name> [path]');
+        if (archivedCount) ui.dim(`${archivedCount} archived (upex ls --archived)`);
         ui.blank();
         return;
       }
 
-      ui.heading(tag ? `Shortcuts tagged #${tag}` : 'Saved Shortcuts');
+      ui.heading(`${options.archived ? 'Archived' : 'Saved'} Shortcuts${tag ? ` tagged #${tag}` : ''}`);
 
       const header = [chalk.bold('#'), chalk.bold('NAME'), chalk.bold('APP'), chalk.bold('PATH')];
       if (showGit) header.push(chalk.bold('GIT'));
@@ -60,7 +64,9 @@ export function registerList(program) {
           const tags = Array.isArray(entry.tags) && entry.tags.length
             ? chalk.dim(entry.tags.join(', '))
             : chalk.dim('--');
-          const row = [chalk.dim(String(i + 1)), chalk.bold(name), appLabel, pathDisplay];
+          const aliases = aliasesOf(entry);
+          const nameCell = chalk.bold(name) + (aliases.length ? chalk.dim(` (${aliases.join(', ')})`) : '');
+          const row = [chalk.dim(String(i + 1)), nameCell, appLabel, pathDisplay];
           if (showGit) row.push(gitCell(filepath));
           row.push(tags, status);
           return row;
@@ -70,7 +76,8 @@ export function registerList(program) {
       ui.table(rows, { header: true });
       ui.blank();
       ui.separator();
-      ui.dim(`${entries.length} shortcut${entries.length === 1 ? '' : 's'}${tag ? ` tagged #${tag}` : ' total'}`);
+      ui.dim(`${entries.length} shortcut${entries.length === 1 ? '' : 's'}${tag ? ` tagged #${tag}` : ' total'}`
+        + (archivedCount ? `, ${archivedCount} archived (upex ls --archived)` : ''));
       ui.blank();
     });
 }
