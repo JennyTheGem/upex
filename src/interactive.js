@@ -8,13 +8,20 @@ import path from 'node:path';
 import readline from 'node:readline';
 import chalk from 'chalk';
 import Fuse from 'fuse.js';
-import { getInteractiveAppChoices, getAppMap, isTerminalApp, hasWindowsTerminal, defaultOpener, readSettings, setting } from './launcher.js';
-import { loadLinks, activeLinks, aliasesOf, takenError, frecency, removeLink, setLink, renameLink, loadWorkspaces, removeWorkspace, nameError, loadConfig, saveConfig } from './store.js';
+import { getInteractiveAppChoices, getAppMap, isTerminalApp, hasWindowsTerminal, defaultOpener, readSettings, setting, launchApp } from './launcher.js';
+import { loadLinks, activeLinks, aliasesOf, takenError, checkAliases, frecency, recordUse, removeLink, setLink, renameLink, loadWorkspaces, saveWorkspaces, removeWorkspace, nameError, loadConfig, saveConfig } from './store.js';
 import { describeEntry } from './commands/workspace.js';
 import * as ui from './ui.js';
 
 const MAX_VISIBLE_CHOICES = 8;
 const MAX_WIDTH = 100;
+const ALT_ON = '\x1b[?1049h';
+const ALT_OFF = '\x1b[?1049l';
+const HIDE_CURSOR = '\x1b[?25l';
+const SHOW_CURSOR = '\x1b[?25h';
+// SGR mouse reports, only while on the alt screen.
+const MOUSE_ON = '\x1b[?1000h\x1b[?1006h';
+const MOUSE_OFF = '\x1b[?1006l\x1b[?1000l';
 
 function buildChoices() {
   return Object.entries(activeLinks(loadLinks()))
@@ -80,10 +87,18 @@ const underlineHits = (s, hits = []) => [...s].map((ch, i) => (hits.some(([a, b]
 // Keeps the end of a too-long string, where the folder name is.
 const clipStart = (s, n) => (s.length <= n ? s : n <= 1 ? '…'.slice(0, n) : `…${s.slice(-(n - 1))}`);
 
+// Name clipped to the column with …; highlight ranges past the cut are dropped.
+export function clipName(name, width, hits = []) {
+  if (name.length <= width) return { text: name, hits };
+  const cut = Math.max(0, width - 1);
+  return { text: `${name.slice(0, cut)}…`, hits: hits.map(([a, b]) => [a, Math.min(b, cut - 1)]).filter(([a, b]) => a <= b) };
+}
+
 // One list row: "› name  path ..... #tags  badge". `style` = path | dim | plain.
 function renderRow({ sel, name, nameWidth, hits, text = '', style = 'path', right = '', cw }) {
-  const nm = chalk.bold(underlineHits(name, hits)) + ' '.repeat(Math.max(0, nameWidth - name.length));
-  const room = cw - 2 - Math.max(nameWidth, name.length) - 2 - (right ? vis(right) + 2 : 0);
+  const n = clipName(name, nameWidth, hits);
+  const nm = chalk.bold(underlineHits(n.text, n.hits)) + ' '.repeat(Math.max(0, nameWidth - n.text.length));
+  const room = cw - 2 - nameWidth - 2 - (right ? vis(right) + 2 : 0);
   const t = clipStart(text, Math.max(0, room));
   const cut = style === 'path' ? Math.max(t.lastIndexOf('/'), t.lastIndexOf('\\')) + 1 : 0;
   const body = sel || style === 'plain' ? t : style === 'dim' ? chalk.dim(t) : chalk.dim(t.slice(0, cut)) + t.slice(cut);
@@ -92,10 +107,79 @@ function renderRow({ sel, name, nameWidth, hits, text = '', style = 'path', righ
   return `  ${sel ? highlight(line) : line}`;
 }
 
+// "‹ sel ›" bold, others dim; scrolls around the selection with ‹… / …› edges when the row is wider than `width`.
+// `spans` (optional) gets { from, to, index } per visible part; an edge marker points at the hidden neighbour.
+export function optionRow(labels, sel, width, spans) {
+  const n = labels.length;
+  const at = Math.max(0, sel);
+  const size = (lo, hi) => labels.slice(lo, hi + 1).reduce((t, l, i) => t + l.length + (lo + i === sel ? 4 : 0), 0)
+    + 2 * (hi - lo) + (lo > 0 ? 4 : 0) + (hi < n - 1 ? 4 : 0);
+  let lo = at;
+  let hi = at;
+  for (let grew = true; grew;) {
+    grew = false;
+    if (hi < n - 1 && size(lo, hi + 1) <= width) { hi++; grew = true; }
+    if (lo > 0 && size(lo - 1, hi) <= width) { lo--; grew = true; }
+  }
+  const parts = [
+    lo > 0 && [lo - 1, chalk.dim('‹…')],
+    ...labels.slice(lo, hi + 1).map((l, i) => [lo + i, lo + i === sel ? chalk.bold(`‹ ${l} ›`) : chalk.dim(l)]),
+    hi < n - 1 && [hi + 1, chalk.dim('…›')],
+  ].filter(Boolean);
+  let col = 0;
+  for (const [index, p] of parts) {
+    spans?.push({ from: col, to: col + vis(p), index });
+    col += vis(p) + 2;
+  }
+  return parts.map(([, p]) => p).join('  ');
+}
+
+// First target under a 1-based mouse cell; the full-screen frame starts at row 1.
+export const hitTest = (targets, x, y) => targets.find(t => t.line === y - 1 && x - 1 >= t.from && x - 1 < t.to);
+
+// Row click: 'open' | 'select' | 'skip'. The selected row opens; so does a quick second click on the same line
+// (the list may have scrolled), unless the first one already opened. `last` = { y, at, opened } of the previous one.
+export function rowClick(last, y, now, onSelected) {
+  if (y === last.y && now - last.at < 400) return last.opened ? 'skip' : 'open';
+  return onSelected ? 'open' : 'select';
+}
+
+// "b;x;yM" press / "b;x;ym" release. click = left button released, wheel = -1 up / 1 down.
+function parseSgr(s) {
+  const m = /^(\d+);(\d+);(\d+)([Mm])$/.exec(s);
+  if (!m) return null;
+  const b = Number(m[1]);
+  const wheel = m[4] === 'M' && (b & 0xc2) === 64 ? (b & 1 ? 1 : -1) : 0;
+  return { x: Number(m[2]), y: Number(m[3]), wheel, click: m[4] === 'm' && (b & 0xe3) === 0 };
+}
+
+// readline splits a mouse report into keypresses: '\x1b[<' then one per char of "b;x;yM" (SGR), or '\x1b[M' + 3 (X10).
+// Feed every keypress through this: `pass` = a real key to handle, `event` = a finished report.
+// An Esc just before a report arrives glued to it ('\x1b\x1b[<').
+export function readMouse(state, key = {}) {
+  const seq = key.sequence || '';
+  if (seq.endsWith('\x1b[<')) return { state: '' };
+  if (seq.endsWith('\x1b[M')) return { state: 3 };
+  if (typeof state === 'number') return { state: state > 1 ? state - 1 : null };
+  if (typeof state !== 'string') return { state: null, pass: true };
+  if (/^[\d;]$/.test(seq) && state.length < 16) return { state: state + seq };
+  if (seq === 'M' || seq === 'm') return { state: null, event: parseSgr(state + seq) };
+  return { state: null, pass: true };
+}
+
+// Why a deleted { name, entry, ws? } can't come back, or null: its name or an alias was taken since.
+export function undoError({ name, entry, ws }, links, workspaces) {
+  if (ws) return Object.hasOwn(workspaces, name) ? `workspace "${name}" already exists.` : null;
+  return takenError(links, name) || checkAliases(links, name, aliasesOf(entry)).error || null;
+}
+
 function scrollHint(start, end, total) {
   const parts = [start > 0 && `↑ ${start} more`, end < total && `↓ ${total - end} more`].filter(Boolean);
   return parts.length ? chalk.dim(`    ${parts.join('   ')}`) : null;
 }
+
+// List rows that fit in `room` lines; one goes to the "↓ n more" hint when they don't all fit.
+export const listRows = (total, room) => (total <= room ? total : Math.max(3, room - 1));
 
 function getVisibleWindow(choices, selectedIndex, maxVisible = MAX_VISIBLE_CHOICES) {
   if (choices.length <= maxVisible) {
@@ -115,10 +199,19 @@ function getVisibleWindow(choices, selectedIndex, maxVisible = MAX_VISIBLE_CHOIC
 }
 
 const PROMPT_LABEL = {
-  edit: name => `new path for "${name}" (blank = cwd):`,
+  edit: name => `path for "${name}" (empty = cwd):`,
   rename: name => `rename "${name}" to:`,
   add: () => 'new shortcut name (path = cwd):',
 };
+
+// Input a prompt starts with: the current path (^e) or name (^r), so Enter on it changes nothing.
+export const prefill = (action, choice) => (action === 'edit' ? choice?.path : action === 'rename' ? choice?.name : '') || '';
+
+// Terminal tabs open next to upex in Windows Terminal, so the selector stays open. `wt` is lazy.
+export const staysOpen = (appKey, layout, wt) => isTerminalApp(appKey) && layout === 'tabs' && !!wt();
+
+// Why Enter can't open this folder shortcut, or null. Checks the disk again: the list can be stale.
+export const missingFlash = (c, exists = fs.existsSync) => (c.isApp || c.isUrl || exists(c.path) ? null : 'path missing, ^e to fix');
 
 const VIEWS = { shortcuts: 'Shortcuts', apps: 'Apps', workspaces: 'Workspaces', settings: 'Settings' };
 // Tab cycles these; Settings sits outside the cycle on Shift+Tab, so Tab from it goes to Shortcuts.
@@ -131,6 +224,7 @@ const SETTING_ROWS = [
   { key: 'paneSplit', label: 'Pane split', names: { auto: 'Auto', vertical: 'Side by side', horizontal: 'Stacked' } },
   { key: 'terminalShell', label: 'Shell', names: { cmd: 'cmd', powershell: 'PowerShell', pwsh: 'PowerShell 7', profile: 'WT profile' } },
   { key: 'defaultOpener', label: 'Default opener' },
+  { key: 'fullScreen', label: 'Full screen', names: { on: 'On', off: 'Off' } },
 ];
 // Pane split only matters for split panes.
 const visibleRows = s => SETTING_ROWS.filter(r => r.key !== 'paneSplit' || s.terminalLayout === 'panes');
@@ -143,6 +237,7 @@ function settingNote(key, s, wt) {
   if (key === 'startView') return 'The tab upex and upex ui open on.';
   if (key === 'sort') return 'Shortcut order here and in upex ui.';
   if (key === 'defaultOpener') return 'Opens folder shortcuts that have no opener of their own.';
+  if (key === 'fullScreen') return 'Whole terminal plus mouse, restored on exit. Off: inline, no mouse.';
   if (wt === null) return 'Windows only. Other systems use their own terminal.';
   if (key === 'terminalLayout') {
     return !wt && s.terminalLayout !== 'windows'
@@ -168,11 +263,15 @@ export function renderInteractiveView({
   action = null,
   inputBuffer = '',
   flash = '',
+  undo = false,
   settings = {},
   settingIndex = 0,
   wt = null,
   counts = {},
   width = 80,
+  height = 24,
+  maxList = Infinity,
+  targets = null, // optional out: clickable { line, from, to, tab | row | opener | setting [+ option] }
 }) {
   const isWs = view === 'workspaces';
   const isSettings = view === 'settings';
@@ -185,26 +284,35 @@ export function renderInteractiveView({
   const terminal = isTerminalApp(appChoices[selectedAppIndex]?.key);
 
   const lines = [''];
+  const hit = (line, from, to, t) => { targets?.push({ line, from, to, ...t }); return to; };
 
   // Header: name, tabs (active one highlighted), Settings on the right.
   const tab = (key) => {
     const n = counts[key] != null ? ` ${counts[key]}` : '';
     return key === view ? highlight(chalk.bold(` ${VIEWS[key]}${n} `)) : ` ${VIEWS[key]}${chalk.dim(n)} `;
   };
-  const headLeft = `  ${chalk.bold('upex')}   ${CYCLE.map(tab).join(' ')}`;
+  const headLead = `  ${chalk.bold('upex')}   `;
+  const headLeft = headLead + CYCLE.map(tab).join(' ');
   const headRight = `${tab('settings')} ${chalk.dim('S-Tab')}`;
-  lines.push(headLeft + ' '.repeat(Math.max(2, w - vis(headLeft) - vis(headRight))) + headRight);
+  const head = headLeft + ' '.repeat(Math.max(2, w - vis(headLeft) - vis(headRight))) + headRight;
+  let col = vis(headLead);
+  for (const key of CYCLE) col = hit(1, col, col + vis(tab(key)), { tab: key }) + 1;
+  hit(1, vis(head) - vis(headRight), vis(head) - vis(headRight) + vis(tab('settings')), { tab: 'settings' });
+  lines.push(head);
   lines.push('');
 
   // Prompt line: filter, or the live action (input / delete confirm).
   if (mode === 'input') {
-    lines.push(`  ${chalk.bold('›')} ${PROMPT_LABEL[action](currentChoice?.name || '')} ${inputBuffer}${chalk.dim('▏')}`);
+    const label = PROMPT_LABEL[action](clipName(currentChoice?.name || '', 24).text);
+    // Keep the end of a long value in view, where the cursor is.
+    lines.push(`  ${chalk.bold('›')} ${label} ${clipStart(inputBuffer, Math.max(1, cw - label.length - 4))}${chalk.dim('▏')}`);
   } else if (mode === 'confirm') {
     lines.push(chalk.yellow(`  ? delete ${isWs ? 'workspace ' : ''}"${currentChoice?.name}"?`) + chalk.dim('  y / n'));
   } else if (!isSettings) {
     lines.push(`  ${chalk.bold('›')} ${query ? `${query}${chalk.dim('▏')}` : chalk.dim('▏type to filter')}`);
   }
-  if (flash) lines.push(chalk.yellow(`    ${flash}`));
+  // A plain string is a warning; { text, ok: true } a success. One line, or rows below shift off the hit map.
+  if (flash) lines.push((flash.ok ? chalk.green : chalk.yellow)(`    ${String(flash.text ?? flash).replace(/\s*\n\s*/g, ' ')}`));
   lines.push(rule);
 
   const footer = (rows) => {
@@ -212,20 +320,37 @@ export function renderInteractiveView({
     return lines.join('\n');
   };
   const tabKey = ['tab', VIEWS[nextView(view)].toLowerCase()];
-  const nav = (open) => keyHint([['↵', open], ['↑↓', 'move'], tabKey, ['esc', 'quit']]);
+  const escKey = ['esc', mode !== 'browse' ? 'cancel' : query ? 'clear' : 'quit'];
+  const undoKey = undo && ['^z', 'undo'];
+  const nav = (open) => keyHint([['↵', open], ['↑↓', 'move'], tabKey, escKey]);
 
   if (isSettings) {
     const rows = visibleRows(settings);
     rows.forEach((row, i) => {
-      const opts = rowOptions(row, appChoices)
-        .map(([k, l]) => (k === settings[row.key] ? chalk.bold(`‹ ${l} ›`) : chalk.dim(l)))
-        .join('  ');
+      const opts = rowOptions(row, appChoices);
       const sel = i === settingIndex;
-      lines.push(`  ${sel ? '›' : ' '} ${(sel ? chalk.bold : chalk.dim)(row.label.padEnd(16))}${opts}`);
+      const spans = [];
+      const picker = optionRow(opts.map(([, l]) => l), opts.findIndex(([k]) => k === settings[row.key]), w - 20, spans);
+      for (const s of spans) hit(lines.length, 20 + s.from, 20 + s.to, { setting: i, option: s.index });
+      hit(lines.length, 0, w, { setting: i });
+      lines.push(`  ${sel ? '›' : ' '} ${(sel ? chalk.bold : chalk.dim)(row.label.padEnd(16))}${picker}`);
     });
     lines.push('', chalk.dim(`    ${settingNote(rows[settingIndex].key, settings, wt)}`));
     return footer([keyHint([['↑↓', 'setting'], ['←→', 'change (saved)'], tabKey, ['S-Tab', 'back'], ['esc', 'quit']])]);
   }
+
+  const openerSpans = [];
+  const openers = optionRow(appChoices.map(c => `${c.label}${isTerminalApp(c.key) && cmdCount > 1 ? ` ×${cmdCount}` : ''}`), selectedAppIndex, w - 13, openerSpans);
+  const foot = isWs ? [nav('open all'), keyHint([['^d', 'delete'], undoKey])]
+    : view === 'apps' ? [nav(currentChoice?.isUrl ? 'open in browser' : 'launch app'), keyHint([['^r', 'rename'], ['^d', 'delete'], undoKey])]
+      : [
+        `  ${chalk.dim('open with')}  ${openers}`,
+        '',
+        keyHint([['↵', 'open'], ['↑↓', 'move'], ['←→', 'opener'], terminal && ['S-↑↓', 'windows'], tabKey, escKey]),
+        keyHint([['^a', 'add'], ['^e', 'edit path'], ['^r', 'rename'], ['^d', 'delete'], undoKey]),
+      ];
+  // Typing: input keys replace the last two hint rows, same height so the list stays put.
+  if (mode === 'input') foot.splice(-2, 2, keyHint([['↵', 'save'], ['^u', 'clear'], ['esc', 'cancel']]), '');
 
   if (list.length === 0) {
     const empty = {
@@ -236,12 +361,15 @@ export function renderInteractiveView({
     lines.push(query ? chalk.yellow('    no matches') : chalk.dim(`    ${empty[view]}`));
   } else {
     const nameWidth = Math.min(24, Math.max(12, ...list.map(c => c.name.length)));
-    const { start, end } = getVisibleWindow(list, index);
+    // Rows left after the header and the footer (its rule included).
+    const room = height - lines.length - foot.length - 1;
+    const { start, end } = getVisibleWindow(list, index, Math.min(maxList, listRows(list.length, room)));
     for (let i = start; i < end; i++) {
       const c = list[i];
       const tags = c.tags?.length ? chalk.dim(`#${c.tags.join(' #')}`) : '';
       const kind = c.isCmd ? 'cmd' : c.isApp ? 'app' : c.isUrl ? 'url' : '';
       const badge = isWs ? '' : !c.exists ? chalk.red('missing') : chalk.dim(kind);
+      hit(lines.length, 0, w, { row: i });
       lines.push(renderRow({
         sel: i === index,
         name: c.name,
@@ -257,27 +385,9 @@ export function renderInteractiveView({
     if (more) lines.push(more);
   }
 
-  if (isWs) return footer([nav('open all'), keyHint([['^d', 'delete']])]);
-
-  if (view === 'apps') {
-    return footer([
-      nav(currentChoice?.isUrl ? 'open in browser' : 'launch app'),
-      keyHint([['^r', 'rename'], ['^d', 'delete']]),
-    ]);
-  }
-
-  const openers = appChoices
-    .map((choice, i) => {
-      const label = `${choice.label}${isTerminalApp(choice.key) && cmdCount > 1 ? ` ×${cmdCount}` : ''}`;
-      return i === selectedAppIndex ? chalk.bold(`‹ ${label} ›`) : chalk.dim(label);
-    })
-    .join('  ');
-  return footer([
-    `  ${chalk.dim('open with')}  ${openers}`,
-    '',
-    keyHint([['↵', 'open'], ['↑↓', 'move'], ['←→', 'opener'], terminal && ['S-↑↓', 'windows'], tabKey, ['esc', 'quit']]),
-    keyHint([['^a', 'add'], ['^e', 'edit path'], ['^r', 'rename'], ['^d', 'delete']]),
-  ]);
+  // The opener row is the first footer row, after its rule; "  open with  " is 13 wide.
+  if (view === 'shortcuts') for (const s of openerSpans) hit(lines.length + 1, 13 + s.from, 13 + s.to, { opener: s.index });
+  return footer(foot);
 }
 
 export async function runInteractiveMode({ preferredApp, stdin = process.stdin, stdout = process.stdout } = {}) {
@@ -314,11 +424,13 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
     let filteredWs = wsChoices;
     let wsIndex = 0;
     let cmdCount = 1;
-    let renderedLineCount = 0;
+    let frame = [];   // inline mode: lines drawn last time
+    let alt = false;  // on the alternate screen
     let mode = 'browse';   // 'browse' | 'input' | 'confirm'
     let action = null;     // 'edit' | 'rename' | 'add'
     let inputBuffer = '';
     let flash = '';
+    let undo = null; // last delete: { name, entry, ws? }
     let backView = view; // where Shift+Tab returns from Settings
     let settings = {};
     let settingIndex = 0;
@@ -327,13 +439,26 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
     let selectedAppIndex = Math.max(0, appIndex(preferredApp || fallback));
     // Until Left/Right (or --app) picks one, the opener follows the shortcut's default opener.
     let appPicked = !!preferredApp;
+    let targets = [];   // clickable areas of the last frame
+    let mouse = null;   // readMouse state
+    let lastClick = {}; // { y, at } for double-click
 
+    // Counts rows at the current width, so a resize that rewrapped the last frame still clears all of it.
     const clearRendered = () => {
-      if (renderedLineCount > 0) {
-        readline.moveCursor(stdout, 0, -renderedLineCount);
+      const cols = stdout.columns || 80;
+      const up = frame.reduce((n, l) => n + Math.max(1, Math.ceil(vis(l) / cols)), 0);
+      if (up > 0) {
+        readline.moveCursor(stdout, 0, -up);
         readline.clearScreenDown(stdout);
-        renderedLineCount = 0;
       }
+      frame = [];
+    };
+
+    const setFullScreen = (on) => {
+      if (on === alt) return;
+      if (on) clearRendered();
+      stdout.write(on ? ALT_ON + MOUSE_ON : MOUSE_OFF + ALT_OFF);
+      alt = on;
     };
 
     const redraw = () => {
@@ -341,9 +466,11 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
         const own = appIndex(filteredChoices[selectedIndex]?.opener);
         selectedAppIndex = own >= 0 ? own : Math.max(0, appIndex(fallback));
       }
-      // Clip to terminal width: a wrapped line occupies 2+ rows, which would
-      // desync renderedLineCount and leave stale rows behind on redraw.
+      // Clip to terminal width: a wrapped line takes 2+ rows and would leave stale rows behind.
       const width = Math.max(1, (stdout.columns || 80) - 1);
+      // Inline: the trailing newline takes a row, and the list keeps its old compact size.
+      const height = Math.max(1, (stdout.rows || 24) - (alt ? 0 : 1));
+      targets = [];
       const output = renderInteractiveView({
         query,
         choices: filteredChoices,
@@ -358,18 +485,26 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
         action,
         inputBuffer,
         flash,
+        undo: !!undo,
         settings,
         settingIndex,
         wt,
         counts: { shortcuts: allChoices.filter(inView('shortcuts')).length, apps: allChoices.filter(inView('apps')).length, workspaces: wsChoices.length },
         width,
+        height,
+        maxList: MAX_VISIBLE_CHOICES,
+        targets,
       });
-      const clipped = output.split('\n').map(line => ui.truncate(line, width));
+      // Never taller than the screen, or the top scrolls away and frames stack up.
+      const clipped = output.split('\n').slice(0, height).map(line => ui.truncate(line, width));
 
+      if (alt) {
+        stdout.write(`\x1b[H${clipped.join('\x1b[K\n')}\x1b[K\x1b[J`);
+        return;
+      }
       clearRendered();
-
       stdout.write(clipped.join('\n') + '\n');
-      renderedLineCount = clipped.length;
+      frame = clipped;
     };
 
     const updateFilter = () => {
@@ -385,26 +520,64 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
       }
     };
 
-    // Reload from disk after a mutation and try to keep `name` selected.
-    const rebuild = (name) => {
+    // Select these again when they're still in the filtered lists.
+    const reselect = (name, wsName) => {
+      const i = filteredChoices.findIndex(c => c.name === name);
+      if (i >= 0) selectedIndex = i;
+      const j = filteredWs.findIndex(c => c.name === wsName);
+      if (j >= 0) wsIndex = j;
+    };
+
+    // Reload from disk after a mutation and try to keep `name` / `wsName` selected.
+    const rebuild = (name, wsName) => {
       allChoices = buildChoices();
       choices = allChoices.filter(inView(view));
       wsChoices = buildWorkspaceChoices();
       updateFilter();
-      const idx = name ? filteredChoices.findIndex(c => c.name === name) : -1;
-      selectedIndex = idx >= 0 ? idx : Math.min(selectedIndex, Math.max(0, filteredChoices.length - 1));
+      reselect(name, wsName);
+    };
+
+    const clearQuery = () => {
+      const keep = [filteredChoices[selectedIndex]?.name, filteredWs[wsIndex]?.name];
+      query = '';
+      updateFilter();
+      reselect(...keep);
+    };
+
+    const done = text => { flash = { text, ok: true }; };
+
+    // Open in new terminal tab(s) without leaving the selector.
+    const openInTab = (c, appKey) => {
+      const n = c.isCmd ? 1 : cmdCount;
+      const r = c.isCmd ? launchApp('cmd', os.homedir(), 1, c.app) : launchApp(appKey, c.path, n);
+      if (!r.ok) { flash = r.message.replace(/\.$/, ''); return; }
+      recordUse(c.name);
+      rebuild(c.name);
+      done(`opened "${c.name}" in ${n > 1 ? `${n} new tabs` : 'a new tab'}`);
+    };
+    const tabsOn = appKey => staysOpen(appKey, setting('terminalLayout'), hasWindowsTerminal);
+
+    // Safety net: a crash must not leave the terminal on the alt screen or without a cursor.
+    const onExit = () => {
+      const s = (alt ? MOUSE_OFF + ALT_OFF : '') + SHOW_CURSOR;
+      try { fs.writeSync(stdout.fd, s); } catch { stdout.write(s); }
     };
 
     const cleanup = () => {
       stdin.removeListener('keypress', onKeypress);
+      stdout.removeListener('resize', onResize);
+      process.removeListener('exit', onExit);
+      // Mouse off while still raw, so a late report can't land in the shell.
+      setFullScreen(false);
       if (stdin.isTTY) {
         stdin.setRawMode(false);
       }
       stdin.pause();
+      stdout.write(SHOW_CURSOR);
     };
 
     const finish = (result) => {
-      clearRendered();
+      if (!alt) clearRendered();
       cleanup();
       resolve(result);
     };
@@ -416,7 +589,7 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
 
     const startAction = (name) => {
       action = name;
-      inputBuffer = '';
+      inputBuffer = prefill(name, filteredChoices[selectedIndex]);
       mode = 'input';
     };
 
@@ -431,6 +604,7 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
         if (taken) { flash = taken.replace(/\.$/, ''); return false; }
         setLink(buf, { path: process.cwd() });
         rebuild(buf);
+        done(`added "${buf}"`);
         return true;
       }
 
@@ -438,12 +612,15 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
         const resolved = buf ? path.resolve(buf) : process.cwd();
         if (!fs.existsSync(resolved)) { flash = 'path not found'; return false; }
         const links = loadLinks();
+        if (links[target]?.path === resolved) return true;
         setLink(target, { ...(links[target] || {}), path: resolved });
         rebuild(target);
+        done(`"${target}" now points to ${tidyPath(resolved)}`);
         return true;
       }
 
       if (action === 'rename') {
+        if (buf === target) return true;
         const bad = nameError(buf);
         if (bad) { flash = bad.toLowerCase().replace(/\.$/, ''); return false; }
         const result = renameLink(target, buf);
@@ -452,10 +629,73 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
           return false;
         }
         rebuild(buf);
+        done(`renamed "${target}" to "${buf}"`);
         return true;
       }
 
       return true;
+    };
+
+    const switchTo = (to) => {
+      if (to === 'settings') {
+        backView = view;
+        settings = readSettings();
+        // The pane split row may have gone since last time (layout changed elsewhere).
+        settingIndex = Math.min(settingIndex, visibleRows(settings).length - 1);
+        wt = hasWindowsTerminal();
+      }
+      view = to;
+      query = '';
+      choices = allChoices.filter(inView(view));
+      selectedIndex = 0;
+      updateFilter();
+    };
+
+    const chooseSetting = (row, next) => {
+      settings = { ...settings, [row.key]: next };
+      saveConfig({ ...loadConfig(), [row.key]: next });
+      if (row.key === 'defaultOpener') fallback = next;
+      if (row.key === 'sort') rebuild();
+      if (row.key === 'fullScreen') setFullScreen(next === 'on');
+    };
+
+    const clamp = (i, n) => Math.max(0, Math.min(i, n - 1));
+
+    // Mouse is only on in full screen; ignored while typing or confirming.
+    const handleMouse = ({ x, y, wheel, click }) => {
+      if (!alt || mode !== 'browse') return;
+      if (wheel) {
+        if (view === 'settings') settingIndex = clamp(settingIndex + wheel, visibleRows(settings).length);
+        else if (view === 'workspaces') wsIndex = clamp(wsIndex + wheel, filteredWs.length);
+        else selectedIndex = clamp(selectedIndex + wheel, filteredChoices.length);
+        redraw();
+        return;
+      }
+      const t = click && hitTest(targets, x, y);
+      if (!t) return;
+      const ws = view === 'workspaces';
+      const act = t.row != null && rowClick(lastClick, y, Date.now(), t.row === (ws ? wsIndex : selectedIndex));
+      // Second half of a double-click that already opened: keep its flash.
+      if (act === 'skip') return;
+      flash = '';
+      if (t.tab) {
+        if (t.tab !== view) switchTo(t.tab);
+      } else if (act) {
+        if (act === 'open') handleKey(undefined, { name: 'return' });
+        else if (act === 'select' && ws) wsIndex = t.row;
+        else if (act === 'select') selectedIndex = t.row;
+        // Stamped after opening: a tab launch blocks and the second click queues behind it.
+        lastClick = { y, at: Date.now(), opened: act === 'open' };
+        if (act === 'open') return;
+      } else if (t.opener != null) {
+        appPicked = true;
+        selectedAppIndex = t.opener;
+      } else if (t.setting != null) {
+        settingIndex = t.setting;
+        const row = visibleRows(settings)[t.setting];
+        if (t.option != null) chooseSetting(row, rowOptions(row, appChoices)[t.option][0]);
+      }
+      redraw();
     };
 
     const handleKey = (str, key = {}) => {
@@ -471,11 +711,20 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
       if (mode === 'confirm') {
         if (key.name === 'y' && view === 'workspaces') {
           const victim = filteredWs[wsIndex];
-          if (victim) removeWorkspace(victim.name);
+          const entry = victim && loadWorkspaces()[victim.name];
+          if (entry) {
+            removeWorkspace(victim.name);
+            undo = { name: victim.name, entry, ws: true };
+            done(`deleted workspace "${victim.name}" (^z undo)`);
+          }
           rebuild();
         } else if (key.name === 'y') {
           const victim = filteredChoices[selectedIndex];
-          if (victim) removeLink(victim.name);
+          const entry = victim && loadLinks()[victim.name];
+          if (entry && removeLink(victim.name)) {
+            undo = { name: victim.name, entry };
+            done(`deleted "${victim.name}" (^z undo)`);
+          }
           rebuild();
         }
         mode = 'browse';
@@ -497,8 +746,8 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
           redraw();
           return;
         }
-        if (key.name === 'backspace') {
-          inputBuffer = inputBuffer.slice(0, -1);
+        if (key.name === 'backspace' || (key.ctrl && key.name === 'u')) {
+          inputBuffer = key.name === 'u' ? '' : inputBuffer.slice(0, -1);
           redraw();
           return;
         }
@@ -510,6 +759,12 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
       }
 
       // ── Browse mode ──
+      // Esc clears a typed filter first, then quits.
+      if (key.name === 'escape' && query) {
+        clearQuery();
+        redraw();
+        return;
+      }
       if (key.name === 'escape') {
         stdout.write('\n');
         finish({ status: 'cancelled' });
@@ -517,19 +772,7 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
       }
 
       if (key.name === 'tab') {
-        const to = !key.shift ? nextView(view) : view === 'settings' ? backView : 'settings';
-        if (to === 'settings') {
-          backView = view;
-          settings = readSettings();
-          // The pane split row may have gone since last time (layout changed elsewhere).
-          settingIndex = Math.min(settingIndex, visibleRows(settings).length - 1);
-          wt = hasWindowsTerminal();
-        }
-        view = to;
-        query = '';
-        choices = allChoices.filter(inView(view));
-        selectedIndex = 0;
-        updateFilter();
+        switchTo(!key.shift ? nextView(view) : view === 'settings' ? backView : 'settings');
         redraw();
         return;
       }
@@ -546,13 +789,26 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
           const row = rows[settingIndex];
           const keys = rowOptions(row, appChoices).map(([k]) => k);
           const at = Math.max(0, keys.indexOf(settings[row.key]));
-          const next = keys[(at + (key.name === 'left' ? keys.length - 1 : 1)) % keys.length];
-          settings = { ...settings, [row.key]: next };
-          saveConfig({ ...loadConfig(), [row.key]: next });
-          if (row.key === 'defaultOpener') fallback = next;
-          if (row.key === 'sort') rebuild();
+          chooseSetting(row, keys[(at + (key.name === 'left' ? keys.length - 1 : 1)) % keys.length]);
           redraw();
         }
+        return;
+      }
+
+      // Undo the last delete (either kind) unless its name was taken since.
+      if (key.ctrl && key.name === 'z') {
+        if (!undo) return;
+        const err = undoError(undo, loadLinks(), loadWorkspaces());
+        if (err) {
+          flash = `can't undo, ${err.replace(/\.$/, '')}`;
+        } else {
+          if (undo.ws) saveWorkspaces({ ...loadWorkspaces(), [undo.name]: undo.entry });
+          else setLink(undo.name, undo.entry);
+          rebuild(undo.ws ? null : undo.name, undo.ws ? undo.name : null);
+          done(`restored "${undo.name}"`);
+          undo = null;
+        }
+        redraw();
         return;
       }
 
@@ -604,6 +860,7 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
 
         // App and URL shortcuts launch directly, ignore the opener selector
         if (selected.isApp || selected.isUrl) {
+          if (selected.isCmd && tabsOn('cmd')) { openInTab(selected, 'cmd'); redraw(); return; }
           finish({
             status: 'selected',
             name: selected.name,
@@ -612,7 +869,17 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
           return;
         }
 
+        // A missing folder would only end in an error after exit: stay and say how to fix it.
+        const missing = missingFlash(selected);
+        if (missing) {
+          rebuild(selected.name);
+          flash = missing;
+          redraw();
+          return;
+        }
+
         const appKey = appChoices[selectedAppIndex]?.key || fallback;
+        if (tabsOn(appKey)) { openInTab(selected, appKey); redraw(); return; }
         finish({
           status: 'selected',
           name: selected.name,
@@ -681,23 +948,32 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
     };
 
     // Store errors in a handler must reject (bin/upex.js prints them), not crash uncaught.
-    const onKeypress = (str, key) => {
+    const guard = fn => (...args) => {
       try {
-        handleKey(str, key);
+        fn(...args);
       } catch (error) {
         fail(error);
       }
     };
+    const onKeypress = guard((str, key) => {
+      const m = readMouse(mouse, key);
+      mouse = m.state;
+      if (m.event) handleMouse(m.event);
+      if (m.pass) handleKey(str, key);
+    });
+    const onResize = guard(redraw);
 
     readline.emitKeypressEvents(stdin);
     stdin.setRawMode(true);
     stdin.resume();
     stdin.on('keypress', onKeypress);
+    stdout.on('resize', onResize);
+    process.on('exit', onExit);
 
-    try {
+    guard(() => {
+      setFullScreen(setting('fullScreen') === 'on');
+      stdout.write(HIDE_CURSOR);
       redraw();
-    } catch (error) {
-      fail(error);
-    }
+    })();
   });
 }

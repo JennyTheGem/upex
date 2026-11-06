@@ -93,7 +93,7 @@ const INTERACTIVE_APP_KEYS = [
 // Openers that open terminal windows (and so take a window count).
 export const isTerminalApp = key => key === 'cmd' || key === 'claude';
 
-// Settings in config.json; the first value is the default. Start view and sort are shared by the selector and upex ui.
+// Settings in config.json; the first value is the default. Start view and sort are shared by the selector and upex ui; fullScreen is selector only.
 // Layout: separate windows, or tabs/panes in one Windows Terminal window. Shell 'profile' = wt default profile.
 export const SETTINGS = {
   startView: ['shortcuts', 'apps', 'workspaces'],
@@ -101,6 +101,7 @@ export const SETTINGS = {
   terminalLayout: ['windows', 'tabs', 'panes'],
   paneSplit: ['auto', 'vertical', 'horizontal'],
   terminalShell: ['cmd', 'powershell', 'pwsh', 'profile'],
+  fullScreen: ['on', 'off'],
 };
 export const setting = (key, config = loadConfig()) => (SETTINGS[key].includes(config[key]) ? config[key] : SETTINGS[key][0]);
 // Is wt on PATH? null off Windows, where these settings don't apply.

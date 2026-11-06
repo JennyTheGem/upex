@@ -6,7 +6,7 @@ a personal CLI to register named aliases for folder/app paths and instantly open
 
 Open work only. Full item: `upgo show <id>`. Any slice: `upgo list --phase later,wayLater,maybe`, `--status done,dropped`, `--section <n>`, `--search <text>`.
 
-Closed sections: §5 Platform support · §6 Quality · §8 Distribution
+Closed sections: §5 Platform support · §8 Distribution
 
 ## 1. Shortcut management
 
@@ -14,6 +14,8 @@ Closed sections: §5 Platform support · §6 Quality · §8 Distribution
 - `upex-stats` upex stats (next)
 - `add-with-no-name-uses-cwd` add with no name uses cwd (next)
 - `pinned-favorites` Pinned favorites (next)
+- `temporary-shortcuts` Temporary shortcuts (next)
+- `upex-undo` upex undo (next)
 - Plus 3 maybe: `upgo list --section 1 --phase maybe`
 
 ## 2. Opening
@@ -23,10 +25,16 @@ Closed sections: §5 Platform support · §6 Quality · §8 Distribution
 ## 3. Resolution & UX
 
 - `upex-config-get-set` upex config get/set (now)
+- `tui-rough-spots` TUI rough spots after the critique fixes (next)
+- `open-upex-ui-from-the-tui` Open upex ui from the TUI (now)
 
 ## 4. Shell integration
 
-- Plus 1 maybe: `upgo list --section 4 --phase maybe`
+- Plus 2 maybe: `upgo list --section 4 --phase maybe`
+
+## 6. Quality
+
+- Plus 1 maybe: `upgo list --section 6 --phase maybe`
 
 ## 7. Web UI
 

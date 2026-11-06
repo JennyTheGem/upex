@@ -9,7 +9,15 @@ import os from 'node:os';
 import path from 'node:path';
 import cp from 'node:child_process';
 import { syncBuiltinESMExports } from 'node:module';
-import { resolveName, resolveTarget } from '../src/fuzzy.js';
+
+// Temp home before anything loads store.js (it captures ~/.upex at import).
+const home = fs.mkdtempSync(path.join(os.tmpdir(), 'upex-edges-'));
+process.env.HOME = process.env.USERPROFILE = home;
+process.env.LOCALAPPDATA = process.env.ProgramFiles = process.env['ProgramFiles(x86)'] = home;
+delete process.env.WEBSTORM_PATH;
+const { resolveName, resolveTarget } = await import('../src/fuzzy.js');
+const { CONFIG_FILE } = await import('../src/store.js');
+assert.ok(CONFIG_FILE.startsWith(home), 'store uses the temp home');
 
 // -- resolveName / resolveTarget edge cases --
 const links = { web: {}, 'a/b': {}, notes: {}, 'my app': {} };
@@ -31,12 +39,8 @@ assert.deepEqual(resolveTarget('notes\\\\x', links), { name: 'notes', exact: tru
 assert.equal(resolveTarget('zz/src', links), null, 'unknown head -> null');
 assert.equal(resolveTarget('toString/x', links), null, 'prototype head is not a shortcut');
 
-// -- launcher setup: temp home before store.js loads, then fake child_process --
-const home = fs.mkdtempSync(path.join(os.tmpdir(), 'upex-edges-'));
-process.env.HOME = process.env.USERPROFILE = home;
-process.env.LOCALAPPDATA = process.env.ProgramFiles = process.env['ProgramFiles(x86)'] = home;
-delete process.env.WEBSTORM_PATH;
-fs.mkdirSync(path.join(home, '.upex'));
+// -- launcher setup: fake child_process --
+fs.mkdirSync(path.join(home, '.upex'), { recursive: true });
 const configFile = path.join(home, '.upex', 'config.json');
 const setConfig = (c = {}) => fs.writeFileSync(configFile, JSON.stringify(c));
 setConfig();

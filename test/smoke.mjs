@@ -8,6 +8,8 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import http from 'node:http';
+import readline from 'node:readline';
+import { PassThrough } from 'node:stream';
 import { spawn, spawnSync, execSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { frecency, pruneBroken, mergeLinks, lastUsedName, nameError, takenError, checkAliases, aliasClashes } from '../src/store.js';
@@ -17,7 +19,8 @@ import { normalizeUrl, caretEscape, wtCommandLine, setting, shellCommand, defaul
 import { parseTags } from '../src/commands/add.js';
 import { truncate } from '../src/ui.js';
 import { applyShortcut, cleanEntries } from '../src/commands/web.js';
-import { renderInteractiveView, inView, tidyPath, byOrder } from '../src/interactive.js';
+import { renderInteractiveView, inView, tidyPath, byOrder, optionRow, listRows, readMouse, hitTest, rowClick, undoError, clipName, prefill, missingFlash, staysOpen } from '../src/interactive.js';
+import chalk from 'chalk';
 import { resolveTarget, resolveName, suggestNames } from '../src/fuzzy.js';
 
 // -- frecency: recent + used beats old + unused; unused = 0 --
@@ -278,6 +281,112 @@ assert.equal(tidyPath(path.join(os.homedir(), 'x')), path.join('~', 'x'), 'home 
 assert.equal(tidyPath(os.homedir() + 'x'), os.homedir() + 'x', 'home prefix of another name untouched');
 if (os.platform() === 'win32') assert.equal(tidyPath(os.homedir().toUpperCase() + '\\x'), '~\\x', 'windows: home match ignores case');
 
+// -- fit the terminal: option rows scroll around the selection, the list fits the height --
+const labels = ['Explorer', 'VS Code', 'cmd', 'Claude', 'WebStorm', 'PowerShell', 'Custom'];
+assert.equal(strip(optionRow(labels, 1, 200)), 'Explorer  ‹ VS Code ›  cmd  Claude  WebStorm  PowerShell  Custom', 'wide row shows all');
+const mid = strip(optionRow(labels, 4, 30));
+assert.ok(mid.includes('‹ WebStorm ›') && mid.startsWith('‹…') && mid.endsWith('…›') && mid.length <= 30, 'narrow row keeps the selection, marks both edges');
+assert.ok(strip(optionRow(labels, 6, 30)).endsWith('‹ Custom ›') && !strip(optionRow(labels, 0, 30)).startsWith('‹…'), 'no marker past the ends');
+assert.ok(strip(optionRow(labels, -1, 30)).startsWith('Explorer'), 'unknown value anchors at the start');
+assert.equal(listRows(5, 10), 5, 'all rows fit');
+assert.equal(listRows(20, 10), 9, 'one row left for the scroll hint');
+assert.equal(listRows(20, 1), 3, 'at least 3 rows');
+const many = { ...viewArgs, choices: Array.from({ length: 30 }, (_, i) => ({ name: `p${i}`, path: 'P', exists: true })) };
+for (const height of [16, 30]) assert.equal(renderInteractiveView({ ...many, height }).split('\n').length, height, `fills height ${height} exactly`);
+assert.ok(renderInteractiveView({ ...many, height: 40, maxList: 8 }).includes('↓ 22 more'), 'inline cap keeps 8 rows');
+const wideOpeners = { ...viewArgs, width: 40, appChoices: labels.map(label => ({ key: label, label })), selectedAppIndex: 6 };
+assert.ok(strip(renderInteractiveView(wideOpeners)).split('\n').some(l => l.includes('open with') && l.includes('‹ Custom ›') && l.length <= 40), 'opener row keeps the selection in width');
+assert.equal(setting('fullScreen', {}), 'on', 'full screen on by default');
+assert.equal(setting('fullScreen', { fullScreen: 'off' }), 'off', 'full screen can be turned off');
+assert.ok(strip(renderInteractiveView({ ...setArgs, settings: { ...setArgs.settings, fullScreen: 'off' } })).includes('Full screen     On  ‹ Off ›'), 'full screen row');
+
+// -- mouse: SGR reports through real readline never leak into keys; the hit map follows scroll and option windows --
+const feed = async (...chunks) => {
+  const s = new PassThrough();
+  readline.emitKeypressEvents(s);
+  let state = null;
+  const keys = [];
+  const events = [];
+  s.on('keypress', (str, key) => {
+    const r = readMouse(state, key);
+    state = r.state;
+    if (r.event) events.push(r.event);
+    if (r.pass) keys.push(str ?? key.name);
+  });
+  for (const c of chunks) { s.write(c); await new Promise(r => setImmediate(r)); }
+  return { keys: keys.join(''), events };
+};
+const fed = await feed('a\x1b[<0;12;5M\x1b[<0;1', '2;5mb', '\x1b[<64;3;9M\x1b[<65;3;9M\x1b[<2;1;1m', '\x1b[<0;1x', '\x1b[M !!c');
+assert.equal(fed.keys, 'abxc', 'only real keys pass: split, broken and X10 reports are swallowed');
+assert.deepEqual(fed.events.map(e => [e.x, e.y, e.wheel, e.click]), [[12, 5, 0, false], [12, 5, 0, true], [3, 9, -1, false], [3, 9, 1, false], [1, 1, 0, false]], 'press, left release = click, wheel up/down, right release');
+const escFed = await feed('\x1b', '\x1b[<65;3;9M', 'x');
+assert.ok(escFed.keys === 'x' && escFed.events.length === 1, 'esc right before a report: the report is not typed');
+assert.deepEqual([rowClick({}, 5, 0, true), rowClick({}, 5, 0, false), rowClick({ y: 5, at: 0 }, 5, 300, false), rowClick({ y: 5, at: 0, opened: true }, 5, 300, true), rowClick({ y: 5, at: 0, opened: true }, 5, 900, true), rowClick({ y: 4, at: 0, opened: true }, 5, 300, true)],
+  ['open', 'select', 'open', 'skip', 'open', 'open'], 'click selected opens, double-click opens once');
+const rowsOf = a => strip(renderInteractiveView(a)).split('\n');
+const twoLine = { ...viewArgs, height: 20, flash: 'Command "claude" not found.\nInstall it.' };
+assert.ok(rowsOf(twoLine).length === rowsOf({ ...twoLine, flash: 'x' }).length && rowsOf(twoLine).includes('    Command "claude" not found. Install it.'), 'multi-line flash stays one row');
+const at = (args, x, y) => { const targets = []; renderInteractiveView({ ...args, targets }); return hitTest(targets, x, y); };
+const tabArgs = { ...viewArgs, counts: { shortcuts: 1, apps: 2, workspaces: 0 } };
+const head = strip(renderInteractiveView(tabArgs)).split('\n')[1];
+assert.equal(at(tabArgs, head.indexOf('Apps') + 1, 2)?.tab, 'apps', 'click a tab');
+assert.equal(at(tabArgs, head.indexOf('Settings') + 1, 2)?.tab, 'settings', 'click the Settings tab');
+assert.equal(at(tabArgs, 4, 2), undefined, 'click on the name is nothing');
+const scrolled = { ...many, height: 20, selectedIndex: 15 };
+const rows = strip(renderInteractiveView(scrolled)).split('\n');
+assert.equal(at(scrolled, 3, rows.findIndex(l => l.includes(' p13 ')) + 1)?.row, 13, 'list row maps through the scroll window');
+const narrow = { ...wideOpeners, selectedAppIndex: 3, width: 50 };
+const openRow = strip(renderInteractiveView(narrow)).split('\n').findIndex(l => l.includes('open with')) + 1;
+assert.equal(at(narrow, 15, openRow)?.opener, 1, 'the ‹… marker steps to the hidden neighbour');
+assert.equal(at(narrow, 28, openRow)?.opener, 3, 'click an opener');
+assert.equal(at(narrow, 16, openRow), undefined, 'gap between options is nothing');
+const setLines = strip(renderInteractiveView(setArgs)).split('\n');
+const sortLine = setLines.findIndex(l => l.includes('Sort')) + 1;
+assert.deepEqual([at(setArgs, setLines[sortLine - 1].indexOf('Most used') + 1, sortLine)].map(t => [t.setting, t.option]), [[1, 0]], 'click a settings option');
+assert.equal(at(setArgs, 5, sortLine)?.option, undefined, 'click a settings label just picks the row');
+
+// -- esc clears a filter first, success flash is green, ^z undo hint and restore checks --
+const v = (a) => strip(renderInteractiveView({ ...viewArgs, ...a }));
+assert.ok(v({}).includes('esc quit') && v({ query: 's' }).includes('esc clear') && v({ query: 's', mode: 'input', action: 'add' }).includes('esc cancel'), 'esc hint says what esc does');
+assert.ok(v({ view: 'workspaces', query: 'd' }).includes('esc clear'), 'workspaces too');
+assert.ok(!v({}).includes('^z') && v({ undo: true }).includes('^z undo') && v({ view: 'apps', undo: true }).includes('^z undo'), '^z hint only while undo is available');
+const lvl = chalk.level;
+chalk.level = 1;
+assert.ok(renderInteractiveView({ ...viewArgs, flash: { text: 'added "x"', ok: true } }).includes(chalk.green('    added "x"')), 'success flash is green');
+assert.ok(renderInteractiveView({ ...viewArgs, flash: 'path not found' }).includes(chalk.yellow('    path not found')), 'plain flash stays yellow');
+chalk.level = lvl;
+const gone = { name: 'old', entry: { path: 'P', aliases: ['o'] } };
+assert.equal(undoError(gone, { other: { path: 'Q' } }, {}), null, 'free name restores');
+assert.match(undoError(gone, { old: { path: 'Q' } }, {}), /already exists/, 'refused when the name was reused');
+assert.match(undoError(gone, { x: { path: 'Q', aliases: ['old'] } }, {}), /alias of x/, 'refused when the name became an alias');
+assert.match(undoError(gone, { x: { path: 'Q', aliases: ['o'] } }, {}), /alias of x/, 'refused when its alias was taken');
+assert.equal(undoError({ name: 'dev', entry: [], ws: true }, { dev: {} }, {}), null, 'workspace names are their own namespace');
+assert.match(undoError({ name: 'dev', entry: [], ws: true }, {}, { dev: [] }), /already exists/, 'workspace refused when reused');
+const zs = new PassThrough();
+readline.emitKeypressEvents(zs);
+const zkey = await new Promise(r => { zs.once('keypress', (_, k) => r(k)); zs.write('\x1a'); });
+assert.ok(zkey.ctrl && zkey.name === 'z', 'Ctrl+Z arrives as a ctrl z keypress');
+
+// -- no dead ends: long names clip, prompts start prefilled, a missing path keeps the selector open --
+assert.deepEqual(clipName('abcdefghij', 5, [[0, 1], [3, 6], [8, 9]]), { text: 'abcd…', hits: [[0, 1], [3, 3]] }, 'clip keeps hits inside the cut');
+assert.deepEqual(clipName('abc', 5, [[0, 2]]), { text: 'abc', hits: [[0, 2]] }, 'short name untouched');
+const longName = strip(renderInteractiveView({ ...viewArgs, selectedIndex: 1, choices: [{ name: 'n'.repeat(40), path: 'P1', exists: true }, { name: 'short', path: 'P2', exists: true }] })).split('\n');
+const p1 = longName.find(l => l.includes('P1'));
+assert.ok(p1.includes(`${'n'.repeat(23)}…  P1`) && p1.indexOf('P1') === longName.find(l => l.includes('P2')).indexOf('P2'), 'long name clipped, path column aligned');
+assert.deepEqual([prefill('edit', { name: 'n', path: 'C:/x' }), prefill('rename', { name: 'n', path: 'C:/x' }), prefill('add', { name: 'n' })], ['C:/x', 'n', ''], 'edit/rename prefill, add starts empty');
+const typing = v({ mode: 'input', action: 'rename', inputBuffer: 's', height: 20 });
+assert.ok(typing.includes('rename "s" to: s▏') && typing.includes('^u clear') && !typing.includes('^a add'), 'rename prompt prefilled, input keys shown');
+assert.equal(typing.split('\n').length, v({ height: 20 }).split('\n').length, 'typing keeps the frame height');
+const deep = v({ mode: 'input', action: 'edit', inputBuffer: `C:/${'d/'.repeat(60)}leaf`, width: 60 }).split('\n').find(l => l.includes('path for'));
+assert.ok(deep.includes('(empty = cwd): …') && deep.endsWith('leaf▏') && deep.length <= 60, 'long input keeps its end in view');
+assert.equal(missingFlash({ path: '/gone' }, () => false), 'path missing, ^e to fix', 'missing folder flagged');
+assert.equal(missingFlash({ path: os.tmpdir() }), null, 'existing folder opens (checked on disk)');
+assert.equal(staysOpen('cmd', 'tabs', () => true), true, 'terminal tabs keep the selector open');
+assert.equal(staysOpen('cmd', 'tabs', () => null) || staysOpen('cmd', 'windows', () => true) || staysOpen('vscode', 'tabs', () => true), false, 'no wt, windows layout or a non-terminal opener still exits');
+assert.equal(missingFlash({ path: 'x.exe', isApp: true }, () => false), null, 'apps are not folder checks');
+const ukey = await new Promise(r => { zs.once('keypress', (_, k) => r(k)); zs.write('\x15'); });
+assert.ok(ukey.ctrl && ukey.name === 'u', 'Ctrl+U arrives as a ctrl u keypress');
+
 // -- applyShortcut: add, rename in place, clashes, path checks --
 const yes = () => true;
 const base = { a: { path: path.resolve('/A') }, b: { url: 'x.dev', tags: ['t'] } };
@@ -401,7 +510,7 @@ try {
   assert.equal(cfg2.paneSplit, 'horizontal', 'refused request saved nothing, later one did');
   assert.equal(cfg2.defaultOpener, 'vscode', 'default opener stored as its key');
   const st2 = await (await fetch(base + '/api/state', { headers: { 'x-upex-token': token } })).json();
-  assert.deepEqual(st2.settings, { startView: 'apps', sort: 'name', terminalLayout: 'panes', paneSplit: 'horizontal', terminalShell: 'powershell', defaultOpener: 'vscode' }, 'state reports settings');
+  assert.deepEqual(st2.settings, { startView: 'apps', sort: 'name', terminalLayout: 'panes', paneSplit: 'horizontal', terminalShell: 'powershell', fullScreen: 'on', defaultOpener: 'vscode' }, 'state reports settings');
   assert.deepEqual(Object.keys(cfg2.workspaces), ['work'], 'settings save keeps workspaces');
   const note = path.join(webHome, 'note.txt');
   fs.writeFileSync(note, '');

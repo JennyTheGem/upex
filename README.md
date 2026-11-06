@@ -203,10 +203,11 @@ Run `upex` with no arguments to open the interactive selector. Shortcuts are ord
 - `Enter` -- open the selected shortcut in the selected app
 - Type -- fuzzy-filter the list
 - `Ctrl+A` -- add a shortcut for the current directory
-- `Ctrl+E` -- edit the selected shortcut's path
-- `Ctrl+R` -- rename the selected shortcut
-- `Ctrl+D` -- delete the selected shortcut (confirm with `y`)
-- `Esc` -- cancel
+- `Ctrl+E` -- edit the selected shortcut's path (starts filled in, `Ctrl+U` clears it)
+- `Ctrl+R` -- rename the selected shortcut (starts filled in)
+- `Ctrl+D` -- delete the selected shortcut (confirm with `y`), `Ctrl+Z` undoes the last delete
+- `Esc` -- clear the filter, then quit
+- Mouse (full screen) -- click a tab, opener or setting; click a row to select it, again or double-click to open; the wheel moves the selection
 
 ## Web UI
 
@@ -310,10 +311,11 @@ Settings, also on the Settings tab of `upex ui` and the selector (`Shift+Tab`):
 
 - `"startView"`: the tab the selector and `upex ui` open on. `"shortcuts"` (default), `"apps"` or `"workspaces"`.
 - `"sort"`: shortcut order in the selector and `upex ui`. `"recent"` (default, most used first) or `"name"` (A to Z).
-- `"terminalLayout"` (Windows): how several terminals open. `"windows"` (default, separate windows), `"tabs"` or `"panes"` (added to your current Windows Terminal window). Falls back to windows when `wt` is missing.
+- `"terminalLayout"` (Windows): how several terminals open. `"windows"` (default, separate windows), `"tabs"` or `"panes"` (added to your current Windows Terminal window). Falls back to windows when `wt` is missing. With tabs, a terminal opened from the selector leaves the selector open.
 - `"paneSplit"` (Windows, panes layout): `"auto"` (default), `"vertical"` (side by side) or `"horizontal"` (stacked).
 - `"terminalShell"` (Windows): the shell terminal openers start. `"cmd"` (default), `"powershell"`, `"pwsh"`, or `"profile"` (your Windows Terminal default profile; a start command like `claude` then runs in cmd, and without `wt` it falls back to cmd).
 - `"defaultOpener"`: opener for folder shortcuts without their own `opener`, e.g. `"vscode"`. Default `"explorer"`. Files still open in their default app.
+- `"fullScreen"` (selector only): `"on"` (default, the whole terminal with mouse support, restored on exit) or `"off"` (drawn inline, no mouse).
 
 ### WebStorm on Windows (without `setx`)
 

@@ -329,6 +329,28 @@
       "updated": "2026-11-06"
     },
     {
+      "id": "temporary-shortcuts",
+      "section": 1,
+      "title": "Temporary shortcuts",
+      "body": "add --ttl 7d for short-lived folders (downloads, client handoffs). Expired ones get flagged or archived automatically.",
+      "phase": "next",
+      "status": "planned",
+      "size": "S",
+      "created": "2026-11-07",
+      "updated": "2026-11-07"
+    },
+    {
+      "id": "upex-undo",
+      "section": 1,
+      "title": "upex undo",
+      "body": "Keep the last N store versions and roll back the last add/edit/rm/prune. Cheap safety net next to auto-backup.",
+      "phase": "next",
+      "status": "planned",
+      "size": "S",
+      "created": "2026-11-07",
+      "updated": "2026-11-07"
+    },
+    {
       "id": "open-in-explorer-default-app-vs-code-webstorm",
       "section": 2,
       "title": "Open in Explorer / default app / VS Code / WebStorm / terminal",
@@ -562,6 +584,104 @@
       "note": "startView + sort in config.json, shared by selector and upex ui (Settings rows in both; web sort select saves to config)"
     },
     {
+      "id": "tui-fit-terminal",
+      "section": 3,
+      "title": "TUI fits the terminal: alt screen, resize, height, scrolling option rows",
+      "body": "Alt screen buffer (setting to turn off, default on). Redraw on stdout resize. List rows = stdout.rows minus chrome instead of fixed 8. Opener row and Settings option rows scroll around the selection with ‹… / …› edges instead of hard truncation.",
+      "phase": "now",
+      "status": "done",
+      "size": "M",
+      "pointers": {
+        "files": [
+          "src/interactive.js"
+        ]
+      },
+      "created": "2026-11-06",
+      "updated": "2026-11-06",
+      "note": "Alt screen (fullScreen setting, default on), resize redraw, list fits stdout.rows, optionRow scrolls opener/settings rows"
+    },
+    {
+      "id": "tui-esc-feedback-undo",
+      "section": 3,
+      "title": "TUI Esc clears filter first, confirms changes, ^z undoes delete",
+      "body": "Esc clears a typed query before quitting. Green flash after add/rename/delete/setting change. ^z restores the last delete from the links.json backups.",
+      "phase": "now",
+      "status": "done",
+      "size": "S",
+      "pointers": {
+        "files": [
+          "src/interactive.js"
+        ]
+      },
+      "created": "2026-11-06",
+      "updated": "2026-11-07",
+      "note": "Esc clears filter first (hint esc clear/quit/cancel), green success flashes, ^z restores last deleted shortcut/workspace unless name taken"
+    },
+    {
+      "id": "tui-no-dead-ends",
+      "section": 3,
+      "title": "TUI no dead ends: missing path stays open, prefilled edit/rename",
+      "body": "Enter on a missing shortcut keeps the TUI open with 'path missing, ^e to fix'. ^e/^r prompts start with the current path/name. Long names clip with … instead of breaking the column.",
+      "phase": "now",
+      "status": "done",
+      "size": "S",
+      "pointers": {
+        "files": [
+          "src/interactive.js"
+        ]
+      },
+      "created": "2026-11-06",
+      "updated": "2026-11-07",
+      "note": "Enter on a missing folder stays open with a ^e hint, ^e/^r prefilled with ^u clear, long names clip with … incl. hits"
+    },
+    {
+      "id": "tui-mouse",
+      "section": 3,
+      "title": "TUI mouse support",
+      "body": "SGR mouse tracking (only in alt screen): click a row to select, double-click to open, click tabs, click an opener / settings option, wheel scrolls the list. Needs a hit map from renderInteractiveView.",
+      "phase": "now",
+      "status": "done",
+      "size": "M",
+      "pointers": {
+        "files": [
+          "src/interactive.js"
+        ],
+        "depends": [
+          "tui-fit-terminal"
+        ]
+      },
+      "created": "2026-11-06",
+      "updated": "2026-11-06",
+      "note": "SGR mouse in full screen only: click select/open, tabs, openers, settings options, wheel; readMouse swallows reports at keypress level; hit map via renderInteractiveView targets"
+    },
+    {
+      "id": "tui-rough-spots",
+      "section": 3,
+      "title": "TUI rough spots after the critique fixes",
+      "body": "^e does not expand ~ (~/x resolves to cwd/~/x). Emoji/CJK names: underlineHits splits by code point but Fuse indices are UTF-16, and widths use .length. handleMouse clears flash only on a hit, not on wheel/empty click. Missing badge set on a filtered copy can vanish after clearing the filter. Confirm-delete line and Settings rows hard-cut long names instead of clipping.",
+      "phase": "next",
+      "status": "planned",
+      "size": "S",
+      "pointers": {
+        "files": [
+          "src/interactive.js"
+        ]
+      },
+      "created": "2026-11-07",
+      "updated": "2026-11-07"
+    },
+    {
+      "id": "open-upex-ui-from-the-tui",
+      "section": 3,
+      "title": "Open upex ui from the TUI",
+      "body": "A key in the interactive selector starts upex ui and opens it in the browser.",
+      "phase": "now",
+      "status": "planned",
+      "size": "S",
+      "created": "2026-11-07",
+      "updated": "2026-11-07"
+    },
+    {
       "id": "cd-support-via-wrapper-hidden-resolve-public-go",
       "section": 4,
       "title": "`cd` support via wrapper + hidden `__resolve` / public `go`",
@@ -633,6 +753,17 @@
       "updated": "2026-11-06"
     },
     {
+      "id": "global-hotkey-launcher",
+      "section": 4,
+      "title": "Global hotkey launcher",
+      "body": "PowerToys Run / Raycast / Alfred plugin that queries upex __names and opens the pick. Opens projects without a terminal.",
+      "phase": "maybe",
+      "status": "planned",
+      "size": "L",
+      "created": "2026-11-07",
+      "updated": "2026-11-07"
+    },
+    {
       "id": "windows-macos-linux-launch-paths",
       "section": 5,
       "title": "Windows / macOS / Linux launch paths",
@@ -688,6 +819,18 @@
       "created": "2026-11-02",
       "updated": "2026-11-02",
       "note": "src/commands/doctor.js: store, paths, openers, workspaces, cmd wrapper, profiles, completion"
+    },
+    {
+      "id": "faster-startup-for-go",
+      "section": 6,
+      "title": "Faster startup for go",
+      "body": "Lazy-load commander/fuse.js on the hot path of go and __resolve so cd via the wrapper feels instant. Measure first.",
+      "phase": "maybe",
+      "status": "planned",
+      "size": "S",
+      "created": "2026-11-07",
+      "updated": "2026-11-07",
+      "note": "Measured 2026-11-07 on Windows: bare node ~80ms, upex __resolve ~183ms, so ~100ms is upex's own imports."
     },
     {
       "id": "upex-ui-local-web-page-to-add-edit-rename-tag",
