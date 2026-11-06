@@ -11,6 +11,7 @@ const UPEX_DIR = path.join(os.homedir(), '.upex');
 const LINKS_FILE = path.join(UPEX_DIR, 'links.json');
 const CONFIG_FILE = path.join(UPEX_DIR, 'config.json');
 const BACKUP_DIR = path.join(UPEX_DIR, 'backups');
+const HISTORY_FILE = path.join(UPEX_DIR, 'history.jsonl');
 const KEEP_BACKUPS = 10;
 
 function ensureStore() {
@@ -209,6 +210,29 @@ export function aliasClashes(links) {
 export const activeLinks = (links, archived = false) =>
   Object.fromEntries(Object.entries(links).filter(([, e]) => !!e.archived === archived));
 
+// Active shortcuts not opened in `days`: [{ name, entry, since }], never-opened first, then oldest.
+// `since` is lastUsed, else added, else null.
+export function staleLinks(links, days, now = Date.now()) {
+  const cutoff = now - days * 86400000;
+  return Object.entries(activeLinks(links))
+    .map(([name, entry]) => ({ name, entry, since: entry.lastUsed || entry.added || null }))
+    .filter(s => !s.since || s.since <= cutoff)
+    .sort((a, b) => (a.entry.lastUsed ? 1 : 0) - (b.entry.lastUsed ? 1 : 0) || (a.since || 0) - (b.since || 0));
+}
+
+// Archive active shortcuts whose `expires` has passed. Returns { links, archived: [names] }.
+export function sweepExpired(links, now = Date.now()) {
+  const out = { ...links };
+  const archived = [];
+  for (const [name, e] of Object.entries(links)) {
+    if (!e.archived && e.expires && e.expires <= now) {
+      out[name] = { ...e, archived: true };
+      archived.push(name);
+    }
+  }
+  return { links: out, archived };
+}
+
 // Why a new shortcut or workspace name is invalid, or null when it's fine.
 export function nameError(name) {
   if (!name) return 'Name is required.';
@@ -218,15 +242,52 @@ export function nameError(name) {
 }
 
 /**
- * Bump usage stats for a shortcut (drives frecency sorting).
+ * Bump usage stats for a shortcut (drives frecency sorting) and log the open for `upex stats`.
  */
-export function recordUse(name) {
+export function recordUse(name, opener) {
   const links = loadLinks();
   if (!Object.hasOwn(links, name)) return;
   const entry = links[name];
   entry.uses = (entry.uses || 0) + 1;
   entry.lastUsed = Date.now();
   saveLinks(links, { backup: false });
+  // Stats only: a failed append must never break opening.
+  try { fs.appendFileSync(HISTORY_FILE, JSON.stringify({ ts: entry.lastUsed, name, opener }) + '\n', 'utf-8'); } catch {}
+}
+
+// Open log from history.jsonl; malformed lines are skipped, a missing file is [].
+export function loadHistory(file = HISTORY_FILE) {
+  let text;
+  try { text = fs.readFileSync(file, 'utf-8'); } catch { return []; }
+  const out = [];
+  for (const line of text.split('\n')) {
+    try {
+      const h = JSON.parse(line);
+      if (h && typeof h.name === 'string' && Number.isFinite(h.ts)) out.push(h);
+    } catch {}
+  }
+  return out;
+}
+
+const WEEK = 7 * 86400000;
+
+// Opens since `since` ranked by shortcut and opener, plus opens per week over the last `weeks` weeks.
+export function statsFrom(history, { since = 0, now = Date.now(), weeks = 8 } = {}) {
+  const rank = (key) => {
+    const counts = new Map();
+    for (const h of history) {
+      if (h.ts < since || h.ts > now || typeof h[key] !== 'string') continue;
+      counts.set(h[key], (counts.get(h[key]) || 0) + 1);
+    }
+    return [...counts].sort((x, y) => y[1] - x[1] || x[0].localeCompare(y[0]));
+  };
+  const perWeek = Array(weeks).fill(0);
+  for (const h of history) {
+    const ago = Math.floor((now - h.ts) / WEEK);
+    if (ago >= 0 && ago < weeks) perWeek[weeks - 1 - ago]++;
+  }
+  const shortcuts = rank('name');
+  return { total: shortcuts.reduce((n, [, c]) => n + c, 0), shortcuts, openers: rank('opener'), perWeek };
 }
 
 /**

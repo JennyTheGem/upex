@@ -37,7 +37,7 @@ export function registerWebPage(program) {
 
       const result = launchUrl(url);
       if (!result.ok) fail(result.message);
-      recordUse(resolved.name);
+      recordUse(resolved.name, 'web');
 
       if (!resolved.exact) ui.dim(`matched "${name}" --> "${resolved.name}"`);
       ui.heading(resolved.name);

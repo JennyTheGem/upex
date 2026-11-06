@@ -64,7 +64,7 @@ export function applyShortcut(links, old, { kind, name, target, tags, aliases, o
   for (const [k, v] of Object.entries(links)) {
     if (k === old) out[name] = entry; else out[k] = v;
   }
-  if (old === undefined) out[name] = entry;
+  if (old === undefined) out[name] = { ...entry, added: Date.now() };
   return { links: out };
 }
 
@@ -135,7 +135,7 @@ const routes = {
   'PUT /api/archive': (b) => {
     const links = loadLinks();
     if (!Object.hasOwn(links, String(b.name))) throw new HttpError(404, `Shortcut not found: ${b.name}`);
-    if (b.archived) links[b.name].archived = true; else delete links[b.name].archived;
+    if (b.archived) links[b.name].archived = true; else { delete links[b.name].archived; delete links[b.name].expires; }
     saveLinks(links);
     return {};
   },

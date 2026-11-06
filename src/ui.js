@@ -125,3 +125,11 @@ export function separator(length = 60) {
 export function blank() {
   console.log();
 }
+
+// Compact length of time: "45m", "12h", "3d". Time left passes Math.ceil.
+export function span(ms, round = Math.floor) {
+  const m = Math.max(0, round(ms / 60000));
+  if (m < 60) return `${m}m`;
+  if (m < 2880) return `${round(m / 60)}h`;
+  return `${round(m / 1440)}d`;
+}

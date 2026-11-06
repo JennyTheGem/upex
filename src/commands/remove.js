@@ -66,7 +66,8 @@ export function registerRemove(program) {
         ui.info(`Run: upex restore ${resolved.name}`);
         return;
       }
-      const { archived: _drop, ...entry } = links[resolved.name];
+      // Dropping expires keeps it from being re-archived right away.
+      const { archived: _drop, expires: _gone, ...entry } = links[resolved.name];
       setLink(resolved.name, entry);
       ui.success(`Restored: ${resolved.name}`);
     });

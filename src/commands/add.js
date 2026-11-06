@@ -18,6 +18,14 @@ export function parseTags(value) {
   return tags.length ? tags : undefined;
 }
 
+const UNIT = { m: 60000, h: 3600000, d: 86400000, w: 604800000 };
+
+// "30m", "12h", "7d", "2w" -> milliseconds, or null when it isn't one.
+export function parseDuration(value) {
+  const m = /^(\d+)([mhdw])$/i.exec(String(value ?? '').trim());
+  return m && Number(m[1]) > 0 ? Number(m[1]) * UNIT[m[2].toLowerCase()] : null;
+}
+
 export function registerAdd(program) {
   program
     .command('add <name> [target]')
@@ -29,9 +37,16 @@ export function registerAdd(program) {
     .option('-t, --tag <tags>', 'Comma-separated tags to attach')
     .option('-o, --opener <app>', 'Open this folder shortcut in <app> by default')
     .option('--alias <names>', 'Comma-separated extra names for the shortcut')
+    .option('--ttl <time>', 'Archive the shortcut automatically after this long (30m, 12h, 7d, 2w)')
     .action((name, targetPath, options) => {
       if (options.opener && (options.app || options.url || options.cmd)) {
         ui.error('A default opener only applies to folder shortcuts.');
+        process.exit(1);
+      }
+
+      const ttl = options.ttl === undefined ? null : parseDuration(options.ttl);
+      if (options.ttl !== undefined && !ttl) {
+        ui.error(`Invalid --ttl "${options.ttl}". Use a number plus m, h, d or w, e.g. 7d.`);
         process.exit(1);
       }
 
@@ -55,7 +70,8 @@ export function registerAdd(program) {
         process.exit(1);
       }
       const tags = parseTags(options.tag);
-      const extra = { ...(tags && { tags }), ...(aliases.length && { aliases }) };
+      const now = Date.now();
+      const extra = { ...(tags && { tags }), ...(aliases.length && { aliases }), added: now, ...(ttl && { expires: now + ttl }) };
 
       // URL shortcut: the positional is a URL, opened in the browser.
       if (options.url) {

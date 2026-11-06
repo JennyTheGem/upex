@@ -14,7 +14,10 @@ Jenny's CLI for named shortcuts to folders, apps, command lines and URLs. Data: 
 - Opening things spawns windows on her desktop: do it only when she asks. If the target is unambiguous (one plausible match, or the current repo), just run it, don't ask.
 - Names can contain spaces (e.g. `"Led start"`): quote them.
 - Prefer `rm --archive` over a hard delete unless she says delete.
+- `upex stale` without `--yes` only lists when not in a TTY (safe to run); `--yes` archives every listed shortcut, so only use it when she asks.
+- `--ttl` shortcuts are archived automatically once expired (by the next command other than `go` and the hidden ones, notice on stderr; `go` already refuses them); `upex restore` brings one back permanently.
 - Never edit `~/.upex/*.json` by hand; use the commands below.
+- "What do I use most?" questions: `upex stats` (read-only, safe to run). Every open is logged with its opener (`cd` for go, `app`, `url`, `web`, or the opener key); counting started when the log was added, so older use shows only in the all-time column.
 
 ## Commands
 
@@ -23,7 +26,7 @@ Jenny's CLI for named shortcuts to folders, apps, command lines and URLs. Data: 
 | `upex <name> [app] [count]` | Open a shortcut. app: `explorer` (default, or the shortcut's own opener), `vscode`, `cmd`, `claude`, `webstorm`, or a custom opener |
 | `upex go <name>` | Print path |
 | `upex ls [tag] [--git] [--archived]` | List shortcuts |
-| `upex add <name> [target] [--app\|--cmd\|--url] [--tag a,b] [--opener <app>] [--alias a,b]` | Register a folder (default cwd), app, command line or URL |
+| `upex add <name> [target] [--app\|--cmd\|--url] [--tag a,b] [--opener <app>] [--alias a,b] [--ttl 7d]` | Register a folder (default cwd), app, command line or URL; `--ttl` (`30m`/`12h`/`7d`/`2w`) makes it temporary |
 | `upex edit <name> [target] [--opener <app>\|--no-opener]` / `rename <old> <new>` | Change, rename |
 | `upex rm <name> [--archive]` / `restore <name>` | Delete, or archive (hidden, restorable) |
 | `upex tag [name] [tags...] [--remove] [--clear]` | Manage tags; `upex open <tag>` opens all tagged |
@@ -33,6 +36,8 @@ Jenny's CLI for named shortcuts to folders, apps, command lines and URLs. Data: 
 | `upex web <name>` | Open the project's git remote page (GitHub etc.) |
 | `upex ws ...` | Workspaces (`ws add`, `ws rm`, `ws <name>`) |
 | `upex app [alias] [command] [--remove]` | Custom openers |
+| `upex stats [--days N] [--all]` | Most used shortcuts and openers (default last 30 days) plus opens per week, from `~/.upex/history.jsonl` |
+| `upex stale [days] [--yes]` | Shortcuts not opened in N days (default 60), never-opened first; offers to archive each |
 | `upex check [--prune]` / `doctor` | Report (or prune) broken paths / check store, openers, shell setup |
 | `upex copy <name>` / `last` / `export [file]` / `import <file> [--replace]` | Misc |
 

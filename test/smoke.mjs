@@ -12,12 +12,12 @@ import readline from 'node:readline';
 import { PassThrough } from 'node:stream';
 import { spawn, spawnSync, execSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { frecency, pruneBroken, mergeLinks, lastUsedName, nameError, takenError, checkAliases, aliasClashes } from '../src/store.js';
+import { frecency, pruneBroken, mergeLinks, lastUsedName, nameError, takenError, checkAliases, aliasClashes, staleLinks, sweepExpired } from '../src/store.js';
 import { remoteWebUrl } from '../src/git.js';
 import { installCmdWrapper } from '../src/commands/setup.js';
 import { normalizeUrl, caretEscape, wtCommandLine, setting, shellCommand, defaultOpener } from '../src/launcher.js';
-import { parseTags } from '../src/commands/add.js';
-import { truncate } from '../src/ui.js';
+import { parseTags, parseDuration } from '../src/commands/add.js';
+import { truncate, span } from '../src/ui.js';
 import { applyShortcut, cleanEntries } from '../src/commands/web.js';
 import { renderInteractiveView, inView, tidyPath, byOrder, optionRow, listRows, readMouse, hitTest, rowClick, undoError, clipName, prefill, missingFlash, staysOpen } from '../src/interactive.js';
 import chalk from 'chalk';
@@ -33,6 +33,34 @@ assert.ok(old > never, 'any use should outrank never-used');
 assert.equal(never, 0, 'never-used scores 0');
 assert.ok(frecency({ uses: 10, lastUsed: now - 86400000 }) > recent, 'more uses ranks higher');
 
+// -- stats: window, ranking, per-week buckets; history read skips junk --
+import { statsFrom, loadHistory } from '../src/store.js';
+{
+  const D = 86400000;
+  const hist = [
+    { ts: now - 1 * D, name: 'a', opener: 'vscode' },
+    { ts: now - 2 * D, name: 'b', opener: 'cd' },
+    { ts: now - 3 * D, name: 'a', opener: 'cd' },
+    { ts: now - 10 * D, name: 'b', opener: 'cd' },
+    { ts: now - 40 * D, name: 'old', opener: 'explorer' },
+    { ts: now - 3 * D, name: 'c' },
+  ];
+  const s = statsFrom(hist, { since: now - 30 * D, now });
+  assert.equal(s.total, 5, 'only opens inside the window count');
+  assert.deepEqual(s.shortcuts, [['a', 2], ['b', 2], ['c', 1]], 'ranked by count, then name');
+  assert.deepEqual(s.openers, [['cd', 3], ['vscode', 1]], 'openers ranked, missing opener skipped');
+  assert.deepEqual(s.perWeek, [0, 0, 1, 0, 0, 0, 1, 4], 'opens per week, oldest first');
+  assert.equal(statsFrom(hist, { now }).total, 6, 'no since = all time');
+  assert.deepEqual(statsFrom([], { now }).perWeek, Array(8).fill(0), 'empty history');
+
+  const hdir = fs.mkdtempSync(path.join(os.tmpdir(), 'upex-hist-'));
+  const hfile = path.join(hdir, 'history.jsonl');
+  assert.deepEqual(loadHistory(hfile), [], 'missing history file = []');
+  fs.writeFileSync(hfile, '{"ts":1,"name":"a","opener":"cd"}\r\nnot json\n{"ts":"x","name":"b"}\n[]\nnull\n\n{"ts":2,"name":"b"}\n');
+  assert.deepEqual(loadHistory(hfile).map(h => h.name), ['a', 'b'], 'malformed lines skipped, CRLF ok');
+  fs.rmSync(hdir, { recursive: true, force: true });
+}
+
 // -- pruneBroken: drop dead folders, keep good ones, keep app when path dies --
 const exists = (p) => p === 'GOOD';
 const links = {
@@ -45,6 +73,28 @@ const { kept, removed } = pruneBroken(links, exists);
 assert.deepEqual(removed, ['dead'], 'only the dead pure-folder shortcut is removed');
 assert.ok(kept.good && kept.appOnly, 'valid + app-only shortcuts survive');
 assert.deepEqual(kept.both, { app: 'code' }, 'app shortcut keeps app, drops dead path');
+
+// -- durations, stale selection, expiry sweep --
+assert.equal(parseDuration('30m'), 1800000, 'minutes');
+assert.equal(parseDuration('2W'), 14 * 86400000, 'weeks, any case');
+assert.ok([undefined, '', '7', 'd', '0d', '1.5h', '7 days', '-1d'].every(v => parseDuration(v) === null), 'garbage rejected');
+assert.deepEqual([span(59 * 60000), span(47 * 3600000), span(3 * 86400000)], ['59m', '47h', '3d'], 'span units');
+assert.deepEqual([span(7 * 86400000 - 5000, Math.ceil), span(30000, Math.ceil)], ['7d', '1m'], 'time left rounds up: no "6d left" right after --ttl 7d, no "0m left"');
+const D = 86400000;
+const pool = {
+  fresh: { lastUsed: now - D },
+  older: { lastUsed: now - 90 * D },
+  oldest: { lastUsed: now - 200 * D },
+  bare: {},
+  newAdd: { added: now - D },
+  oldAdd: { added: now - 100 * D },
+  hidden: { archived: true },
+};
+assert.deepEqual(staleLinks(pool, 60, now).map(s => s.name), ['bare', 'oldAdd', 'oldest', 'older'], 'never opened first, then oldest; fresh, just added and archived skipped');
+const sw = sweepExpired({ gone: { expires: now - 1 }, live: { expires: now + D }, done: { expires: 1, archived: true }, plain: {} }, now);
+assert.deepEqual(sw.archived, ['gone'], 'only active expired swept');
+assert.equal(sw.links.gone.archived, true, 'swept entry archived');
+assert.deepEqual(sw.links.live, { expires: now + D }, 'live entry untouched');
 
 // -- cmd wrapper: batch file that cds via go/__resolve --
 const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'upex-'));
@@ -79,6 +129,11 @@ fs.writeFileSync(linksFile, JSON.stringify({ t: { path: target } }));
 const g = upexIn('go', 't', process.platform === 'win32' ? 'cd' : 'pwd');
 assert.equal(g.status, 0, 'go with args exits 0');
 assert.equal(g.stdout.trim(), target, 'command runs in the shortcut folder');
+assert.deepEqual(loadHistory(path.join(home, '.upex', 'history.jsonl')).map(h => [h.name, h.opener]), [['t', 'cd']], 'an open is logged with its opener');
+const statsOut = upexIn('stats');
+assert.equal(statsOut.status, 0, 'stats runs');
+assert.match(statsOut.stdout, /cd\s+1/, 'stats shows the opener count');
+assert.equal(upexIn('stats', '--days', '0').status, 1, 'bad --days rejected');
 
 // -- subpaths: go prints a folder inside the shortcut, missing subfolder fails --
 fs.mkdirSync(path.join(target, 'sub'));
@@ -160,6 +215,33 @@ assert.ok(!upexIn('__names').stdout.includes('v'), 'archived names and aliases h
 assert.match(upexIn('ls', '--archived').stdout, /vel/, 'ls --archived lists it');
 assert.equal(upexIn('restore', 'v2').status, 0, 'restore via alias');
 assert.equal(upexIn('go', 'vd').stdout, home, 'restored shortcut resolves again');
+
+// -- temporary + stale: add --ttl stores expires, any command archives it once passed, restore clears it --
+fs.writeFileSync(linksFile, JSON.stringify({ old: { path: home, lastUsed: 1 } }));
+assert.equal(upexIn('add', 'tmp', home, '--ttl', 'soon').status, 1, 'garbage --ttl rejected');
+assert.equal(upexIn('add', 'tmp', home, '--ttl', '7d').status, 0, 'add --ttl');
+const tmp = stored().tmp;
+assert.ok(tmp.added > 0 && Math.abs(tmp.expires - tmp.added - 7 * 86400000) < 1000, 'added + expires stored');
+assert.match(upexIn('ls').stdout, /left/, 'ls shows time left');
+const staleOut = upexIn('stale');
+assert.match(staleOut.stdout, /^\s+old\s/m, 'old shortcut reported stale');
+assert.doesNotMatch(staleOut.stdout, /^\s+tmp\s/m, 'just-added shortcut is not stale');
+assert.equal(stored().old.archived, undefined, 'non-TTY stale only lists');
+assert.equal(upexIn('stale', '--yes').status, 0, 'stale --yes');
+assert.equal(stored().old.archived, true, 'stale --yes archives');
+fs.writeFileSync(linksFile, JSON.stringify({ ...stored(), tmp: { ...stored().tmp, expires: 1 } }));
+for (const cmd of ['go', '__resolve']) {
+  const r = upexIn(cmd, 'tmp');
+  assert.equal(r.status, 1, `${cmd} refuses an expired shortcut`);
+  assert.equal(r.stdout, '', `${cmd} prints no path`);
+}
+assert.equal(stored().tmp.archived, undefined, 'go/__resolve leave the archiving to the next command');
+const swept = upexIn('ls');
+assert.match(swept.stderr, /archived expired: tmp/, 'expired notice on stderr');
+assert.doesNotMatch(swept.stdout, /^\s+\d+\s+tmp\s/m, 'expired shortcut hidden from ls');
+assert.equal(upexIn('restore', 'tmp').status, 0, 'restore expired');
+assert.equal(upexIn('ls').stderr, '', 'restored shortcut is not re-archived');
+assert.equal(stored().tmp.expires, undefined, 'restore drops expires');
 
 fs.rmSync(home, { recursive: true, force: true });
 
@@ -392,7 +474,7 @@ const yes = () => true;
 const base = { a: { path: path.resolve('/A') }, b: { url: 'x.dev', tags: ['t'] } };
 assert.ok(applyShortcut(base, undefined, { kind: 'url', name: 'c', target: 'y.dev' }, yes).links.c.url === 'y.dev', 'add url');
 assert.match(applyShortcut(base, undefined, { kind: 'url', name: 'a', target: 'y' }, yes).error, /exists/, 'add clash rejected');
-const cmdAdd = applyShortcut(base, undefined, { kind: 'cmd', name: 'dev', target: 'npm run dev' }, yes).links.dev;
+const { added: _cmdAdded, ...cmdAdd } = applyShortcut(base, undefined, { kind: 'cmd', name: 'dev', target: 'npm run dev' }, yes).links.dev;
 assert.deepEqual(cmdAdd, { app: 'npm run dev', terminal: true }, 'add cmd stores a terminal app');
 assert.deepEqual(applyShortcut({ dev: cmdAdd }, 'dev', { name: 'dev', target: 'npm test' }, yes).links.dev, { app: 'npm test', terminal: true }, 'edit cmd keeps terminal');
 assert.match(applyShortcut(base, undefined, { kind: 'folder', name: 'd', target: '/nope' }, () => false).error, /does not exist/, 'missing folder rejected');
@@ -476,7 +558,9 @@ try {
   });
   assert.equal(post.status, 200, 'add via api ok');
   const saved = JSON.parse(fs.readFileSync(path.join(webHome, '.upex', 'links.json'), 'utf-8'));
-  assert.deepEqual(saved.gh, { url: 'github.com', tags: ['web'] }, 'api add written to store');
+  const { added: ghAdded, ...gh } = saved.gh;
+  assert.deepEqual(gh, { url: 'github.com', tags: ['web'] }, 'api add written to store');
+  assert.ok(ghAdded > 0, 'api add stamps added');
   const st = await (await fetch(base + '/api/state', { headers: { 'x-upex-token': token } })).json();
   assert.equal(st.links.find(l => l.name === 'gh').tab, 'apps', 'URL shortcut listed on the Apps tab');
   const putWs = (prev) => fetch(base + '/api/workspace', {

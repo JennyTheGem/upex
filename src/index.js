@@ -21,13 +21,15 @@ import { registerCompletion } from './commands/completion.js';
 import { registerTag, registerOpenGroup } from './commands/tag.js';
 import { registerAlias } from './commands/alias.js';
 import { registerWorkspace, openWorkspace } from './commands/workspace.js';
-import { loadWorkspaces } from './store.js';
+import { loadWorkspaces, loadLinks, saveLinks, sweepExpired, StoreError } from './store.js';
 import { registerRun } from './commands/run.js';
 import { registerExport, registerImport } from './commands/transfer.js';
 import { registerLast } from './commands/last.js';
 import { registerWeb } from './commands/web.js';
 import { registerWebPage } from './commands/webpage.js';
 import { registerDoctor } from './commands/doctor.js';
+import { registerStale } from './commands/stale.js';
+import { registerStats } from './commands/stats.js';
 import { runInteractiveMode } from './interactive.js';
 
 const { version } = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf-8'));
@@ -79,6 +81,22 @@ export function createProgram() {
   registerWeb(program);
   registerWebPage(program);
   registerDoctor(program);
+  registerStale(program);
+  registerStats(program);
+
+  // Archive expired temporary shortcuts. Skipped where stdout feeds a shell wrapper.
+  program.hook('preAction', (_root, cmd) => {
+    if (cmd.name().startsWith('__') || cmd.name() === 'go') return;
+    try {
+      const { links, archived } = sweepExpired(loadLinks());
+      if (!archived.length) return;
+      saveLinks(links);
+      console.error(chalk.dim(`  archived expired: ${archived.map(n => `${n} (upex restore ${n})`).join(', ')}`));
+    } catch (err) {
+      // A broken store is reported by the command itself (or upex doctor).
+      if (!(err instanceof StoreError)) throw err;
+    }
+  });
 
   // Default action: upex <name> [app]
   // Commander doesn't support a default positional command well,

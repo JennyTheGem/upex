@@ -551,7 +551,7 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
       const n = c.isCmd ? 1 : cmdCount;
       const r = c.isCmd ? launchApp('cmd', os.homedir(), 1, c.app) : launchApp(appKey, c.path, n);
       if (!r.ok) { flash = r.message.replace(/\.$/, ''); return; }
-      recordUse(c.name);
+      recordUse(c.name, c.isCmd ? 'cmd' : appKey);
       rebuild(c.name);
       done(`opened "${c.name}" in ${n > 1 ? `${n} new tabs` : 'a new tab'}`);
     };
@@ -602,7 +602,7 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
         if (bad) { flash = bad.toLowerCase().replace(/\.$/, ''); return false; }
         const taken = takenError(loadLinks(), buf);
         if (taken) { flash = taken.replace(/\.$/, ''); return false; }
-        setLink(buf, { path: process.cwd() });
+        setLink(buf, { path: process.cwd(), added: Date.now() });
         rebuild(buf);
         done(`added "${buf}"`);
         return true;

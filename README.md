@@ -26,6 +26,7 @@ npm link
 | `upex add <name> "<command>" --cmd` | Register a command line (runs in a terminal window) |
 | `upex add <name> <url> --url` | Register a URL shortcut (opens in the browser) |
 | `upex add <name> [path] --tag a,b` | Attach tags while registering |
+| `upex add <name> [path] --ttl 7d` | Temporary shortcut: archived automatically after `30m`, `12h`, `7d`, `2w` (`upex restore` brings it back) |
 | `upex` | Open the interactive shortcut selector and choose shortcut/app |
 | `upex --app <app>` | Open the interactive selector with a preselected app |
 | `upex <name>` | Open shortcut in Explorer / default app (or launch stored app/URL) |
@@ -48,7 +49,9 @@ npm link
 | `upex copy <name>` | Copy shortcut path to clipboard |
 | `upex app [alias] [command]` | Manage custom openers (list / add / `--remove`) |
 | `upex check [--prune]` | Report broken paths (`--prune` removes them) |
+| `upex stale [days] [--yes]` | List shortcuts not opened in N days (default 60), offer to archive each (`--yes` archives all) |
 | `upex doctor` | Check the store, openers, shell wrapper and completion |
+| `upex stats [--days N] [--all]` | Most used shortcuts and openers (default last 30 days) and opens per week |
 | `upex ui [--port <n>] [--no-open]` | Manage shortcuts and workspaces in the browser |
 | `upex completion [shell]` | Print a shell completion script (bash/zsh/fish/powershell) |
 | `upex setup [cmd]` | Shell integration; `setup cmd` installs the cmd.exe wrapper |
@@ -295,7 +298,7 @@ Each entry is an object with optional fields:
 }
 ```
 
-`opener` is the default opener for `upex <name>` (set with `--opener`). `uses` / `lastUsed` are written automatically and drive the interactive selector's frecency ordering.
+`opener` is the default opener for `upex <name>` (set with `--opener`). `uses` / `lastUsed` are written automatically and drive the interactive selector's frecency ordering. Each open is also appended to `~/.upex/history.jsonl` (`{ ts, name, opener }` per line), which `upex stats` reads. `added` (set on add, drives `upex stale` for never-opened shortcuts) and `expires` (from `--ttl`) are timestamps too.
 
 Legacy string entries (`"name": "/path"`) are auto-migrated on read.
 

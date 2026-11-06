@@ -9,9 +9,9 @@ import path from 'node:path';
 import os from 'node:os';
 import { spawnSync } from 'node:child_process';
 import chalk from 'chalk';
-import { loadLinks, recordUse } from '../store.js';
+import { loadLinks, recordUse, sweepExpired } from '../store.js';
 import { resolveTarget, didYouMean } from '../fuzzy.js';
-import { launchApp, launchExecutable, launchUrl, defaultOpener } from '../launcher.js';
+import { launchApp, launchExecutable, launchUrl, defaultOpener, openerKey } from '../launcher.js';
 import * as ui from '../ui.js';
 
 export function isFile(p) {
@@ -24,7 +24,8 @@ const withSub = (entry, sub) => (entry.path && sub ? path.join(entry.path, sub) 
 // Resolve a name to a usable folder path and record the use.
 // On failure prints nothing (or `loud` message) and exits 1.
 function resolveFolder(name, { loud = false } = {}) {
-  const links = loadLinks();
+  // go/__resolve skip the sweep, so treat expired as archived here (not saved).
+  const { links } = sweepExpired(loadLinks());
   const resolved = resolveTarget(name, links);
 
   if (!resolved) {
@@ -40,7 +41,7 @@ function resolveFolder(name, { loud = false } = {}) {
     process.exit(1);
   }
 
-  recordUse(resolved.name);
+  recordUse(resolved.name, 'cd');
   return targetPath;
 }
 
@@ -118,7 +119,7 @@ export async function handleOpen(name, app, count = 1, startCmd = '', { batch = 
     if (!result.ok) {
       if (bail(() => ui.error(result.message))) return false;
     }
-    recordUse(shortcutName);
+    recordUse(shortcutName, 'url');
     if (!resolved.exact) {
       ui.dim(`matched "${name}" --> "${shortcutName}"`);
     }
@@ -137,7 +138,7 @@ export async function handleOpen(name, app, count = 1, startCmd = '', { batch = 
       if (bail(() => ui.error(result.message))) return false;
     }
 
-    recordUse(shortcutName);
+    recordUse(shortcutName, entry.terminal ? 'cmd' : 'app');
 
     if (!resolved.exact) {
       ui.dim(`matched "${name}" --> "${shortcutName}"`);
@@ -178,7 +179,7 @@ export async function handleOpen(name, app, count = 1, startCmd = '', { batch = 
     if (bail(() => ui.error(result.message))) return false;
   }
 
-  recordUse(shortcutName);
+  recordUse(shortcutName, openerKey(appKey) || appKey);
 
   // -- Structured output card --
   if (!resolved.exact) {

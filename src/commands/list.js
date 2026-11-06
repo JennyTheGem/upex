@@ -60,7 +60,8 @@ export function registerList(program) {
           const pathDisplay = filepath
             ? (exists ? filepath : chalk.dim(filepath))
             : entry.url ? chalk.blue(entry.url) : entry.terminal ? entry.app : chalk.dim('(app only)');
-          const status = exists ? ui.tag.ok : ui.tag.fail;
+          const left = entry.expires && !entry.archived ? entry.expires - Date.now() : 0;
+          const status = (exists ? ui.tag.ok : ui.tag.fail) + (left > 0 ? chalk.dim(` ${ui.span(left, Math.ceil)} left`) : '');
           const tags = Array.isArray(entry.tags) && entry.tags.length
             ? chalk.dim(entry.tags.join(', '))
             : chalk.dim('--');
