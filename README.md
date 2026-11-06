@@ -283,7 +283,7 @@ function upex {
 
 ## Storage
 
-Shortcuts are stored in `~/.upex/links.json` and created automatically on first use.
+Shortcuts are stored in `~/.upex/links.json` and created automatically on first use. Every edit (not the usage stats an open records) first copies the old file to `~/.upex/backups/` (newest 10 kept). To restore, copy a backup over `links.json`.
 
 Each entry is an object with optional fields:
 

@@ -10,7 +10,6 @@ Closed sections: §5 Platform support · §8 Distribution
 
 ## 1. Shortcut management
 
-- `auto-backup` Auto backup (next)
 - `archive-instead-of-delete` Archive instead of delete (next)
 - `stale-report` Stale report (next)
 - `aliases` Aliases (next)

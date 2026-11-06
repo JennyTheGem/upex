@@ -121,7 +121,7 @@
       "title": "Auto backup",
       "body": "Back up links.json before every write, keep the last 10.",
       "phase": "next",
-      "status": "planned",
+      "status": "done",
       "size": "S",
       "scope": [
         "store"
@@ -138,7 +138,8 @@
         ]
       },
       "created": "2026-11-06",
-      "updated": "2026-11-06"
+      "updated": "2026-11-06",
+      "note": "Backups in ~/.upex/backups before each links.json write, newest 10 kept. Skips usage bumps and no-op saves."
     },
     {
       "id": "archive-instead-of-delete",

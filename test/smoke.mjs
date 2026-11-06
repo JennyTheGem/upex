@@ -120,6 +120,24 @@ upexIn('ws', 'add', 'w', 'nope');
 assert.equal(upexIn('ws', 'w').status, 1, 'failed workspace entry exits 1');
 assert.equal(upexIn('ws', 'toString').status, 1, 'prototype workspace name is not found');
 
+// -- auto-backup: 12 saves keep the newest 10, newest holds the previous file; opens don't back up --
+const backupDir = path.join(home, '.upex', 'backups');
+fs.rmSync(backupDir, { recursive: true, force: true });
+for (let i = 0; i < 12; i++) upexIn('add', `b${i}`, home);
+const backups = () => fs.readdirSync(backupDir).sort();
+assert.equal(backups().length, 10, 'only the newest 10 backups are kept');
+const mine = path.join(backupDir, 'links-0-mine.json');
+fs.writeFileSync(mine, '{}');
+const prev = fs.readFileSync(linksFile, 'utf-8');
+upexIn('add', 'b12', home);
+assert.equal(fs.readFileSync(path.join(backupDir, backups().at(-1)), 'utf-8'), prev, 'newest backup is the previous file');
+assert.ok(fs.existsSync(mine), 'pruning skips files it did not name');
+const before = backups();
+assert.equal(upexIn('go', 'b0').status, 0, 'go works');
+assert.deepEqual(backups(), before, 'usage bumps make no backup');
+assert.equal(upexIn('edit', 'b0', home).status, 0, 'edit works');
+assert.deepEqual(backups(), before, 'a no-op save makes no backup');
+
 fs.rmSync(home, { recursive: true, force: true });
 
 // -- mergeLinks: merge overwrites on clash, replace swaps the set --
@@ -348,4 +366,4 @@ try {
   fs.rmSync(webHome, { recursive: true, force: true });
 }
 
-console.log('ok - frecency + prune + cmd wrapper + resolve guard + go args + safe store + edit url + merge + lastUsed + url + tags + truncate + web ui + subpaths + opener + doctor + apps tab + names + ws rename + cmd quoting + wt layout + settings + shells + default opener');
+console.log('ok - frecency + prune + cmd wrapper + resolve guard + go args + safe store + edit url + merge + lastUsed + url + tags + truncate + web ui + subpaths + opener + doctor + apps tab + names + ws rename + cmd quoting + wt layout + settings + shells + default opener + auto-backup');

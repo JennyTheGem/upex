@@ -10,6 +10,8 @@ import os from 'node:os';
 const UPEX_DIR = path.join(os.homedir(), '.upex');
 const LINKS_FILE = path.join(UPEX_DIR, 'links.json');
 const CONFIG_FILE = path.join(UPEX_DIR, 'config.json');
+const BACKUP_DIR = path.join(UPEX_DIR, 'backups');
+const KEEP_BACKUPS = 10;
 
 function ensureStore() {
   if (!fs.existsSync(UPEX_DIR)) {
@@ -87,7 +89,34 @@ export function loadLinks() {
   return normalized;
 }
 
-export function saveLinks(links) {
+// Copy the current links.json to backups/ and keep only the newest KEEP_BACKUPS.
+function backupLinks(next) {
+  if (!fs.existsSync(LINKS_FILE)) return;
+  const current = fs.readFileSync(LINKS_FILE);
+  // A no-op save would only push real edits out.
+  if (current.toString('utf-8') === JSON.stringify(next, null, 2)) return;
+  fs.mkdirSync(BACKUP_DIR, { recursive: true });
+  const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+  // wx: a concurrent save in the same ms takes the next index instead of overwriting.
+  for (let i = 0; ; i++) {
+    try {
+      fs.writeFileSync(path.join(BACKUP_DIR, `links-${stamp}-${i}.json`), current, { flag: 'wx' });
+      break;
+    } catch (err) {
+      if (err.code !== 'EEXIST') throw err;
+    }
+  }
+  // Only our own names, so a hand-saved file in backups/ is never deleted.
+  const old = fs.readdirSync(BACKUP_DIR).filter(f => /^links-[\dTZ-]+\.json$/.test(f)).sort().slice(0, -KEEP_BACKUPS);
+  for (const f of old) {
+    // A locked old backup must not block the save.
+    try { fs.rmSync(path.join(BACKUP_DIR, f), { force: true }); } catch {}
+  }
+}
+
+// Usage bumps skip the backup, or a few opens would push real edits out of the last 10.
+export function saveLinks(links, { backup = true } = {}) {
+  if (backup) backupLinks(links);
   writeJson(LINKS_FILE, links);
 }
 
@@ -150,7 +179,7 @@ export function recordUse(name) {
   const entry = links[name];
   entry.uses = (entry.uses || 0) + 1;
   entry.lastUsed = Date.now();
-  saveLinks(links);
+  saveLinks(links, { backup: false });
 }
 
 /**
