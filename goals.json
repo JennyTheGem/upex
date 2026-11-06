@@ -511,9 +511,10 @@
       "title": "Default sort and view",
       "body": "Persist the start view and sort (most used vs A to Z) in config so the selector and web UI share it; the web keeps sort only in localStorage today.",
       "phase": "next",
-      "status": "planned",
+      "status": "done",
       "created": "2026-11-06",
-      "updated": "2026-11-06"
+      "updated": "2026-11-06",
+      "note": "startView + sort in config.json, shared by selector and upex ui (Settings rows in both; web sort select saves to config)"
     },
     {
       "id": "cd-support-via-wrapper-hidden-resolve-public-go",

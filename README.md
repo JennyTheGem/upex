@@ -193,13 +193,13 @@ upex import backup.json --replace  # replace everything
 
 ## Interactive Mode
 
-Run `upex` with no arguments to open the interactive selector. Shortcuts are ordered by frecency (most-used and most-recent first).
+Run `upex` with no arguments to open the interactive selector. Shortcuts are ordered by frecency (most-used and most-recent first), or A to Z with the `sort` setting. It opens on the `startView` tab (Shortcuts with `--app`).
 
 - `Up` / `Down` -- move through shortcuts
 - `Left` / `Right` -- change the selected app (starts on the shortcut's default opener)
 - `Shift+Up` / `Shift+Down` (or `Ctrl`) -- terminal count when a terminal opener (cmd, claude) is selected
 - `Tab` -- cycle the Shortcuts (folders), Apps (app + URL shortcuts) and Workspaces views (Enter opens the whole workspace, `Ctrl+D` deletes it)
-- `Shift+Tab` -- jump to Settings (Left/Right changes the terminal layout, saved right away), again to go back
+- `Shift+Tab` -- jump to Settings (Left/Right changes a setting, saved right away), again to go back
 - `Enter` -- open the selected shortcut in the selected app
 - Type -- fuzzy-filter the list
 - `Ctrl+A` -- add a shortcut for the current directory
@@ -308,6 +308,8 @@ Config is stored in `~/.upex/config.json`, including custom openers under `apps`
 
 Settings, also on the Settings tab of `upex ui` and the selector (`Shift+Tab`):
 
+- `"startView"`: the tab the selector and `upex ui` open on. `"shortcuts"` (default), `"apps"` or `"workspaces"`.
+- `"sort"`: shortcut order in the selector and `upex ui`. `"recent"` (default, most used first) or `"name"` (A to Z).
 - `"terminalLayout"` (Windows): how several terminals open. `"windows"` (default, separate windows), `"tabs"` or `"panes"` (added to your current Windows Terminal window). Falls back to windows when `wt` is missing.
 - `"paneSplit"` (Windows, panes layout): `"auto"` (default), `"vertical"` (side by side) or `"horizontal"` (stacked).
 - `"terminalShell"` (Windows): the shell terminal openers start. `"cmd"` (default), `"powershell"`, `"pwsh"`, or `"profile"` (your Windows Terminal default profile; a start command like `claude` then runs in cmd, and without `wt` it falls back to cmd).

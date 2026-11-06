@@ -24,7 +24,6 @@ Closed sections: §5 Platform support · §8 Distribution
 ## 3. Resolution & UX
 
 - `upex-config-get-set` upex config get/set (now)
-- `default-sort-and-view` Default sort and view (next)
 
 ## 4. Shell integration
 

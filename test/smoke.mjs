@@ -16,7 +16,7 @@ import { normalizeUrl, caretEscape, wtCommandLine, setting, shellCommand, defaul
 import { parseTags } from '../src/commands/add.js';
 import { truncate } from '../src/ui.js';
 import { applyShortcut, cleanEntries } from '../src/commands/web.js';
-import { renderInteractiveView, inView, tidyPath } from '../src/interactive.js';
+import { renderInteractiveView, inView, tidyPath, byOrder } from '../src/interactive.js';
 import { resolveTarget, suggestNames } from '../src/fuzzy.js';
 
 // -- frecency: recent + used beats old + unused; unused = 0 --
@@ -189,12 +189,13 @@ assert.ok(!wsView.includes('Explorer'), 'no opener row in workspace view');
 assert.ok(strip(renderInteractiveView(viewArgs)).includes('tab apps'), 'shortcut view is the default');
 const appsView = strip(renderInteractiveView({ ...viewArgs, view: 'apps', choices: [{ name: 'g', path: 'x.dev', isUrl: true, exists: true }] }));
 assert.ok(appsView.includes('tab workspaces') && appsView.includes('open in browser') && !appsView.includes('Explorer'), 'apps view: no opener row');
-const setArgs = { ...viewArgs, view: 'settings', settings: { terminalLayout: 'tabs', paneSplit: 'auto', terminalShell: 'pwsh', defaultOpener: 'explorer' }, wt: false };
+const setArgs = { ...viewArgs, view: 'settings', settings: { startView: 'apps', sort: 'name', terminalLayout: 'tabs', paneSplit: 'auto', terminalShell: 'pwsh', defaultOpener: 'explorer' }, settingIndex: 2, wt: false };
 const setView = strip(renderInteractiveView(setArgs));
 assert.ok(setView.includes('‹ Tabs ›') && setView.includes('‹ PowerShell 7 ›') && setView.includes('‹ Explorer ›') && setView.includes('not found'), 'settings view: all rows + missing-wt note');
 assert.ok(!setView.includes('Pane split'), 'pane split hidden unless split panes');
 assert.ok(strip(renderInteractiveView({ ...setArgs, settings: { ...setArgs.settings, terminalLayout: 'panes' } })).includes('Pane split'), 'pane split shown for split panes');
-assert.ok(strip(renderInteractiveView({ ...setArgs, settingIndex: 2 })).includes('no opener of their own'), 'note follows the picked row');
+assert.ok(setView.includes('‹ A to Z ›'), 'sort row shows the saved sort');
+assert.ok(strip(renderInteractiveView({ ...setArgs, settingIndex: 4 })).includes('no opener of their own'), 'note follows the picked row');
 assert.ok(setView.indexOf('Workspaces') < setView.indexOf('Settings'), 'settings tab is last');
 
 // rows stay inside the given width, the missing badge survives a long path
@@ -260,6 +261,10 @@ assert.ok(ps.startsWith('pwsh -NoExit -EncodedCommand ') && !/[\s;"]/.test(ps.sp
 assert.equal(shellCommand('powershell', '', s => s), 'powershell', 'plain powershell');
 assert.equal(setting('terminalLayout', { terminalLayout: 'bogus' }), 'windows', 'unknown layout falls back to windows');
 assert.equal(setting('terminalShell', {}), 'cmd', 'shell defaults to cmd');
+assert.equal(setting('startView', { startView: 'nope' }), 'shortcuts', 'start view defaults to shortcuts');
+const ord = [{ name: 'b', score: 1 }, { name: 'c', score: 5 }, { name: 'a', score: 1 }];
+assert.deepEqual([...ord].sort(byOrder('recent')).map(c => c.name), ['c', 'a', 'b'], 'most used first, ties A to Z');
+assert.deepEqual([...ord].sort(byOrder('name')).map(c => c.name), ['a', 'b', 'c'], 'A to Z ignores score');
 assert.equal(defaultOpener({ defaultOpener: 'Code' }), 'vscode', 'default opener alias normalized');
 assert.equal(defaultOpener({ defaultOpener: 'nope' }), 'explorer', 'unknown default opener falls back to explorer');
 assert.equal(defaultOpener({ defaultOpener: 'copy' }), 'explorer', 'copy is no default opener');
@@ -316,13 +321,14 @@ try {
   assert.equal((await putSet({ paneSplit: 'vertical', bogus: 1 })).status, 400, 'unknown setting refused');
   assert.equal((await putSet({ defaultOpener: 'nope' })).status, 400, 'unknown opener refused');
   assert.equal((await putSet({ defaultOpener: 'copy' })).status, 400, 'copy refused as default opener');
-  assert.equal((await putSet({ terminalLayout: 'panes', paneSplit: 'horizontal', terminalShell: 'powershell', defaultOpener: 'code' })).status, 200, 'settings saved');
+  assert.equal((await putSet({ sort: 'used' })).status, 400, 'bad sort refused');
+  assert.equal((await putSet({ terminalLayout: 'panes', paneSplit: 'horizontal', terminalShell: 'powershell', defaultOpener: 'code', startView: 'apps', sort: 'name' })).status, 200, 'settings saved');
   const cfg2 = JSON.parse(fs.readFileSync(path.join(webHome, '.upex', 'config.json'), 'utf-8'));
   assert.equal(cfg2.terminalLayout, 'panes', 'layout written to config');
   assert.equal(cfg2.paneSplit, 'horizontal', 'refused request saved nothing, later one did');
   assert.equal(cfg2.defaultOpener, 'vscode', 'default opener stored as its key');
   const st2 = await (await fetch(base + '/api/state', { headers: { 'x-upex-token': token } })).json();
-  assert.deepEqual(st2.settings, { terminalLayout: 'panes', paneSplit: 'horizontal', terminalShell: 'powershell', defaultOpener: 'vscode' }, 'state reports settings');
+  assert.deepEqual(st2.settings, { startView: 'apps', sort: 'name', terminalLayout: 'panes', paneSplit: 'horizontal', terminalShell: 'powershell', defaultOpener: 'vscode' }, 'state reports settings');
   assert.deepEqual(Object.keys(cfg2.workspaces), ['work'], 'settings save keeps workspaces');
   const note = path.join(webHome, 'note.txt');
   fs.writeFileSync(note, '');

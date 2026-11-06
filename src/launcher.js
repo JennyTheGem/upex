@@ -93,9 +93,11 @@ const INTERACTIVE_APP_KEYS = [
 // Openers that open terminal windows (and so take a window count).
 export const isTerminalApp = key => key === 'cmd' || key === 'claude';
 
-// Windows terminal settings in config.json; the first value is the default.
+// Settings in config.json; the first value is the default. Start view and sort are shared by the selector and upex ui.
 // Layout: separate windows, or tabs/panes in one Windows Terminal window. Shell 'profile' = wt default profile.
 export const SETTINGS = {
+  startView: ['shortcuts', 'apps', 'workspaces'],
+  sort: ['recent', 'name'],
   terminalLayout: ['windows', 'tabs', 'panes'],
   paneSplit: ['auto', 'vertical', 'horizontal'],
   terminalShell: ['cmd', 'powershell', 'pwsh', 'profile'],

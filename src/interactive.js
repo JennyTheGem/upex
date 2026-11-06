@@ -8,7 +8,7 @@ import path from 'node:path';
 import readline from 'node:readline';
 import chalk from 'chalk';
 import Fuse from 'fuse.js';
-import { getInteractiveAppChoices, getAppMap, isTerminalApp, hasWindowsTerminal, defaultOpener, readSettings } from './launcher.js';
+import { getInteractiveAppChoices, getAppMap, isTerminalApp, hasWindowsTerminal, defaultOpener, readSettings, setting } from './launcher.js';
 import { loadLinks, frecency, removeLink, setLink, renameLink, linkExists, loadWorkspaces, removeWorkspace, nameError, loadConfig, saveConfig } from './store.js';
 import { describeEntry } from './commands/workspace.js';
 import * as ui from './ui.js';
@@ -17,7 +17,6 @@ const MAX_VISIBLE_CHOICES = 8;
 const MAX_WIDTH = 100;
 
 function buildChoices() {
-  // Most-used / most-recent first, ties alphabetical.
   return Object.entries(loadLinks())
     .map(([name, entry]) => ({
       name,
@@ -32,8 +31,11 @@ function buildChoices() {
       searchText: `${name} ${entry.path || ''} ${entry.app || ''} ${entry.url || ''} ${(entry.tags || []).join(' ')}`,
       score: frecency(entry),
     }))
-    .sort((a, b) => b.score - a.score || a.name.localeCompare(b.name));
+    .sort(byOrder(setting('sort')));
 }
+
+// 'recent' = most used first, ties alphabetical; 'name' = A to Z.
+export const byOrder = (sort) => (a, b) => (sort === 'name' ? 0 : b.score - a.score) || a.name.localeCompare(b.name);
 
 // Folder shortcuts on the Shortcuts tab, app + URL shortcuts on the Apps tab.
 export const inView = (view) => (c) => (view === 'apps') === !!(c.isApp || c.isUrl);
@@ -123,6 +125,8 @@ const VIEWS = { shortcuts: 'Shortcuts', apps: 'Apps', workspaces: 'Workspaces', 
 const CYCLE = ['shortcuts', 'apps', 'workspaces'];
 const nextView = (view) => CYCLE[(CYCLE.indexOf(view) + 1) % CYCLE.length];
 const SETTING_ROWS = [
+  { key: 'startView', label: 'Start view', names: { shortcuts: 'Shortcuts', apps: 'Apps', workspaces: 'Workspaces' } },
+  { key: 'sort', label: 'Sort', names: { recent: 'Most used', name: 'A to Z' } },
   { key: 'terminalLayout', label: 'Terminals', names: { windows: 'Separate windows', tabs: 'Tabs', panes: 'Split panes' } },
   { key: 'paneSplit', label: 'Pane split', names: { auto: 'Auto', vertical: 'Side by side', horizontal: 'Stacked' } },
   { key: 'terminalShell', label: 'Shell', names: { cmd: 'cmd', powershell: 'PowerShell', pwsh: 'PowerShell 7', profile: 'WT profile' } },
@@ -136,6 +140,8 @@ const rowOptions = (row, appChoices) => (row.names
   : appChoices.filter(c => c.key !== 'copy').map(c => [c.key, c.label]));
 
 function settingNote(key, s, wt) {
+  if (key === 'startView') return 'The tab upex and upex ui open on.';
+  if (key === 'sort') return 'Shortcut order here and in upex ui.';
   if (key === 'defaultOpener') return 'Opens folder shortcuts that have no opener of their own.';
   if (wt === null) return 'Windows only. Other systems use their own terminal.';
   if (key === 'terminalLayout') {
@@ -299,7 +305,8 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
 
   return new Promise((resolve, reject) => {
     let query = '';
-    let view = 'shortcuts'; // Tab cycles 'shortcuts' | 'apps' | 'workspaces'
+    // Tab cycles 'shortcuts' | 'apps' | 'workspaces'; --app only matters on Shortcuts.
+    let view = preferredApp ? 'shortcuts' : setting('startView');
     let choices = allChoices.filter(inView(view));
     let filteredChoices = choices;
     let selectedIndex = 0;
@@ -312,7 +319,7 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
     let action = null;     // 'edit' | 'rename' | 'add'
     let inputBuffer = '';
     let flash = '';
-    let backView = 'shortcuts'; // where Shift+Tab returns from Settings
+    let backView = view; // where Shift+Tab returns from Settings
     let settings = {};
     let settingIndex = 0;
     let wt = null;
@@ -534,7 +541,7 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
           settingIndex = (settingIndex + (key.name === 'up' ? n - 1 : 1)) % n;
           redraw();
         } else if (key.name === 'left' || key.name === 'right') {
-          // Only the layout row (always first) changes which rows show, so the index stays put.
+          // Only the layout row changes which rows show, and pane split comes after it, so the index stays put.
           const row = rows[settingIndex];
           const keys = rowOptions(row, appChoices).map(([k]) => k);
           const at = Math.max(0, keys.indexOf(settings[row.key]));
@@ -542,6 +549,7 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
           settings = { ...settings, [row.key]: next };
           saveConfig({ ...loadConfig(), [row.key]: next });
           if (row.key === 'defaultOpener') fallback = next;
+          if (row.key === 'sort') rebuild();
           redraw();
         }
         return;

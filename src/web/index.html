@@ -246,7 +246,7 @@ h1 { font-size: 20px; letter-spacing: -.015em; margin: 8px 0 4px; }
   <div class="bar">
     <div class="brand">upex</div>
     <nav aria-label="Views">
-      <button class="tab" data-view="links" aria-current="page">Shortcuts <span class="n" id="n-links"></span></button>
+      <button class="tab" data-view="links">Shortcuts <span class="n" id="n-links"></span></button>
       <button class="tab" data-view="apps">Apps <span class="n" id="n-apps"></span></button>
       <button class="tab" data-view="ws">Workspaces <span class="n" id="n-ws"></span></button>
       <button class="tab" data-view="settings">Settings</button>
@@ -271,19 +271,20 @@ const KINDS = { folder: 'Folder', app: 'App', cmd: 'Command', url: 'URL' };
 const TAB_KINDS = { links: ['folder'], apps: ['app', 'cmd', 'url'] };
 const TITLES = { links: 'Shortcuts', apps: 'Apps', ws: 'Workspaces', settings: 'Settings' };
 const SETTING_OPTS = {
+  startView: { shortcuts: 'Shortcuts', apps: 'Apps', workspaces: 'Workspaces' },
+  sort: { recent: 'Most used', name: 'A to Z' },
   terminalLayout: { windows: 'Separate windows', tabs: 'Tabs', panes: 'Split panes' },
   paneSplit: { auto: 'Auto', vertical: 'Side by side', horizontal: 'Stacked' },
   terminalShell: { cmd: 'cmd', powershell: 'PowerShell', pwsh: 'PowerShell 7', profile: 'WT default profile' },
 };
 const tabLinks = () => S.links.filter(l => l.tab === S.view);
 const COPY_WORD = { folder: 'path', app: 'path', cmd: 'command', url: 'URL' };
-function savedSort() {
-  try { return localStorage.getItem('upex.sort') === 'name' ? 'name' : 'recent'; } catch { return 'recent'; }
-}
+// config startView -> page tab
+const START_TAB = { shortcuts: 'links', apps: 'apps', workspaces: 'ws' };
 
 const S = {
   links: [], workspaces: {}, apps: [], settings: {}, wt: null, home: '', sep: '/',
-  view: 'links', q: '', tag: null, sort: savedSort(),
+  view: null, q: '', tag: null,
   adding: false, addKind: 'folder', addErr: '', add: { name: '', target: '', tags: '', opener: '' },
   editing: null, draft: null, editErr: '',
   confirming: null, confirmWs: null, editWs: null, renamingWs: null, wsNewName: '',
@@ -360,6 +361,10 @@ async function load(skip) {
     say(e.message, true);
     if (skip) return;
   }
+  if (!S.view) {
+    S.view = START_TAB[S.settings.startView] || 'links';
+    if (TAB_KINDS[S.view]) S.addKind = TAB_KINDS[S.view][0];
+  }
   render();
 }
 
@@ -412,7 +417,7 @@ function visibleLinks() {
   return tabLinks()
     .filter(l => !S.tag || l.tags.includes(S.tag))
     .filter(l => !q || [l.name, l.target, ...l.tags].some(s => s.toLowerCase().includes(q)))
-    .sort((a, b) => (S.sort === 'name' ? 0 : b.score - a.score) || a.name.localeCompare(b.name));
+    .sort((a, b) => (S.settings.sort === 'name' ? 0 : b.score - a.score) || a.name.localeCompare(b.name));
 }
 
 function addForm() {
@@ -553,14 +558,9 @@ function linksView() {
       tags.map(t => h('button', { type: 'button', class: 'chip', 'aria-pressed': String(S.tag === t),
         onclick: () => { S.tag = S.tag === t ? null : t; render(); } }, '#' + t))),
     h('div', { class: 'grow' }),
-    h('select', { id: 'sort', 'aria-label': 'Sort', onchange: e => {
-        S.sort = e.target.value;
-        try { localStorage.setItem('upex.sort', S.sort); } catch {}
-        render();
-        document.getElementById('sort').focus();
-      } },
-      h('option', { value: 'recent', selected: S.sort === 'recent' }, 'Most used'),
-      h('option', { value: 'name', selected: S.sort === 'name' }, 'A to Z')),
+    h('select', { id: 'sort', 'aria-label': 'Sort', onchange: e =>
+        act(() => api('PUT', 'settings', { sort: e.target.value })).then(() => document.getElementById('sort')?.focus()) },
+      Object.entries(SETTING_OPTS.sort).map(([k, label]) => h('option', { value: k, selected: S.settings.sort === k }, label))),
     !S.adding && btn(newLabel, 'primary', () => openPanel('adding', 'add-name'), 'plus', { 'aria-keyshortcuts': 'n' })));
 
   if (broken.length) {
@@ -753,6 +753,11 @@ function settingsView() {
   const pickOpener = e => act(() => api('PUT', 'settings', { defaultOpener: e.target.value }), `Folders open in ${appLabel(e.target.value)}`)
     .then(() => document.getElementById('set-opener')?.focus());
   return [
+    h('section', { class: 'form', 'aria-labelledby': 'set-gen' },
+      h('h2', { id: 'set-gen', style: 'font-size:15px;margin:0' }, 'General'),
+      h('p', { class: 'lede', style: 'margin:0' }, 'Shared with the upex selector in the terminal.'),
+      seg('startView', 'Start view', l => `upex opens on ${l}`),
+      seg('sort', 'Sort', l => `Sorted: ${l}`)),
     h('section', { class: 'form', 'aria-labelledby': 'set-term' },
       h('h2', { id: 'set-term', style: 'font-size:15px;margin:0' }, 'Terminals'),
       h('p', { class: 'lede', style: 'margin:0' }, 'The shell terminal openers start, and whether several of them go into your current Windows Terminal window as tabs or split panes.'),
