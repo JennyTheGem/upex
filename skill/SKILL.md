@@ -9,7 +9,7 @@ Jenny's CLI for named shortcuts to folders, apps, command lines and URLs. Data: 
 
 ## Rules
 
-- Never run bare `upex` (interactive selector, takes over stdin and by default the whole terminal with mouse support: click a row to select, click it again or double-click to open, click tabs / openers / settings options, wheel moves the selection; Settings > Full screen Off draws it inline without mouse; Esc clears a typed filter, then quits; ^a/^e/^r/^d add, edit path, rename, delete with a green confirmation; ^e/^r start filled with the current path/name, ^u clears the line, an empty path = cwd; with Terminals = Tabs in Windows Terminal, opening a terminal (or a command-line shortcut) keeps the selector open and opens the tab beside it; Enter on a shortcut whose folder is missing stays open with "path missing, ^e to fix"; long names clip with …; ^z undoes the last delete of the session unless the name was taken since) or `upex ui` (starts a server, opens a browser). Use a name or sub-command.
+- Never run bare `upex` (interactive selector, takes over stdin and by default the whole terminal with mouse support: click a row to select, click it again or double-click to open, click tabs / openers / settings options, wheel moves the selection; Settings > Full screen Off draws it inline without mouse; Esc clears a typed filter, then quits; ^a/^e/^r/^d add, edit path, rename, delete with a green confirmation; ^e/^r start filled with the current path/name, ^u clears the line, an empty path = cwd; with Terminals = Tabs in Windows Terminal, opening a terminal (or a command-line shortcut) keeps the selector open and opens the tab beside it; Enter on a shortcut whose folder is missing stays open with "path missing, ^e to fix"; long names clip with …; ^z undoes the last delete of the session unless the name was taken since; ^u in browse mode starts `upex ui` inside the selector, opens the browser and shows "upex ui running <link>"; ^u again or closing the selector stops it) or `upex ui` (starts a server, opens a browser). Use a name or sub-command.
 - Find a project path: `upex go <name>` prints only the raw path (exit 1 if unknown). `upex go web/src` resolves a subpath. `upex ls` shows the full live table, `upex ls <tag>` filters. Fuzzy matching and aliases apply; trust the printed path.
 - Opening things spawns windows on her desktop: do it only when she asks. If the target is unambiguous (one plausible match, or the current repo), just run it, don't ask.
 - Names can contain spaces (e.g. `"Led start"`): quote them.
@@ -17,6 +17,7 @@ Jenny's CLI for named shortcuts to folders, apps, command lines and URLs. Data: 
 - `upex stale` without `--yes` only lists when not in a TTY (safe to run); `--yes` archives every listed shortcut, so only use it when she asks.
 - `--ttl` shortcuts are archived automatically once expired (by the next command other than `go` and the hidden ones, notice on stderr; `go` already refuses them); `upex restore` brings one back permanently.
 - Never edit `~/.upex/*.json` by hand; use the commands below.
+- To change a setting (terminalLayout, sort, defaultOpener, ...) use `upex config set <setting> <value>`, never edit config.json by hand; `upex config get <setting>` prints just the value.
 - "What do I use most?" questions: `upex stats` (read-only, safe to run). Every open is logged with its opener (`cd` for go, `app`, `url`, `web`, or the opener key); counting started when the log was added, so older use shows only in the all-time column.
 
 ## Commands
@@ -37,6 +38,7 @@ Jenny's CLI for named shortcuts to folders, apps, command lines and URLs. Data: 
 | `upex ws ...` | Workspaces (`ws add`, `ws rm`, `ws <name>`) |
 | `upex app [alias] [command] [--remove]` | Custom openers |
 | `upex stats [--days N] [--all]` | Most used shortcuts and openers (default last 30 days) plus opens per week, from `~/.upex/history.jsonl` |
+| `upex config` / `config get <setting>` / `config set <setting> <value>` | List settings with their options, print one, or change one (same as the Settings tabs) |
 | `upex stale [days] [--yes]` | Shortcuts not opened in N days (default 60), never-opened first; offers to archive each |
 | `upex check [--prune]` / `doctor` | Report (or prune) broken paths / check store, openers, shell setup |
 | `upex copy <name>` / `last` / `export [file]` / `import <file> [--replace]` | Misc |

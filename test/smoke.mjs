@@ -18,7 +18,7 @@ import { installCmdWrapper } from '../src/commands/setup.js';
 import { normalizeUrl, caretEscape, wtCommandLine, setting, shellCommand, defaultOpener } from '../src/launcher.js';
 import { parseTags, parseDuration } from '../src/commands/add.js';
 import { truncate, span } from '../src/ui.js';
-import { applyShortcut, cleanEntries } from '../src/commands/web.js';
+import { applyShortcut, cleanEntries, startServer } from '../src/commands/web.js';
 import { renderInteractiveView, inView, tidyPath, byOrder, optionRow, listRows, readMouse, hitTest, rowClick, undoError, clipName, prefill, missingFlash, staysOpen } from '../src/interactive.js';
 import chalk from 'chalk';
 import { resolveTarget, resolveName, suggestNames } from '../src/fuzzy.js';
@@ -133,6 +133,18 @@ assert.deepEqual(loadHistory(path.join(home, '.upex', 'history.jsonl')).map(h =>
 const statsOut = upexIn('stats');
 assert.equal(statsOut.status, 0, 'stats runs');
 assert.match(statsOut.stdout, /cd\s+1/, 'stats shows the opener count');
+
+// -- upex config: get/set round-trip, bad values refused without saving --
+assert.equal(upexIn('config', 'get', 'terminalLayout').stdout.trim(), 'windows', 'config get prints the default');
+assert.equal(upexIn('config', 'set', 'terminalLayout', 'tabs').status, 0, 'config set saves');
+assert.equal(upexIn('config', 'get', 'terminalLayout').stdout.trim(), 'tabs', 'config get reads it back');
+assert.equal(upexIn('config', 'set', 'defaultOpener', 'code').status, 0, 'opener alias accepted');
+assert.equal(upexIn('config', 'get', 'defaultOpener').stdout.trim(), 'vscode', 'opener stored as its key');
+assert.equal(upexIn('config', 'set', 'terminalLayout', 'nope').status, 1, 'bad value refused');
+assert.equal(upexIn('config', 'set', 'bogus', 'x').status, 1, 'unknown setting refused');
+assert.equal(upexIn('config', 'get', 'bogus').status, 1, 'unknown setting get refused');
+assert.equal(upexIn('config', 'get', 'terminalLayout').stdout.trim(), 'tabs', 'refused sets saved nothing');
+assert.match(upexIn('config').stdout, /terminalLayout\s+tabs\s+windows, tabs, panes/, 'config lists settings with options');
 assert.equal(upexIn('stats', '--days', '0').status, 1, 'bad --days rejected');
 
 // -- subpaths: go prints a folder inside the shortcut, missing subfolder fails --
@@ -431,6 +443,11 @@ assert.equal(at(setArgs, 5, sortLine)?.option, undefined, 'click a settings labe
 const v = (a) => strip(renderInteractiveView({ ...viewArgs, ...a }));
 assert.ok(v({}).includes('esc quit') && v({ query: 's' }).includes('esc clear') && v({ query: 's', mode: 'input', action: 'add' }).includes('esc cancel'), 'esc hint says what esc does');
 assert.ok(v({ view: 'workspaces', query: 'd' }).includes('esc clear'), 'workspaces too');
+assert.ok(v({}).includes('^u web ui') && v({ view: 'workspaces' }).includes('^u web ui'), '^u hint');
+const webAt = 'http://127.0.0.1:4545/?t=x';
+assert.ok(!v({}).includes('upex ui running') && v({ webUrl: webAt }).includes(`● upex ui running  ${webAt}`) && v({ view: 'settings', settings: setArgs.settings, webUrl: webAt }).includes(webAt), 'running web ui shows its link in the selector');
+assert.ok(v({ webUrl: webAt, mode: 'input', action: 'add' }).includes(webAt), 'link stays while typing');
+assert.ok(v({ webUrl: webAt }).includes('^u stop web ui') && !v({}).includes('stop web ui'), '^u stops a running web ui');
 assert.ok(!v({}).includes('^z') && v({ undo: true }).includes('^z undo') && v({ view: 'apps', undo: true }).includes('^z undo'), '^z hint only while undo is available');
 const lvl = chalk.level;
 chalk.level = 1;
@@ -532,6 +549,21 @@ assert.deepEqual([...ord].sort(byOrder('name')).map(c => c.name), ['a', 'b', 'c'
 assert.equal(defaultOpener({ defaultOpener: 'Code' }), 'vscode', 'default opener alias normalized');
 assert.equal(defaultOpener({ defaultOpener: 'nope' }), 'explorer', 'unknown default opener falls back to explorer');
 assert.equal(defaultOpener({ defaultOpener: 'copy' }), 'explorer', 'copy is no default opener');
+
+// -- startServer for the selector: onReady gets the link instead of printing it --
+{
+  const logged = [];
+  const { log } = console;
+  console.log = (...a) => logged.push(a.join(' '));
+  let inner;
+  const url = await new Promise((onReady, onError) => { inner = startServer({ port: 0, open: false, onReady, onError }); });
+  console.log = log;
+  assert.match(url, /^http:\/\/127\.0\.0\.1:\d+\/\?t=[0-9a-f]{32}$/, 'onReady gets the link');
+  assert.deepEqual(logged, [], 'nothing printed over the selector');
+  assert.equal((await fetch(url)).status, 200, 'page served');
+  inner.close();
+  inner.closeAllConnections();
+}
 
 // -- upex ui: token + host guard, add via API writes the store --
 const webHome = fs.mkdtempSync(path.join(os.tmpdir(), 'upex-web-'));

@@ -571,9 +571,10 @@
       "title": "upex config get/set",
       "body": "CLI for settings (upex config set terminalLayout tabs), so they work without the TUI or web UI and in scripts.",
       "phase": "now",
-      "status": "planned",
+      "status": "done",
       "created": "2026-11-06",
-      "updated": "2026-11-06"
+      "updated": "2026-11-07",
+      "note": "upex config / config get / config set, validation shared with upex ui via checkSettings"
     },
     {
       "id": "default-sort-and-view",
@@ -679,10 +680,11 @@
       "title": "Open upex ui from the TUI",
       "body": "A key in the interactive selector starts upex ui and opens it in the browser.",
       "phase": "now",
-      "status": "planned",
+      "status": "done",
       "size": "S",
       "created": "2026-11-07",
-      "updated": "2026-11-07"
+      "updated": "2026-11-07",
+      "note": "^u starts upex ui inside the selector with a status line, ^u again or quitting stops it"
     },
     {
       "id": "cd-support-via-wrapper-hidden-resolve-public-go",

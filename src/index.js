@@ -30,6 +30,7 @@ import { registerWebPage } from './commands/webpage.js';
 import { registerDoctor } from './commands/doctor.js';
 import { registerStale } from './commands/stale.js';
 import { registerStats } from './commands/stats.js';
+import { registerConfig } from './commands/config.js';
 import { runInteractiveMode } from './interactive.js';
 
 const { version } = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf-8'));
@@ -83,6 +84,7 @@ export function createProgram() {
   registerDoctor(program);
   registerStale(program);
   registerStats(program);
+  registerConfig(program);
 
   // Archive expired temporary shortcuts. Skipped where stdout feeds a shell wrapper.
   program.hook('preAction', (_root, cmd) => {

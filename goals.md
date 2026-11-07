@@ -21,9 +21,7 @@ Closed sections: §5 Platform support · §8 Distribution
 
 ## 3. Resolution & UX
 
-- `upex-config-get-set` upex config get/set (now)
 - `tui-rough-spots` TUI rough spots after the critique fixes (next)
-- `open-upex-ui-from-the-tui` Open upex ui from the TUI (now)
 
 ## 4. Shell integration
 

@@ -361,6 +361,21 @@ export function readSettings(config = loadConfig()) {
   return { ...out, defaultOpener: defaultOpener(config) };
 }
 
+// Check a subset of settings. Returns { next } (opener keys normalized) or { error }; for upex ui and upex config.
+export function checkSettings(values) {
+  const next = {};
+  for (const [k, v] of Object.entries(values)) {
+    if (k === 'defaultOpener') {
+      next[k] = typeof v === 'string' && openerKey(v);
+      if (!next[k] || next[k] === 'copy') return { error: `Unknown opener "${v}".` };
+    } else if (Object.hasOwn(SETTINGS, k)) {
+      if (!SETTINGS[k].includes(v)) return { error: `${k} must be one of: ${SETTINGS[k].join(', ')}.` };
+      next[k] = v;
+    } else return { error: `Unknown setting "${k}". Settings: ${[...Object.keys(SETTINGS), 'defaultOpener'].join(', ')}.` };
+  }
+  return { next };
+}
+
 // Is this opener usable here? For `upex doctor`. Copy needs no command.
 export function checkOpener(key) {
   const app = getAppMap()[key];

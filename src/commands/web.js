@@ -9,7 +9,7 @@ import os from 'node:os';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { loadLinks, saveLinks, loadWorkspaces, saveWorkspaces, pruneBroken, targetField, nameError, takenError, checkAliases, aliasesOf, frecency, loadConfig, saveConfig } from '../store.js';
-import { getInteractiveAppChoices, launchUrl, openerKey, isTerminalApp, SETTINGS, readSettings, hasWindowsTerminal } from '../launcher.js';
+import { getInteractiveAppChoices, launchUrl, openerKey, isTerminalApp, checkSettings, readSettings, hasWindowsTerminal } from '../launcher.js';
 import { handleOpen, isFile } from './open.js';
 import { openEntries } from './workspace.js';
 import { parseTags } from './add.js';
@@ -154,16 +154,8 @@ const routes = {
 
   // Any subset of settings; all are checked before any is saved.
   'PUT /api/settings': (b) => {
-    const next = {};
-    for (const [k, v] of Object.entries(b)) {
-      if (k === 'defaultOpener') {
-        next[k] = typeof v === 'string' && openerKey(v);
-        if (!next[k] || next[k] === 'copy') throw new HttpError(400, `Unknown opener "${v}".`);
-      } else if (Object.hasOwn(SETTINGS, k)) {
-        if (!SETTINGS[k].includes(v)) throw new HttpError(400, `${k} must be one of: ${SETTINGS[k].join(', ')}.`);
-        next[k] = v;
-      } else throw new HttpError(400, `Unknown setting "${k}".`);
-    }
+    const { next, error } = checkSettings(b);
+    if (error) throw new HttpError(400, error);
     saveConfig({ ...loadConfig(), ...next });
     return {};
   },
@@ -241,8 +233,10 @@ function sendJson(res, status, body) {
   res.end(JSON.stringify(body));
 }
 
-export function startServer({ port = DEFAULT_PORT, open = true } = {}) {
-  const token = crypto.randomBytes(24).toString('hex');
+// onReady(url) / onError(err) replace the printed status and the exit, for the selector, which owns the screen.
+export function startServer({ port = DEFAULT_PORT, open = true, onReady, onError } = {}) {
+  // 16 bytes keeps the link short enough for one selector line.
+  const token = crypto.randomBytes(16).toString('hex');
   const nonce = crypto.randomBytes(16).toString('base64');
   const page = fs.readFileSync(PAGE, 'utf-8').replace('__TOKEN__', token).replaceAll('__NONCE__', nonce);
   let hosts = new Set();
@@ -281,18 +275,23 @@ export function startServer({ port = DEFAULT_PORT, open = true } = {}) {
     const actual = server.address().port;
     hosts = new Set([`127.0.0.1:${actual}`, `localhost:${actual}`]);
     const url = `http://127.0.0.1:${actual}/?t=${token}`;
-    ui.success(`upex ui running at ${url}`);
-    ui.dim('Press Ctrl+C to stop.');
-    if (open) launchUrl(url);
+    // Link first: opening the browser can block.
+    if (onReady) onReady(url);
+    else {
+      ui.success(`upex ui running at ${url}`);
+      ui.dim('Press Ctrl+C to stop.');
+    }
+    if (open && server.listening) launchUrl(url);
   };
 
   server.on('error', (err) => {
     if (err.code === 'EADDRINUSE' && port !== 0) {
-      ui.warn(`Port ${port} is busy, using a free one.`);
+      if (!onReady) ui.warn(`Port ${port} is busy, using a free one.`);
       port = 0;
       server.listen(0, '127.0.0.1');
       return;
     }
+    if (onError) return onError(err);
     ui.error(`Cannot start server: ${err.message}`);
     process.exit(1);
   });

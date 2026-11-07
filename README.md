@@ -53,6 +53,7 @@ npm link
 | `upex doctor` | Check the store, openers, shell wrapper and completion |
 | `upex stats [--days N] [--all]` | Most used shortcuts and openers (default last 30 days) and opens per week |
 | `upex ui [--port <n>] [--no-open]` | Manage shortcuts and workspaces in the browser |
+| `upex config` / `config get <setting>` / `config set <setting> <value>` | Show, print or change a setting (see Settings below) |
 | `upex completion [shell]` | Print a shell completion script (bash/zsh/fish/powershell) |
 | `upex setup [cmd]` | Shell integration; `setup cmd` installs the cmd.exe wrapper |
 | `upex help` | Show all available commands |
@@ -209,6 +210,7 @@ Run `upex` with no arguments to open the interactive selector. Shortcuts are ord
 - `Ctrl+E` -- edit the selected shortcut's path (starts filled in, `Ctrl+U` clears it)
 - `Ctrl+R` -- rename the selected shortcut (starts filled in)
 - `Ctrl+D` -- delete the selected shortcut (confirm with `y`), `Ctrl+Z` undoes the last delete
+- `Ctrl+U` -- start `upex ui` and open it in the browser; the selector stays open and shows the link. `Ctrl+U` again stops it, so does closing the selector
 - `Esc` -- clear the filter, then quit
 - Mouse (full screen) -- click a tab, opener or setting; click a row to select it, again or double-click to open; the wheel moves the selection
 
@@ -310,7 +312,7 @@ Config is stored in `~/.upex/config.json`, including custom openers under `apps`
 }
 ```
 
-Settings, also on the Settings tab of `upex ui` and the selector (`Shift+Tab`):
+Settings, also on the Settings tab of `upex ui` and the selector (`Shift+Tab`), and from the command line with `upex config set terminalLayout tabs` (`upex config` lists them all, `upex config get sort` prints one value):
 
 - `"startView"`: the tab the selector and `upex ui` open on. `"shortcuts"` (default), `"apps"` or `"workspaces"`.
 - `"sort"`: shortcut order in the selector and `upex ui`. `"recent"` (default, most used first) or `"name"` (A to Z).

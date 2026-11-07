@@ -11,6 +11,7 @@ import Fuse from 'fuse.js';
 import { getInteractiveAppChoices, getAppMap, isTerminalApp, hasWindowsTerminal, defaultOpener, readSettings, setting, launchApp } from './launcher.js';
 import { loadLinks, activeLinks, aliasesOf, takenError, checkAliases, frecency, recordUse, removeLink, setLink, renameLink, loadWorkspaces, saveWorkspaces, removeWorkspace, nameError, loadConfig, saveConfig } from './store.js';
 import { describeEntry } from './commands/workspace.js';
+import { startServer } from './commands/web.js';
 import * as ui from './ui.js';
 
 const MAX_VISIBLE_CHOICES = 8;
@@ -249,6 +250,17 @@ function settingNote(key, s, wt) {
   return wt ? 'Your Windows Terminal default profile. A start command (like claude) runs in cmd.' : 'Windows Terminal (wt) not found, so cmd opens instead.';
 }
 
+// "● upex ui running  http://host/?t=…": host bright, scheme and token dim, the whole link stays clickable.
+function webStatus(url, w) {
+  const { protocol, host } = new URL(url);
+  const scheme = `${protocol}//`;
+  const rest = url.slice(scheme.length + host.length);
+  const left = `  ${chalk.green('●')} ${chalk.bold('upex ui')} ${chalk.dim('running')}  ${chalk.dim(scheme)}${host}${chalk.dim(rest)}`;
+  const note = chalk.dim('stops when you quit');
+  const gap = w - vis(left) - vis(note);
+  return gap >= 2 ? left + ' '.repeat(gap) + note : left;
+}
+
 export function renderInteractiveView({
   query,
   choices,
@@ -268,6 +280,7 @@ export function renderInteractiveView({
   settingIndex = 0,
   wt = null,
   counts = {},
+  webUrl = '', // upex ui started with ^u
   width = 80,
   height = 24,
   maxList = Infinity,
@@ -322,6 +335,9 @@ export function renderInteractiveView({
   const tabKey = ['tab', VIEWS[nextView(view)].toLowerCase()];
   const escKey = ['esc', mode !== 'browse' ? 'cancel' : query ? 'clear' : 'quit'];
   const undoKey = undo && ['^z', 'undo'];
+  const uiKey = ['^u', webUrl ? 'stop web ui' : 'web ui'];
+  // Blank row first, so the link sits apart from the key hints.
+  const webRows = webUrl ? ['', webStatus(webUrl, w)] : [];
   const nav = (open) => keyHint([['↵', open], ['↑↓', 'move'], tabKey, escKey]);
 
   if (isSettings) {
@@ -336,21 +352,22 @@ export function renderInteractiveView({
       lines.push(`  ${sel ? '›' : ' '} ${(sel ? chalk.bold : chalk.dim)(row.label.padEnd(16))}${picker}`);
     });
     lines.push('', chalk.dim(`    ${settingNote(rows[settingIndex].key, settings, wt)}`));
-    return footer([keyHint([['↑↓', 'setting'], ['←→', 'change (saved)'], tabKey, ['S-Tab', 'back'], ['esc', 'quit']])]);
+    return footer([keyHint([['↑↓', 'setting'], ['←→', 'change (saved)'], tabKey, ['S-Tab', 'back'], ['esc', 'quit'], uiKey]), ...webRows]);
   }
 
   const openerSpans = [];
   const openers = optionRow(appChoices.map(c => `${c.label}${isTerminalApp(c.key) && cmdCount > 1 ? ` ×${cmdCount}` : ''}`), selectedAppIndex, w - 13, openerSpans);
-  const foot = isWs ? [nav('open all'), keyHint([['^d', 'delete'], undoKey])]
-    : view === 'apps' ? [nav(currentChoice?.isUrl ? 'open in browser' : 'launch app'), keyHint([['^r', 'rename'], ['^d', 'delete'], undoKey])]
+  const foot = isWs ? [nav('open all'), keyHint([['^d', 'delete'], undoKey, uiKey])]
+    : view === 'apps' ? [nav(currentChoice?.isUrl ? 'open in browser' : 'launch app'), keyHint([['^r', 'rename'], ['^d', 'delete'], undoKey, uiKey])]
       : [
         `  ${chalk.dim('open with')}  ${openers}`,
         '',
         keyHint([['↵', 'open'], ['↑↓', 'move'], ['←→', 'opener'], terminal && ['S-↑↓', 'windows'], tabKey, escKey]),
-        keyHint([['^a', 'add'], ['^e', 'edit path'], ['^r', 'rename'], ['^d', 'delete'], undoKey]),
+        keyHint([['^a', 'add'], ['^e', 'edit path'], ['^r', 'rename'], ['^d', 'delete'], undoKey, uiKey]),
       ];
   // Typing: input keys replace the last two hint rows, same height so the list stays put.
   if (mode === 'input') foot.splice(-2, 2, keyHint([['↵', 'save'], ['^u', 'clear'], ['esc', 'cancel']]), '');
+  foot.push(...webRows);
 
   if (list.length === 0) {
     const empty = {
@@ -442,6 +459,7 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
     let targets = [];   // clickable areas of the last frame
     let mouse = null;   // readMouse state
     let lastClick = {}; // { y, at } for double-click
+    let web = null;     // upex ui from ^u: { server, url, restore }, stopped when the selector closes
 
     // Counts rows at the current width, so a resize that rewrapped the last frame still clears all of it.
     const clearRendered = () => {
@@ -489,6 +507,7 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
         settings,
         settingIndex,
         wt,
+        webUrl: web?.url,
         counts: { shortcuts: allChoices.filter(inView('shortcuts')).length, apps: allChoices.filter(inView('apps')).length, workspaces: wsChoices.length },
         width,
         height,
@@ -563,7 +582,33 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
       try { fs.writeSync(stdout.fd, s); } catch { stdout.write(s); }
     };
 
+    const stopWeb = () => {
+      if (!web) return;
+      web.restore();
+      web.server.close();
+      // Open browser tabs keep connections alive, which would keep upex running.
+      web.server.closeAllConnections();
+      web = null;
+    };
+
+    // Runs upex ui inside the selector. Its output would draw over the frame: errors go to the flash, the rest is dropped.
+    const startWeb = () => {
+      const { log, error } = console;
+      const self = { restore: () => Object.assign(console, { log, error }) };
+      // A server stopped (or the selector closed) before it got here must not touch the screen.
+      const live = fn => guard(x => (web === self ? fn(x) : self.server.close()));
+      self.server = startServer({
+        onReady: live((url) => { self.url = url; redraw(); }),
+        onError: live((err) => { stopWeb(); flash = `can't start upex ui: ${err.message}`; redraw(); }),
+      });
+      // After startServer, so a throw there can't leave console swallowed.
+      web = self;
+      console.log = () => {};
+      console.error = (...a) => { flash = ui.stripAnsi(a.join(' ')).trim(); guard(redraw)(); };
+    };
+
     const cleanup = () => {
+      stopWeb();
       stdin.removeListener('keypress', onKeypress);
       stdout.removeListener('resize', onResize);
       process.removeListener('exit', onExit);
@@ -773,6 +818,14 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
 
       if (key.name === 'tab') {
         switchTo(!key.shift ? nextView(view) : view === 'settings' ? backView : 'settings');
+        redraw();
+        return;
+      }
+
+      // ^U starts upex ui (and opens the browser); again stops it.
+      if (key.ctrl && key.name === 'u') {
+        if (!web) startWeb();
+        else { stopWeb(); done('stopped upex ui'); }
         redraw();
         return;
       }
