@@ -27,7 +27,7 @@ export function registerConfig(program) {
       const known = (k) => Object.hasOwn(settings, k) || fail(checkSettings({ [k]: '' }).error);
 
       if (!action || action === 'list') {
-        ui.heading('upex settings');
+        ui.heading('Settings');
         ui.table([
           [chalk.bold('SETTING'), chalk.bold('VALUE'), chalk.bold('OPTIONS')],
           ...Object.entries(settings).map(([k, v]) => [k, chalk.bold(v), chalk.dim(choices(k).join(', '))]),

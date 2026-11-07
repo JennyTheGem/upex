@@ -108,11 +108,23 @@ function renderRow({ sel, name, nameWidth, hits, text = '', style = 'path', righ
   const nm = chalk.bold(underlineHits(n.text, n.hits)) + ' '.repeat(Math.max(0, nameWidth - vis(n.text)));
   const room = cw - 2 - nameWidth - 2 - (right ? vis(right) + 2 : 0);
   const t = clipStart(text, Math.max(0, room));
-  const cut = style === 'path' ? Math.max(t.lastIndexOf('/'), t.lastIndexOf('\\')) + 1 : 0;
-  const body = sel || style === 'plain' ? t : style === 'dim' ? chalk.dim(t) : chalk.dim(t.slice(0, cut)) + t.slice(cut);
+  const body = sel || style === 'plain' ? t : style === 'dim' ? chalk.dim(t) : ui.dimParent(t);
   const left = `${sel ? '›' : ' '} ${nm}  ${body}`;
   const line = sel || right ? left + ' '.repeat(Math.max(right ? 2 : 0, cw - vis(left) - vis(right))) + right : left;
   return `  ${sel ? highlight(line) : line}`;
+}
+
+// Name column width for a list of { name }.
+const nameCol = list => Math.min(24, Math.max(12, ...list.map(c => vis(c.name))));
+
+// Selector-style rows for the plain commands (ls, stale, stats, ...): { name, text?, style?, right? }.
+// Piped (agents, grep): nothing clips, rows grow to fit instead.
+export function printRows(items) {
+  const piped = !process.stdout.isTTY;
+  const nameWidth = piped ? Math.max(12, ...items.map(c => vis(c.name))) : nameCol(items);
+  const fit = r => nameWidth + 4 + vis(r.text || '') + (r.right ? vis(r.right) + 2 : 0);
+  const cw = Math.max(ui.cols(), ...(piped ? items.map(fit) : []));
+  for (const r of items) console.log(renderRow({ nameWidth, cw, ...r }));
 }
 
 // "‹ sel ›" bold, others dim; scrolls around the selection with ‹… / …› edges when the row is wider than `width`.
@@ -389,7 +401,7 @@ export function renderInteractiveView({
     };
     lines.push(query ? chalk.yellow('    no matches') : chalk.dim(`    ${empty[view]}`));
   } else {
-    const nameWidth = Math.min(24, Math.max(12, ...list.map(c => vis(c.name))));
+    const nameWidth = nameCol(list);
     // Rows left after the header and the footer (its rule included).
     const room = height - lines.length - foot.length - 1;
     const { start, end } = getVisibleWindow(list, index, Math.min(maxList, listRows(list.length, room)));

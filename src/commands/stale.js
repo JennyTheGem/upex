@@ -6,6 +6,7 @@
 import readline from 'node:readline/promises';
 import chalk from 'chalk';
 import { loadLinks, saveLinks, staleLinks } from '../store.js';
+import { printRows, tidyPath } from '../interactive.js';
 import * as ui from '../ui.js';
 
 export function registerStale(program) {
@@ -27,15 +28,13 @@ export function registerStale(program) {
       }
 
       ui.heading(`Not opened in ${days}+ days`);
-      ui.table([
-        [chalk.bold('NAME'), chalk.bold('LAST OPENED'), chalk.bold('TARGET')],
-        ...stale.map(({ name, entry, since }) => [
-          chalk.bold(name),
-          entry.lastUsed ? `${ui.span(now - since)} ago` : chalk.dim(since ? `never, added ${ui.span(now - since)} ago` : 'never'),
-          chalk.dim(entry.path || entry.app || entry.url || ''),
-        ]),
-      ], { header: true });
-      ui.blank();
+      printRows(stale.map(({ name, entry, since }) => ({
+        name,
+        text: entry.url || tidyPath(entry.path || entry.app || ''),
+        style: entry.url ? 'plain' : 'path',
+        right: entry.lastUsed ? `${ui.span(now - since)} ago` : chalk.dim(since ? `never, added ${ui.span(now - since)} ago` : 'never'),
+      })));
+      ui.separator();
 
       let pick = stale.map(s => s.name);
       if (!options.yes) {

@@ -20,7 +20,7 @@ export function registerHelp(program) {
     .command('help')
     .description('Show all available commands')
     .action(() => {
-      ui.heading('upex -- command reference');
+      ui.heading('Command reference');
 
       // The default action (no sub-command) has no Command object, so it is listed by hand.
       const help = program.createHelp();

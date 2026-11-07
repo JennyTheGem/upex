@@ -118,7 +118,7 @@ export function registerDoctor(program) {
     .command('doctor')
     .description('Check the store, openers, shell wrapper and completion')
     .action(() => {
-      ui.heading('upex doctor');
+      ui.heading('Doctor');
       const rows = runChecks();
       ui.table(rows.map(([status, check, detail]) => [ui.tag[status], chalk.bold(check), detail]));
       ui.blank();

@@ -4,17 +4,17 @@
  */
 
 import fs from 'node:fs';
-import nodePath from 'node:path';
 import chalk from 'chalk';
 import { loadLinks, activeLinks, aliasesOf } from '../store.js';
 import { gitStatus } from '../git.js';
+import { printRows, tidyPath } from '../interactive.js';
 import * as ui from '../ui.js';
 
-// Compact git cell: "main" (clean) or "main*" (dirty).
+// Compact git cell: "main" (clean, dim) or "main*" (dirty, yellow); none outside a repo.
 function gitCell(filepath) {
   const git = filepath ? gitStatus(filepath) : null;
-  if (!git) return chalk.dim('--');
-  return git.dirty ? chalk.yellow(`${git.branch}*`) : chalk.magenta(git.branch);
+  if (!git) return '';
+  return git.dirty ? chalk.yellow(`${git.branch}*`) : chalk.dim(git.branch);
 }
 
 export function registerList(program) {
@@ -42,40 +42,29 @@ export function registerList(program) {
         return;
       }
 
-      ui.heading(`${options.archived ? 'Archived' : 'Saved'} Shortcuts${tag ? ` tagged #${tag}` : ''}`);
+      ui.heading(`${options.archived ? 'Archived shortcuts' : 'Shortcuts'}${tag ? ` tagged #${tag}` : ''}`);
 
-      const header = [chalk.bold('#'), chalk.bold('NAME'), chalk.bold('APP'), chalk.bold('PATH')];
-      if (showGit) header.push(chalk.bold('GIT'));
-      header.push(chalk.bold('TAGS'), chalk.bold('STATUS'));
-
-      const rows = [
-        header,
-        ...entries.map(([name, entry], i) => {
-          const filepath = entry.path;
-          const appLabel = entry.terminal ? chalk.cyan('cmd')
-            : entry.app
-            ? chalk.cyan(nodePath.basename(entry.app).replace(/\.[^.]+$/, ''))
-            : entry.url ? chalk.cyan('url') : chalk.dim(entry.opener || '--');
-          const exists = filepath ? fs.existsSync(filepath) : !!(entry.app || entry.url);
-          const pathDisplay = filepath
-            ? (exists ? filepath : chalk.dim(filepath))
-            : entry.url ? chalk.blue(entry.url) : entry.terminal ? entry.app : chalk.dim('(app only)');
-          const left = entry.expires && !entry.archived ? entry.expires - Date.now() : 0;
-          const status = (exists ? ui.tag.ok : ui.tag.fail) + (left > 0 ? chalk.dim(` ${ui.span(left, Math.ceil)} left`) : '');
-          const tags = Array.isArray(entry.tags) && entry.tags.length
-            ? chalk.dim(entry.tags.join(', '))
-            : chalk.dim('--');
-          const aliases = aliasesOf(entry);
-          const nameCell = chalk.bold(name) + (aliases.length ? chalk.dim(` (${aliases.join(', ')})`) : '');
-          const row = [chalk.dim(String(i + 1)), nameCell, appLabel, pathDisplay];
-          if (showGit) row.push(gitCell(filepath));
-          row.push(tags, status);
-          return row;
-        }),
-      ];
-
-      ui.table(rows, { header: true });
-      ui.blank();
+      // Same rows as the selector: name, path (parent dim), then aliases, git, #tags and a badge on the right.
+      printRows(entries.map(([name, entry]) => {
+        const exists = entry.path ? fs.existsSync(entry.path) : !!(entry.app || entry.url);
+        const left = entry.expires && !entry.archived ? entry.expires - Date.now() : 0;
+        const kind = entry.terminal ? 'cmd' : entry.app ? 'app' : entry.url ? 'url' : entry.opener;
+        const badge = !exists ? chalk.red('missing')
+          : chalk.dim([entry.pinned && 'pinned', kind, left > 0 && `${ui.span(left, Math.ceil)} left`].filter(Boolean).join(' '));
+        const aliases = aliasesOf(entry);
+        const right = [
+          aliases.length && chalk.dim(`(${aliases.join(', ')})`),
+          showGit && gitCell(entry.path),
+          entry.tags?.length && chalk.dim(`#${entry.tags.join(' #')}`),
+          badge,
+        ];
+        return {
+          name,
+          text: entry.url || tidyPath(entry.path || entry.app || ''),
+          style: entry.url ? 'plain' : 'path',
+          right: right.filter(Boolean).join('  '),
+        };
+      }));
       ui.separator();
       ui.dim(`${entries.length} shortcut${entries.length === 1 ? '' : 's'}${tag ? ` tagged #${tag}` : ' total'}`
         + (archivedCount ? `, ${archivedCount} archived (upex ls --archived)` : ''));

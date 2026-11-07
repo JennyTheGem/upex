@@ -7,10 +7,10 @@
  *        upex open <tag>             -- open every shortcut carrying <tag>
  */
 
-import chalk from 'chalk';
 import { loadLinks, setLink, activeLinks } from '../store.js';
 import { resolveName } from '../fuzzy.js';
 import { handleOpen } from './open.js';
+import { printRows } from '../interactive.js';
 import * as ui from '../ui.js';
 
 function allTags(links) {
@@ -40,10 +40,7 @@ export function registerTag(program) {
           return;
         }
         ui.heading('Tags');
-        ui.table(
-          [[chalk.bold('TAG'), chalk.bold('COUNT')], ...entries.map(([t, c]) => [chalk.cyan(t), String(c)])],
-          { header: true },
-        );
+        printRows(entries.map(([t, c]) => ({ name: `#${t}`, text: `${c} shortcut${c === 1 ? '' : 's'}`, style: 'dim' })));
         ui.blank();
         return;
       }

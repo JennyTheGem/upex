@@ -6,9 +6,9 @@
  *        upex alias <name> -r <aliases> -- remove aliases (or --clear to drop all)
  */
 
-import chalk from 'chalk';
 import { loadLinks, setLink, activeLinks, aliasesOf, checkAliases } from '../store.js';
 import { resolveName } from '../fuzzy.js';
+import { printRows } from '../interactive.js';
 import * as ui from '../ui.js';
 
 export function registerAlias(program) {
@@ -27,10 +27,7 @@ export function registerAlias(program) {
           return;
         }
         ui.heading('Aliases');
-        ui.table(
-          [[chalk.bold('SHORTCUT'), chalk.bold('ALIASES')], ...rows.map(([n, e]) => [chalk.bold(n), chalk.cyan(aliasesOf(e).join(', '))])],
-          { header: true },
-        );
+        printRows(rows.map(([n, e]) => ({ name: n, text: aliasesOf(e).join(', '), style: 'plain' })));
         ui.blank();
         return;
       }

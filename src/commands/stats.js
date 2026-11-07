@@ -5,6 +5,7 @@
 
 import chalk from 'chalk';
 import { loadLinks, loadHistory, statsFrom } from '../store.js';
+import { printRows } from '../interactive.js';
 import * as ui from '../ui.js';
 
 const BARS = '▁▂▃▄▅▆▇█';
@@ -49,26 +50,25 @@ export function registerStats(program) {
         ui.info(`No opens ${inSpan}. Try: upex stats --all`);
       } else {
         const links = loadLinks();
-        const rows = [[chalk.bold('#'), chalk.bold('SHORTCUT'), chalk.bold('OPENS'), chalk.bold('ALL TIME')]];
-        stats.shortcuts.slice(0, TOP).forEach(([name, count], i) => {
+        const opens = c => `${c} open${c === 1 ? '' : 's'}`;
+        printRows(stats.shortcuts.slice(0, TOP).map(([name, count]) => {
           const entry = Object.hasOwn(links, name) ? links[name] : null;
-          const nameCell = !entry ? chalk.dim(`${name} (removed)`)
-            : entry.archived ? chalk.dim(`${name} (archived)`) : chalk.bold(name);
-          rows.push([chalk.dim(String(i + 1)), nameCell, String(count), chalk.dim(entry ? String(entry.uses || 0) : '--')]);
-        });
-        ui.table(rows, { header: true });
-        if (stats.shortcuts.length > TOP) ui.dim(`+ ${stats.shortcuts.length - TOP} more`);
+          const right = !entry ? 'removed' : `${entry.archived ? 'archived, ' : ''}${entry.uses || 0} all time`;
+          return { name, text: opens(count), style: 'plain', right: chalk.dim(right) };
+        }));
+        if (stats.shortcuts.length > TOP) ui.dim(`  + ${stats.shortcuts.length - TOP} more`);
         ui.blank();
 
         if (stats.openers.length) {
-          ui.table([[chalk.bold('OPENER'), chalk.bold('OPENS')], ...stats.openers.map(([o, c]) => [o, String(c)])], { header: true });
+          ui.dim('opened with');
+          printRows(stats.openers.map(([o, c]) => ({ name: o, text: opens(c), style: 'plain' })));
           ui.blank();
         }
       }
 
       const peak = Math.max(...stats.perWeek);
       if (peak) {
-        ui.info(`${sparkline(stats.perWeek)}  ${chalk.dim(`opens per week, last ${stats.perWeek.length} weeks (peak ${peak})`)}`);
+        ui.info(`  ${sparkline(stats.perWeek)}  ${chalk.dim(`opens per week, last ${stats.perWeek.length} weeks (peak ${peak})`)}`);
         ui.blank();
       }
       ui.separator();

@@ -10,10 +10,10 @@
  *   upex ws add dev velora cmd claude --model sonnet
  */
 
-import chalk from 'chalk';
 import { loadWorkspaces, saveWorkspaces, removeWorkspace, loadLinks, nameError } from '../store.js';
 import { resolveTarget } from '../fuzzy.js';
 import { handleOpen } from './open.js';
+import { printRows } from '../interactive.js';
 import * as ui from '../ui.js';
 
 // Human-readable one-liner for an entry: "shortcut:app x2 (start cmd)".
@@ -31,10 +31,7 @@ function listWorkspaces(workspaces) {
     return;
   }
   ui.heading('Workspaces');
-  for (const name of names) {
-    const parts = (workspaces[name] || []).map(describeEntry);
-    console.log(`  ${chalk.bold(name)}  ${chalk.dim(parts.join('  '))}`);
-  }
+  printRows(names.map(name => ({ name, text: (workspaces[name] || []).map(describeEntry).join('  '), style: 'dim' })));
   ui.blank();
 }
 

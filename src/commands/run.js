@@ -64,7 +64,7 @@ export function registerRun(program) {
           ui.info('No scripts defined in package.json.');
           return;
         }
-        ui.heading(`Scripts (${pm}) -- ${resolved.name}`);
+        ui.heading(`${resolved.name} scripts (${pm})`);
         ui.table(
           [[chalk.bold('SCRIPT'), chalk.bold('COMMAND')], ...names.map(n => [chalk.cyan(n), chalk.dim(scripts[n])])],
           { header: true },

@@ -17,7 +17,7 @@ import { remoteWebUrl } from '../src/git.js';
 import { installCmdWrapper } from '../src/commands/setup.js';
 import { normalizeUrl, caretEscape, wtCommandLine, setting, shellCommand, defaultOpener } from '../src/launcher.js';
 import { parseTags, parseDuration, defaultName } from '../src/commands/add.js';
-import { truncate, span, width } from '../src/ui.js';
+import { truncate, span, width, dimParent, stripAnsi } from '../src/ui.js';
 import { applyShortcut, applyOpener, cleanEntries, startServer } from '../src/commands/web.js';
 import { COMMAND_NAMES } from '../src/fast.js';
 import { createProgram } from '../src/index.js';
@@ -253,10 +253,13 @@ for (const cmd of ['go', '__resolve']) {
 assert.equal(stored().tmp.archived, undefined, 'go/__resolve leave the archiving to the next command');
 const swept = upexIn('ls');
 assert.match(swept.stderr, /archived expired: tmp/, 'expired notice on stderr');
-assert.doesNotMatch(swept.stdout, /^\s+\d+\s+tmp\s/m, 'expired shortcut hidden from ls');
+assert.doesNotMatch(swept.stdout, /^\s+tmp\s/m, 'expired shortcut hidden from ls');
 assert.equal(upexIn('restore', 'tmp').status, 0, 'restore expired');
 assert.equal(upexIn('ls').stderr, '', 'restored shortcut is not re-archived');
 assert.equal(stored().tmp.expires, undefined, 'restore drops expires');
+fs.writeFileSync(linksFile, JSON.stringify({ ['n'.repeat(30)]: { path: path.join(home, 'p'.repeat(90)), tags: ['t'] } }));
+const piped = upexIn('ls').stdout;
+assert.ok(piped.includes('n'.repeat(30)) && piped.includes('p'.repeat(90)), 'piped ls clips no name or path');
 
 // -- add with no name / ".", pin, undo --
 fs.writeFileSync(linksFile, '{}');
@@ -409,6 +412,8 @@ const selRow = (width, exists) => strip(renderInteractiveView(longArgs(width, ex
 assert.equal(selRow(60, true).length, 60, 'selected row without a badge fills the width exactly');
 assert.equal(selRow(30, false).length, 30, 'narrow terminal: row still fits');
 assert.equal(tidyPath(path.join(os.homedir(), 'x')), path.join('~', 'x'), 'home -> ~');
+assert.equal(stripAnsi(dimParent('a\\b/c', s => `[${s}]`)), 'a\\b/[c]', 'dimParent splits at the last slash');
+assert.equal(stripAnsi(dimParent('a/b\\c', s => `[${s}]`)), 'a/b\\[c]', 'dimParent splits at a backslash');
 assert.equal(tidyPath(os.homedir() + 'x'), os.homedir() + 'x', 'home prefix of another name untouched');
 if (os.platform() === 'win32') assert.equal(tidyPath(os.homedir().toUpperCase() + '\\x'), '~\\x', 'windows: home match ignores case');
 

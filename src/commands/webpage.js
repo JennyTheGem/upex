@@ -40,8 +40,6 @@ export function registerWebPage(program) {
       recordUse(resolved.name, 'web');
 
       if (!resolved.exact) ui.dim(`matched "${name}" --> "${resolved.name}"`);
-      ui.heading(resolved.name);
-      console.log(`  ${chalk.dim('url')}    ${chalk.bold(url)}`);
-      ui.blank();
+      ui.card(resolved.name, [['url', chalk.bold(url)]]);
     });
 }

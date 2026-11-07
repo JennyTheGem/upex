@@ -41,7 +41,7 @@ ESM Node CLI (`"type": "module"`) built on `commander`. Entry is `bin/upex.js` â
 
 **Web UI (`src/commands/web.js` + `src/web/index.html`).** `upex ui` serves one static page from a `node:http` server bound to 127.0.0.1. Per-run token (needed as `?t=` to get the page, baked into it, sent as `x-upex-token`) plus a Host-header check guard the JSON API. Edits go through the pure `applyShortcut`/`cleanEntries`, then the normal store functions; opening reuses `handleOpen` in batch mode, which returns `true`/`false`. Custom openers (`config.json` `apps`) are edited through `applyOpener` (add or change the command, no rename). The page builds DOM with text nodes only (no `innerHTML` with data).
 
-**Output (`src/ui.js`).** All terminal formatting goes through these helpers (`heading`, `table`, `success`/`warn`/`error`, `dim`, box frames). Keep to the three color roles: green=success, yellow=warning, red=error. Match this style rather than calling `chalk`/`console.log` ad hoc in commands.
+**Output (`src/ui.js`).** All terminal formatting goes through these helpers (`heading` = "upex   title" over a full-width rule, `card`, `table`, `dimParent`, `success`/`warn`/`error`, `dim`); list screens use the selector rows via `printRows` from `interactive.js`. Keep to the three color roles: green=success, yellow=warning, red=error. Match this style rather than calling `chalk`/`console.log` ad hoc in commands.
 
 ## Conventions
 

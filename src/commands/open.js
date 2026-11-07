@@ -108,9 +108,7 @@ export async function handleOpen(name, app, count = 1, startCmd = '', { batch = 
     if (!resolved.exact) {
       ui.dim(`matched "${name}" --> "${shortcutName}"`);
     }
-    ui.heading(shortcutName);
-    console.log(`  ${chalk.dim('url')}    ${chalk.bold(result.url)}`);
-    ui.blank();
+    ui.card(shortcutName, [['url', chalk.bold(result.url)]]);
     return true;
   }
 
@@ -129,13 +127,11 @@ export async function handleOpen(name, app, count = 1, startCmd = '', { batch = 
       ui.dim(`matched "${name}" --> "${shortcutName}"`);
     }
 
-    ui.heading(shortcutName);
-    console.log(`  ${chalk.dim('app')}    ${chalk.bold(result.displayName)}`);
-    if (entry.terminal) console.log(`  ${chalk.dim('run')}    ${entry.app}`);
-    if (entry.path) {
-      console.log(`  ${chalk.dim('path')}   ${entry.path}`);
-    }
-    ui.blank();
+    ui.card(shortcutName, [
+      ['app', chalk.bold(result.displayName)],
+      ['run', entry.terminal && entry.app],
+      ['path', entry.path && ui.dimParent(entry.path, chalk.bold)],
+    ]);
     return true;
   }
 
@@ -171,11 +167,6 @@ export async function handleOpen(name, app, count = 1, startCmd = '', { batch = 
     ui.dim(`matched "${name}" --> "${shortcutName}"`);
   }
 
-  ui.heading(shortcutName);
-
-  const appLabel = result.displayName || appKey;
-  console.log(`  ${chalk.dim('app')}    ${chalk.bold(appLabel)}`);
-  console.log(`  ${chalk.dim('path')}   ${targetPath}`);
-  ui.blank();
+  ui.card(shortcutName, [['app', chalk.bold(result.displayName || appKey)], ['path', ui.dimParent(targetPath, chalk.bold)]]);
   return true;
 }

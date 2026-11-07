@@ -1,8 +1,8 @@
 /**
  * ui.js -- Shared output helpers for consistent terminal formatting.
  *
- * Visual hierarchy:
- *   heading()    -- bold text inside a dim box-drawn frame
+ * Visual hierarchy (matches the selector):
+ *   heading()    -- "upex   <title>" over a dim full-width rule
  *   separator()  -- dim horizontal rule
  *   info()       -- plain indented text
  *   dim()        -- subdued supplemental text
@@ -39,13 +39,26 @@ export function info(msg) {
   console.log(`  ${msg}`);
 }
 
+// Row width after the 2-space indent, like the selector (last column kept free, at most 100 wide).
+export const cols = () => Math.min(Math.max((process.stdout.columns || 80) - 1, 20), 100) - 2;
+
 export function heading(text) {
-  const w = text.length + 4;
   console.log();
-  console.log(chalk.dim(`  ┌${'─'.repeat(w)}┐`));
-  console.log(`  ${chalk.dim('│')}  ${chalk.bold(text)}  ${chalk.dim('│')}`);
-  console.log(chalk.dim(`  └${'─'.repeat(w)}┘`));
-  console.log();
+  console.log(`  ${chalk.bold('upex')}   ${chalk.bold(text)}`);
+  separator();
+}
+
+// Folder part dim, last part through `last`.
+export function dimParent(p, last = s => s) {
+  const cut = Math.max(p.lastIndexOf('/'), p.lastIndexOf('\\')) + 1;
+  return chalk.dim(p.slice(0, cut)) + last(p.slice(cut));
+}
+
+// Heading plus dim "key   value" lines; empty values skipped.
+export function card(title, pairs) {
+  heading(title);
+  for (const [k, v] of pairs) if (v) console.log(`  ${chalk.dim(k.padEnd(6))} ${v}`);
+  blank();
 }
 
 export function dim(msg) {
@@ -54,7 +67,7 @@ export function dim(msg) {
 
 /**
  * Print a nicely aligned table from an array of [col1, col2, ...] rows.
- * When header=true, a separator line is drawn after the first row.
+ * When header=true, the first row is a dim lowercase label row.
  */
 export function table(rows, { indent = 2, gap = 2, header = false } = {}) {
   if (!rows.length) return;
@@ -68,10 +81,8 @@ export function table(rows, { indent = 2, gap = 2, header = false } = {}) {
     }
   }
 
-  const totalWidth = widths.reduce((a, b) => a + b, 0) + (colCount - 1) * gap;
-
   for (let r = 0; r < rows.length; r++) {
-    const row = rows[r];
+    const row = header && r === 0 ? rows[0].map(c => chalk.dim(stripAnsi(String(c)).toLowerCase())) : rows[r];
     let line = ' '.repeat(indent);
     for (let i = 0; i < colCount; i++) {
       const cell = String(row[i]);
@@ -80,10 +91,6 @@ export function table(rows, { indent = 2, gap = 2, header = false } = {}) {
       line += cell + (i < colCount - 1 ? ' '.repeat(Math.max(pad, 1)) : '');
     }
     console.log(line);
-
-    if (header && r === 0) {
-      console.log(chalk.dim(' '.repeat(indent) + '─'.repeat(totalWidth)));
-    }
   }
 }
 
@@ -144,7 +151,7 @@ export function truncate(str, cols) {
   return out + '…\x1B[0m';
 }
 
-export function separator(length = 60) {
+export function separator(length = cols()) {
   console.log(chalk.dim('  ' + '─'.repeat(length)));
 }
 
