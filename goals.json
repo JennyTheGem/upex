@@ -819,10 +819,11 @@
       "title": "Hide unused views",
       "body": "Pick which views Tab cycles through, e.g. hide Workspaces if never used.",
       "phase": "next",
-      "status": "planned",
+      "status": "done",
       "size": "S",
       "created": "2026-11-07",
-      "updated": "2026-11-07"
+      "updated": "2026-11-07",
+      "note": "Tabs setting (views): All / No Workspaces / No Apps / Shortcuts only, selector and upex ui"
     },
     {
       "id": "max-rows-setting",
@@ -842,10 +843,11 @@
       "title": "Enter behavior setting",
       "body": "Open and quit, or open and stay so you can open several in a row.",
       "phase": "next",
-      "status": "planned",
+      "status": "done",
       "size": "S",
       "created": "2026-11-07",
-      "updated": "2026-11-07"
+      "updated": "2026-11-07",
+      "note": "Enter setting: Open and quit / Open and stay (selector only), also workspaces and ^s scripts"
     },
     {
       "id": "pinned-placement-setting",
@@ -865,10 +867,11 @@
       "title": "Multi-select in selector",
       "body": "Space marks rows, Enter opens all marked, ^d deletes all marked (one undo).",
       "phase": "next",
-      "status": "planned",
+      "status": "done",
       "size": "M",
       "created": "2026-11-07",
-      "updated": "2026-11-07"
+      "updated": "2026-11-07",
+      "note": "Space marks, Enter opens all marked, ^d deletes all in one save, ^z restores all"
     },
     {
       "id": "keybind-help-overlay",
@@ -923,10 +926,11 @@
       "title": "Wrap-around navigation",
       "body": "Up on the first row jumps to the last row and back. As a setting or default.",
       "phase": "later",
-      "status": "planned",
+      "status": "dropped",
       "size": "S",
       "created": "2026-11-07",
-      "updated": "2026-11-07"
+      "updated": "2026-11-07",
+      "note": "Already wraps everywhere in the selector since the initial commit"
     },
     {
       "id": "confirm-deletes-setting",

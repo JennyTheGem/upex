@@ -18,10 +18,6 @@ Closed sections: §5 Platform support · §7 Web UI
 
 ## 3. Resolution & UX
 
-- `hide-unused-views` Hide unused views (next)
-- `enter-behavior-setting` Enter behavior setting (next)
-- `multi-select-in-selector` Multi-select in selector (next)
-- `wrap-around-navigation` Wrap-around navigation (later)
 - Plus 1 maybe: `upgo list --section 3 --phase maybe`
 
 ## 4. Shell integration

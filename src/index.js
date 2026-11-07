@@ -20,7 +20,7 @@ import { registerApp } from './commands/app.js';
 import { registerCompletion } from './commands/completion.js';
 import { registerTag, registerOpenGroup } from './commands/tag.js';
 import { registerAlias } from './commands/alias.js';
-import { registerWorkspace, openWorkspace } from './commands/workspace.js';
+import { registerWorkspace, openWorkspace, openEntries } from './commands/workspace.js';
 import { loadWorkspaces, loadLinks, saveLinks, sweepExpired, StoreError } from './store.js';
 import { registerRun } from './commands/run.js';
 import { registerExport, registerImport } from './commands/transfer.js';
@@ -120,6 +120,11 @@ export function createProgram() {
         const result = await runInteractiveMode({ preferredApp: program.opts().app });
         if (result.status === 'selected') {
           await handleOpen(result.name, result.app, result.count || 1, result.start);
+          return;
+        }
+        // Marked rows (Space), opened after the selector closed.
+        if (result.status === 'marked') {
+          if (await openEntries(result.entries)) process.exitCode = 1;
           return;
         }
         if (result.status === 'workspace') {

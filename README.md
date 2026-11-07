@@ -205,10 +205,11 @@ Run `upex` with no arguments to open the interactive selector. Pinned shortcuts 
 - `Up` / `Down` -- move through shortcuts
 - `Left` / `Right` -- change the selected app (starts on the shortcut's default opener)
 - `Shift+Up` / `Shift+Down` (or `Ctrl`) -- terminal count when a terminal opener (cmd, claude) is selected
-- `Tab` -- cycle the Shortcuts (folders), Apps (app + URL shortcuts) and Workspaces views (Enter opens the whole workspace, `Ctrl+D` deletes it)
+- `Tab` -- cycle the Shortcuts (folders), Apps (app + URL shortcuts) and Workspaces views (Enter opens the whole workspace, `Ctrl+D` deletes it). The `views` setting hides Apps and/or Workspaces
 - `Shift+Tab` -- jump to Settings (Left/Right changes a setting, saved right away), again to go back
-- `Enter` -- open the selected shortcut in the selected app
-- Type -- fuzzy-filter the list
+- `Enter` -- open the selected shortcut in the selected app, then quit (or stay open with the `enter` setting on `stay`)
+- `Space` -- mark or unmark the selected shortcut (Shortcuts and Apps tabs) and move down; `Enter` then opens every marked one (folders in the picked opener, else their own) and `Ctrl+D` deletes them all (one `Ctrl+Z` or `upex undo` brings them back)
+- Type -- fuzzy-filter the list (Space marks instead of typing)
 - `Ctrl+A` -- add a shortcut for the current directory
 - `Ctrl+E` -- edit the selected shortcut's path (starts filled in, `Ctrl+U` clears it)
 - `Ctrl+R` -- rename the selected shortcut (starts filled in)
@@ -218,12 +219,12 @@ Run `upex` with no arguments to open the interactive selector. Pinned shortcuts 
 - While typing a path or name: `Left` / `Right` move the cursor, `Ctrl+Left` / `Ctrl+Right` jump a word, `Home` / `End`, `Ctrl+Backspace` (or `Ctrl+W`) deletes a word, `Del` deletes forward. `Ctrl+Backspace` also works in the filter
 - `Ctrl+D` -- delete the selected shortcut (confirm with `y`), `Ctrl+Z` undoes the last delete
 - `Ctrl+U` -- start `upex ui` and open it in the browser; the selector stays open and shows the link. `Ctrl+U` again stops it, so does closing the selector
-- `Esc` -- clear the filter, then quit
+- `Esc` -- clear the filter, then the marks, then quit
 - Mouse (full screen) -- click a tab, opener or setting; click a row to select it, again or double-click to open; the wheel moves the selection
 
 ## Web UI
 
-Run `upex ui` to open a local page (default `http://127.0.0.1:4545`, a free port if that one is busy) where you can add, edit, rename, tag, delete, copy and open shortcuts, set a default opener, add or edit custom openers (Settings tab), open terminals with a window count and start command, build, reorder and rename workspaces, and remove missing paths. Lists sort by most used (or A to Z, last opened, recently added), pinned shortcuts first (pin icon on each row) and re-check paths when you come back to the page. Folders, apps (app, command and URL shortcuts) and workspaces each get their own tab. Press `/` to search, `n` for a new shortcut or app. Stop it with `Ctrl+C`.
+Run `upex ui` to open a local page (default `http://127.0.0.1:4545`, a free port if that one is busy) where you can add, edit, rename, tag, delete, copy and open shortcuts, set a default opener, add or edit custom openers (Settings tab), open terminals with a window count and start command, build, reorder and rename workspaces, and remove missing paths. Lists sort by most used (or A to Z, last opened, recently added), pinned shortcuts first (pin icon on each row) and re-check paths when you come back to the page. Folders, apps (app, command and URL shortcuts) and workspaces each get their own tab (the `views` setting can hide Apps or Workspaces). Press `/` to search, `n` for a new shortcut or app. Stop it with `Ctrl+C`.
 
 It only listens on 127.0.0.1 and every request needs a token that is new each run, so other sites can't use it. With `--no-open`, open the link it prints (it carries the token).
 
@@ -323,6 +324,8 @@ Settings, also on the Settings tab of `upex ui` and the selector (`Shift+Tab`), 
 
 - `"startView"`: the tab the selector and `upex ui` open on. `"shortcuts"` (default), `"apps"`, `"workspaces"` or `"last"` (the tab you left the selector or `upex ui` on, plus the opener you picked in the selector).
 - `"sort"`: shortcut order in the selector and `upex ui`. `"recent"` (default, most used first), `"name"` (A to Z), `"opened"` (last opened first) or `"added"` (recently added first).
+- `"views"`: the tabs the selector and `upex ui` show. `"all"` (default), `"no-workspaces"`, `"no-apps"` or `"shortcuts"` (Shortcuts only). A hidden start view opens Shortcuts.
+- `"enter"` (selector only): what Enter does. `"quit"` (default, open and close the selector) or `"stay"` (open in place, the selector stays open; also for workspaces, scripts and marked rows).
 - `"recentStrip"` (selector only): `"off"` (default) or `"on"` (the last 3 opened again above the list under a Recent heading, whatever the sort; not while searching).
 - `"terminalLayout"` (Windows): how several terminals open. `"windows"` (default, separate windows), `"tabs"` or `"panes"` (added to your current Windows Terminal window). Falls back to windows when `wt` is missing. With tabs, a terminal opened from the selector leaves the selector open.
 - `"paneSplit"` (Windows, panes layout): `"auto"` (default), `"vertical"` (side by side) or `"horizontal"` (stacked).

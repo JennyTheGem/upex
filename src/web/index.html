@@ -287,6 +287,7 @@ const TITLES = { links: 'Shortcuts', apps: 'Apps', ws: 'Workspaces', settings: '
 const SETTING_OPTS = {
   startView: { shortcuts: 'Shortcuts', apps: 'Apps', workspaces: 'Workspaces', last: 'Last used' },
   sort: { recent: 'Most used', name: 'A to Z', opened: 'Last opened', added: 'Recently added' },
+  views: { all: 'All', 'no-workspaces': 'No Workspaces', 'no-apps': 'No Apps', shortcuts: 'Shortcuts only' },
   terminalLayout: { windows: 'Separate windows', tabs: 'Tabs', panes: 'Split panes' },
   paneSplit: { auto: 'Auto', vertical: 'Side by side', horizontal: 'Stacked' },
   terminalShell: { cmd: 'cmd', powershell: 'PowerShell', pwsh: 'PowerShell 7', profile: 'WT default profile' },
@@ -306,6 +307,8 @@ const tabLinks = (archived = S.archived) => S.links.filter(l => l.tab === S.view
 const COPY_WORD = { folder: 'path', app: 'path', cmd: 'command', url: 'URL' };
 // config startView -> page tab
 const START_TAB = { shortcuts: 'links', apps: 'apps', workspaces: 'ws' };
+// Views setting -> page tabs it hides.
+const HIDES = { 'no-workspaces': ['ws'], 'no-apps': ['apps'], shortcuts: ['apps', 'ws'] };
 // Sort setting -> field, highest first; A to Z has none.
 const SORT_FIELD = { recent: 'score', opened: 'lastUsed', added: 'added' };
 const isHex = v => /^#[0-9a-f]{6}$/i.test(v || '');
@@ -832,9 +835,10 @@ function settingsView() {
     .then(() => document.getElementById('set-opener')?.focus());
   return [
     h('section', { class: 'form', 'aria-labelledby': 'set-gen' },
-      head('set-gen', 'General', ['startView', 'sort']),
+      head('set-gen', 'General', ['startView', 'views', 'sort']),
       h('p', { class: 'lede', style: 'margin:0' }, 'Shared with the upex selector in the terminal.'),
       seg('startView', 'Start view', l => `upex opens on ${l}`),
+      seg('views', 'Tabs', l => `Tabs: ${l}`),
       seg('sort', 'Sort', l => `Sorted: ${l}`)),
     h('section', { class: 'form', 'aria-labelledby': 'set-term' },
       head('set-term', 'Terminals', ['terminalLayout', 'paneSplit', 'terminalShell']),
@@ -935,13 +939,25 @@ function applyLook() {
   root.style.setProperty('--accent-ink', 0.299 * r + 0.587 * g + 0.114 * b > 150 ? '#111111' : '#ffffff');
 }
 
+// Per-tab state: an open add form or tag filter belongs to the tab it was opened on.
+function resetTab() {
+  S.adding = false; S.addErr = ''; S.tag = null; S.editing = null; S.confirming = null; S.archived = false;
+  S.editWs = null; S.renamingWs = null; S.confirmWs = null; S.editOp = null; S.confirmOp = null;
+  if (TAB_KINDS[S.view]) S.addKind = TAB_KINDS[S.view][0];
+}
+
 function render() {
   applyLook();
+  // A tab hidden by the views setting (changed from the terminal) falls back to Shortcuts.
+  const hide = HIDES[S.settings.views] || [];
+  if (hide.includes(S.view)) { S.view = 'links'; resetTab(); }
   document.getElementById('n-links').textContent = S.links.filter(l => l.tab === 'links' && !l.archived).length;
   document.getElementById('n-apps').textContent = S.links.filter(l => l.tab === 'apps' && !l.archived).length;
   document.getElementById('n-ws').textContent = Object.keys(S.workspaces).length;
-  document.querySelectorAll('.tab').forEach(t =>
-    t.dataset.view === S.view ? t.setAttribute('aria-current', 'page') : t.removeAttribute('aria-current'));
+  document.querySelectorAll('.tab').forEach((t) => {
+    t.hidden = hide.includes(t.dataset.view);
+    t.dataset.view === S.view ? t.setAttribute('aria-current', 'page') : t.removeAttribute('aria-current');
+  });
   document.getElementById('q').placeholder = S.view === 'ws' ? 'Search workspaces' : 'Search names, paths, tags';
   document.querySelector('.search').hidden = S.view === 'settings';
 
@@ -958,10 +974,7 @@ document.querySelectorAll('.tab').forEach(t => t.addEventListener('click', () =>
   // Remembered for start view 'last'; Settings is not a place to start.
   const last = { links: 'shortcuts', apps: 'apps', ws: 'workspaces' }[S.view];
   if (last) api('PUT', 'last', { view: last }).catch(() => {});
-  // Per-tab state: an open add form or tag filter belongs to the tab it was opened on.
-  S.adding = false; S.addErr = ''; S.tag = null; S.editing = null; S.confirming = null; S.archived = false;
-  S.editWs = null; S.renamingWs = null; S.confirmWs = null; S.editOp = null; S.confirmOp = null;
-  if (TAB_KINDS[S.view]) S.addKind = TAB_KINDS[S.view][0];
+  resetTab();
   render();
 }));
 // Coming back to the page re-checks paths and picks up CLI changes, unless something is being edited.

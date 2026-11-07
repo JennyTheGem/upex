@@ -197,13 +197,16 @@ export function setPinOrder(names) {
   saveLinks(links);
 }
 
-export function removeLink(name) {
+// Deletes these in one save, so upex undo brings them all back at once. Returns the removed { name: entry }.
+export function removeLinks(names) {
   const links = loadLinks();
-  if (!Object.hasOwn(links, name)) return false;
-  delete links[name];
-  saveLinks(links);
-  return true;
+  const gone = Object.fromEntries(names.filter(n => Object.hasOwn(links, n)).map(n => [n, links[n]]));
+  for (const n of Object.keys(gone)) delete links[n];
+  if (Object.keys(gone).length) saveLinks(links);
+  return gone;
 }
+
+export const removeLink = name => Object.keys(removeLinks([name])).length > 0;
 
 export function renameLink(oldName, newName) {
   const links = loadLinks();

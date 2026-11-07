@@ -92,7 +92,7 @@ const INTERACTIVE_APP_KEYS = [
 // Openers that open terminal windows (and so take a window count).
 export const isTerminalApp = key => key === 'cmd' || key === 'claude';
 
-// Settings in config.json; the first value is the default. Start view, sort and pinned are shared by the selector and upex ui; fullScreen, keyHints, maxRows and recentStrip are selector only.
+// Settings in config.json; the first value is the default. Start view, views, sort and pinned are shared by the selector and upex ui; fullScreen, keyHints, maxRows, recentStrip and enter are selector only.
 // Layout: separate windows, or tabs/panes in one Windows Terminal window. Shell 'profile' = wt default profile.
 export const SETTINGS = {
   // last = the tab (and opener) the selector or upex ui was left on.
@@ -101,6 +101,10 @@ export const SETTINGS = {
   sort: ['recent', 'name', 'opened', 'added'],
   // The last 3 opened above the list, whatever the sort.
   recentStrip: ['off', 'on'],
+  // Tabs shown (selector, upex ui); Shortcuts always is.
+  views: ['all', 'no-workspaces', 'no-apps', 'shortcuts'],
+  // Selector Enter: open and quit, or open and keep the selector.
+  enter: ['quit', 'stay'],
   terminalLayout: ['windows', 'tabs', 'panes'],
   paneSplit: ['auto', 'vertical', 'horizontal'],
   terminalShell: ['cmd', 'powershell', 'pwsh', 'profile'],
@@ -131,11 +135,13 @@ export function resetSettings(config, keys = SETTING_KEYS) {
   for (const k of keys) delete out[k];
   return out;
 }
-// Tab to open on: startView, or for 'last' the one saved in lastView (Shortcuts when none).
+// Tabs the views setting shows, in order.
+export const shownTabs = (views = 'all') => ['shortcuts', 'apps', 'workspaces'].filter(t => t === 'shortcuts' || (views !== 'shortcuts' && views !== `no-${t}`));
+// Tab to open on: startView, or for 'last' the one saved in lastView (Shortcuts when none or hidden).
 export function startTab(config = loadConfig()) {
   const v = setting('startView', config);
-  if (v !== 'last') return v;
-  return config.lastView !== 'last' && SETTINGS.startView.includes(config.lastView) ? config.lastView : 'shortcuts';
+  const t = v !== 'last' ? v : config.lastView !== 'last' && SETTINGS.startView.includes(config.lastView) ? config.lastView : 'shortcuts';
+  return shownTabs(setting('views', config)).includes(t) ? t : 'shortcuts';
 }
 // Is wt on PATH? null off Windows, where these settings don't apply.
 export const hasWindowsTerminal = () => (platform === 'win32' ? commandExists('wt') : null);

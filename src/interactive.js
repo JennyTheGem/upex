@@ -8,9 +8,10 @@ import path from 'node:path';
 import readline from 'node:readline';
 import chalk from 'chalk';
 import Fuse from 'fuse.js';
-import { getInteractiveAppChoices, getAppMap, isTerminalApp, hasWindowsTerminal, defaultOpener, readSettings, setting, startTab, isHex, launchApp, copyToClipboard } from './launcher.js';
-import { loadLinks, activeLinks, aliasesOf, takenError, checkAliases, frecency, recordUse, removeLink, setLink, renameLink, loadWorkspaces, saveWorkspaces, removeWorkspace, nameError, loadConfig, saveConfig, withPinned, setPinOrder } from './store.js';
+import { getInteractiveAppChoices, getAppMap, isTerminalApp, hasWindowsTerminal, defaultOpener, readSettings, setting, startTab, shownTabs, isHex, copyToClipboard } from './launcher.js';
+import { loadLinks, activeLinks, aliasesOf, takenError, checkAliases, frecency, removeLinks, saveLinks, setLink, renameLink, loadWorkspaces, saveWorkspaces, removeWorkspace, nameError, loadConfig, saveConfig, withPinned, setPinOrder } from './store.js';
 import { describeEntry } from './commands/workspace.js';
+import { handleOpen } from './commands/open.js';
 import { startServer } from './commands/web.js';
 import { readScripts, detectPm } from './commands/run.js';
 import * as ui from './ui.js';
@@ -201,13 +202,13 @@ export function clipName(name, width, hits = []) {
 }
 
 // One list row: "› name  path ..... #tags  badge". `style` = path | url | dim | plain (url looks plain).
-function renderRow({ sel, name, nameWidth, hits, text = '', style = 'path', right = '', cw, pick = s => s }) {
+function renderRow({ sel, mark, name, nameWidth, hits, text = '', style = 'path', right = '', cw, pick = s => s }) {
   const n = clipName(name, nameWidth, hits);
   const nm = chalk.bold(underlineHits(n.text, n.hits)) + ' '.repeat(Math.max(0, nameWidth - vis(n.text)));
   const room = cw - 2 - nameWidth - 2 - (right ? vis(right) + 2 : 0);
   const t = clipStart(text, Math.max(0, room));
   const body = sel || style === 'plain' || style === 'url' ? t : style === 'dim' ? chalk.dim(t) : ui.dimParent(t);
-  const left = `${sel ? pick('›') : ' '} ${nm}  ${body}`;
+  const left = `${mark ? pick('●') : sel ? pick('›') : ' '} ${nm}  ${body}`;
   const line = sel || right ? left + ' '.repeat(Math.max(right ? 2 : 0, cw - vis(left) - vis(right))) + right : left;
   return `  ${sel ? highlight(line) : line}`;
 }
@@ -289,8 +290,10 @@ export function readMouse(state, key = {}) {
   return { state: null, pass: true };
 }
 
-// Why a deleted { name, entry, ws? } can't come back, or null: its name or an alias was taken since.
-export function undoError({ name, entry, ws }, links, workspaces) {
+// Why a deleted { name, entry, ws? } (or a list of them) can't come back, or null: its name or an alias was taken since.
+export function undoError(u, links, workspaces) {
+  if (Array.isArray(u)) return u.map(x => undoError(x, links, workspaces)).find(Boolean) || null;
+  const { name, entry, ws } = u;
   if (ws) return Object.hasOwn(workspaces, name) ? `workspace "${name}" already exists.` : null;
   return takenError(links, name) || checkAliases(links, name, aliasesOf(entry)).error || null;
 }
@@ -336,13 +339,16 @@ export const staysOpen = (appKey, layout, wt) => isTerminalApp(appKey) && layout
 export const missingFlash = (c, exists = fs.existsSync) => (c.isApp || c.isUrl || exists(c.path) ? null : 'path missing, ^e to fix');
 
 const VIEWS = { shortcuts: 'Shortcuts', apps: 'Apps', workspaces: 'Workspaces', settings: 'Settings' };
-// Tab cycles these; Settings sits outside the cycle on Shift+Tab, so Tab from it goes to Shortcuts.
-const CYCLE = ['shortcuts', 'apps', 'workspaces'];
-const nextView = (view) => CYCLE[(CYCLE.indexOf(view) + 1) % CYCLE.length];
+// Tab cycles the tabs the views setting shows; Settings sits outside the cycle on Shift+Tab, so Tab from it goes to Shortcuts.
+export const nextView = (view, views) => { const c = shownTabs(views); return c[(c.indexOf(view) + 1) % c.length]; };
+// Shift+Tab back from Settings: a tab hidden meanwhile goes to Shortcuts.
+export const backTo = (view, views) => (shownTabs(views).includes(view) ? view : 'shortcuts');
 const SETTING_ROWS = [
   { section: 'General', key: 'startView', label: 'Start view', names: { shortcuts: 'Shortcuts', apps: 'Apps', workspaces: 'Workspaces', last: 'Last used' } },
   { section: 'General', key: 'sort', label: 'Sort', names: { recent: 'Most used', name: 'A to Z', opened: 'Last opened', added: 'Recently added' } },
   { section: 'General', key: 'recentStrip', label: 'Recent on top', names: { off: 'Off', on: 'On' } },
+  { section: 'General', key: 'views', label: 'Tabs', names: { all: 'All', 'no-workspaces': 'No Workspaces', 'no-apps': 'No Apps', shortcuts: 'Shortcuts only' } },
+  { section: 'General', key: 'enter', label: 'Enter', names: { quit: 'Open and quit', stay: 'Open and stay' } },
   { section: 'Terminals', key: 'terminalLayout', label: 'Layout', names: { windows: 'Separate windows', tabs: 'Tabs', panes: 'Split panes' } },
   { section: 'Terminals', key: 'paneSplit', label: 'Pane split', names: { auto: 'Auto', vertical: 'Side by side', horizontal: 'Stacked' } },
   { section: 'Terminals', key: 'terminalShell', label: 'Shell', names: { cmd: 'cmd', powershell: 'PowerShell', pwsh: 'PowerShell 7', profile: 'WT profile' } },
@@ -368,6 +374,8 @@ function settingNote(key, s, wt) {
   if (key === 'startView') return 'The tab upex and upex ui open on. Last used: where you left off, opener included.';
   if (key === 'sort') return 'Shortcut order here and in upex ui.';
   if (key === 'recentStrip') return 'The last 3 opened again above the list, under a Recent heading, whatever the sort.';
+  if (key === 'views') return 'Which tabs show and Tab cycles through, here and in upex ui.';
+  if (key === 'enter') return 'Selector only. Open and stay keeps upex open after Enter, to open more.';
   if (key === 'maxRows') return 'List rows here. Fill screen: as many as the terminal fits.';
   if (key === 'defaultOpener') return 'Opens folder shortcuts that have no opener of their own.';
   if (key === 'fullScreen') return 'Whole terminal plus mouse, restored on exit. Off: inline, no mouse.';
@@ -423,6 +431,7 @@ export function renderInteractiveView({
   webUrl = '', // upex ui started with ^u
   scripts = null, // script picker (mode 'scripts'): { pm, list: [{ name, path: command }] }
   scriptIndex = 0,
+  marks = new Set(), // marked shortcut names (Space)
   width = 80,
   height = 24,
   maxList = Infinity,
@@ -453,12 +462,13 @@ export function renderInteractiveView({
     return key === view ? highlight(chalk.bold(` ${VIEWS[key]}${n} `)) : ` ${VIEWS[key]}${chalk.dim(n)} `;
   };
   const headLead = `  ${chalk.bold('upex')}   `;
-  const headLeft = headLead + CYCLE.map(tab).join(' ');
+  const cycle = shownTabs(settings.views);
+  const headLeft = headLead + cycle.map(tab).join(' ');
   const headRight = `${tab('settings')} ${chalk.dim('S-Tab')}`;
   const head = headLeft + ' '.repeat(Math.max(2, w - vis(headLeft) - vis(headRight))) + headRight;
   let col = vis(headLead);
   const headLine = lines.length;
-  for (const key of CYCLE) col = hit(headLine, col, col + vis(tab(key)), { tab: key }) + 1;
+  for (const key of cycle) col = hit(headLine, col, col + vis(tab(key)), { tab: key }) + 1;
   hit(headLine, vis(head) - vis(headRight), vis(head) - vis(headRight) + vis(tab('settings')), { tab: 'settings' });
   lines.push(head, ...gap);
 
@@ -471,12 +481,14 @@ export function renderInteractiveView({
     const what = `  ? delete ${isWs ? 'workspace ' : ''}`;
     // Clip the name, not the line, so "y / n" stays visible.
     const name = clipName(currentChoice?.name || '', Math.max(1, w - vis(what) - 10)).text;
-    lines.push(chalk.yellow(`${what}"${name}"?`) + chalk.dim('  y / n'));
+    lines.push(chalk.yellow(!isWs && marks.size ? `${what}${marks.size} marked?` : `${what}"${name}"?`) + chalk.dim('  y / n'));
   } else if (isScripts) {
     const name = clipName(currentChoice?.name || '', 24).text;
     lines.push(`  ${chalk.bold(pick('›'))} ${chalk.dim('run a script of')} ${chalk.bold(name)} ${chalk.dim(`(${scripts.pm})`)}`);
   } else if (!isSettings) {
-    lines.push(`  ${chalk.bold(pick('›'))} ${query ? `${query}${chalk.dim('▏')}` : chalk.dim('▏type to filter')}`);
+    const left = `  ${chalk.bold(pick('›'))} ${query ? `${query}${chalk.dim('▏')}` : chalk.dim('▏type to filter')}`;
+    const right = !isWs && marks.size ? pick(`● ${marks.size} marked`) : '';
+    lines.push(right ? left + ' '.repeat(Math.max(2, w - vis(left) - vis(right))) + right : left);
   }
   // A plain string is a warning; { text, ok: true } a success. One line, or rows below shift off the hit map.
   if (flash) lines.push((flash.ok ? chalk.green : chalk.yellow)(`    ${String(flash.text ?? flash).replace(/\s*\n\s*/g, ' ')}`));
@@ -487,8 +499,11 @@ export function renderInteractiveView({
     if (rows.length) lines.push(rule, ...rows);
     return lines.join('\n');
   };
-  const tabKey = ['tab', VIEWS[nextView(view)].toLowerCase()];
-  const escKey = ['esc', isScripts ? 'back' : mode !== 'browse' ? 'cancel' : query ? 'clear' : 'quit'];
+  const next = nextView(view, settings.views);
+  // Only Shortcuts shown: Tab there does nothing.
+  const tabKey = next !== view && ['tab', VIEWS[next].toLowerCase()];
+  const many = !isWs && !isSettings && marks.size;
+  const escKey = ['esc', isScripts ? 'back' : mode !== 'browse' ? 'cancel' : query ? 'clear' : many ? 'unmark' : 'quit'];
   const undoKey = undo && ['^z', 'undo'];
   const uiKey = ['^u', webUrl ? 'stop web ui' : 'web ui'];
   // Blank row first, so the link sits apart from the key hints.
@@ -524,21 +539,22 @@ export function renderInteractiveView({
   const openerSpans = [];
   const openers = optionRow(appChoices.map(c => `${c.label}${isTerminalApp(c.key) && cmdCount > 1 ? ` ×${cmdCount}` : ''}`), selectedAppIndex, w - 13, openerSpans, pick);
   const isShortcuts = view === 'shortcuts';
-  const openKey = ['↵', isShortcuts ? 'open' : isWs ? 'open all' : currentChoice?.isUrl ? 'open in browser' : 'launch app'];
+  const openKey = ['↵', many ? `open ${many} marked` : isShortcuts ? 'open' : isWs ? 'open all' : currentChoice?.isUrl ? 'open in browser' : 'launch app'];
+  const markKey = !isWs && list.length > 0 && ['space', 'mark'];
   const opener = isShortcuts && ['←→', 'opener'];
   const windows = isShortcuts && terminal && ['S-↑↓', 'windows'];
   const scriptsKey = isShortcuts && ['^s', 'scripts'];
   const movePin = !isWs && !query?.trim() && currentChoice?.pinned && ['A-↑↓', 'move pin'];
-  const navRow = [openKey, scriptsKey, ['↑↓', 'move'], opener, windows, tabKey, escKey, movePin];
+  const navRow = [openKey, scriptsKey, ['↑↓', 'move'], opener, windows, tabKey, escKey, movePin, markKey];
   const actRow = [isShortcuts && ['^a', 'add'], isShortcuts && ['^e', 'edit path'], !isWs && ['^r', 'rename'],
-    !isWs && list.length > 0 && ['^p', currentChoice?.pinned ? 'unpin' : 'pin'], ['^d', 'delete'], undoKey];
+    !isWs && list.length > 0 && ['^p', currentChoice?.pinned ? 'unpin' : 'pin'], ['^d', many ? `delete ${many} marked` : 'delete'], undoKey];
   // Last in their rows, so a narrow terminal drops them first.
   const copyKey = !isWs && list.length > 0 && ['^y', 'copy'];
   const inputRow = keyHint([['↵', 'save'], ['←→', 'cursor'], ['^⌫', 'word'], ['^u', 'clear'], ['esc', 'cancel']]);
   // Key hints setting. Full: two rows (typing: input keys, same height so the list stays put). Short: one row
   // without the keys you learn first (↑↓, tab, esc), cut to the width. Off: none.
   const hints = settings.keyHints === 'off' ? []
-    : settings.keyHints === 'short' ? [mode === 'input' ? inputRow : fitHint([openKey, opener, windows, ...actRow, scriptsKey, uiKey, copyKey, movePin], w)]
+    : settings.keyHints === 'short' ? [mode === 'input' ? inputRow : fitHint([openKey, opener, windows, ...actRow, markKey, scriptsKey, uiKey, copyKey, movePin], w)]
       : mode === 'input' ? [inputRow, ''] : [fitHint(navRow, w), fitHint([...actRow, uiKey, copyKey], w)];
   const foot = isScripts ? (hints.length ? [keyHint([['↵', 'run in a terminal'], ['↑↓', 'move'], escKey])] : [])
     : [...(isShortcuts ? [`  ${chalk.dim('open with')}  ${openers}`, ...(hints.length ? gap : [])] : []), ...hints];
@@ -576,6 +592,7 @@ export function renderInteractiveView({
       hit(lines.length, 0, w, { row: i });
       lines.push(renderRow(pathLook({
         sel: i === index,
+        mark: !plain && marks.has(c.name),
         name: c.name,
         nameWidth,
         hits: c.hits,
@@ -644,12 +661,15 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
     let inputBuffer = '';
     let inputCursor = 0;
     let flash = '';
-    let undo = null; // last delete: { name, entry, ws? }
+    let undo = null; // last delete: [{ name, entry, ws? }]
+    const marks = new Set(); // Space-marked shortcut names, across filtering and tabs
     let backView = view; // where Shift+Tab returns from Settings
     let settings = readSettings(); // appearance applies on every tab
     let settingIndex = 0;
     let wt = null;
     const appIndex = (key) => appChoices.findIndex(choice => choice.key === key);
+    // A folder's own opener, else the default.
+    const ownOpener = c => (appIndex(c?.opener) >= 0 ? c.opener : fallback);
     let selectedAppIndex = Math.max(0, appIndex(preferredApp || lastOpener || fallback));
     // Until Left/Right (or --app) picks one, the opener follows the shortcut's default opener.
     let appPicked = !!(preferredApp || lastOpener);
@@ -678,8 +698,7 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
 
     const redraw = () => {
       if (!appPicked && view === 'shortcuts') {
-        const own = appIndex(filteredChoices[selectedIndex]?.opener);
-        selectedAppIndex = own >= 0 ? own : Math.max(0, appIndex(fallback));
+        selectedAppIndex = Math.max(0, appIndex(ownOpener(filteredChoices[selectedIndex])));
       }
       // Clip to terminal width: a wrapped line takes 2+ rows and would leave stale rows behind.
       const width = Math.max(1, (stdout.columns || 80) - 1);
@@ -708,6 +727,7 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
         webUrl: web?.url,
         scripts,
         scriptIndex,
+        marks,
         counts: { shortcuts: allChoices.filter(inView('shortcuts')).length, apps: allChoices.filter(inView('apps')).length, workspaces: wsChoices.length },
         width,
         height,
@@ -755,6 +775,7 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
       allChoices = buildChoices();
       choices = allChoices.filter(inView(view));
       wsChoices = buildWorkspaceChoices();
+      for (const n of marks) if (!allChoices.some(c => c.name === n)) marks.delete(n);
       updateFilter();
       reselect(name, wsName, recent);
     };
@@ -773,15 +794,31 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
       clearTimeout(flashTimer);
       flashTimer = setTimeout(guard(() => { if (flash === f) { flash = ''; redraw(); } }), 3000);
     };
+    const howMany = names => (names.length > 1 ? `${names.length} shortcuts` : `"${names[0]}"`);
 
-    // Open in new terminal tab(s) without leaving the selector.
-    const openInTab = (c, appKey, start = '') => {
-      const n = c.isCmd || start ? 1 : cmdCount;
-      const r = c.isCmd ? launchApp('cmd', os.homedir(), 1, c.app) : launchApp(appKey, c.path, n, start);
-      if (!r.ok) { flash = r.message.replace(/\.$/, ''); return; }
-      recordUse(c.name, c.isCmd ? 'cmd' : appKey);
-      rebuild(c.name);
-      done(start ? `running "${start}" in a new tab` : `opened "${c.name}" in ${n > 1 ? `${n} new tabs` : 'a new tab'}`);
+    // Opens workspace-style entries without leaving the selector, then flashes `msg` and keeps `keep` ([name, wsName]) selected.
+    // handleOpen runs synchronously, so console is muted just for the calls; a failure's first line is its reason.
+    const openHere = (entries, msg, keep = []) => {
+      const { log, error } = console;
+      const outs = [];
+      let runs;
+      try {
+        runs = entries.map(({ shortcut, app, count = 1, start = '' }) => {
+          const out = [];
+          outs.push(out);
+          console.log = console.error = (...a) => out.push(ui.stripAnsi(a.join(' ')).trim());
+          return handleOpen(shortcut, app || undefined, count, start, { batch: true });
+        });
+      } finally {
+        Object.assign(console, { log, error });
+      }
+      Promise.all(runs).then(guard((oks) => {
+        const fails = oks.flatMap((ok, i) => (ok ? [] : [(outs[i].find(Boolean) || `can't open "${entries[i].shortcut}"`).replace(/\.$/, '')]));
+        rebuild(...keep);
+        if (!fails.length) done(msg);
+        else flash = entries.length > 1 ? `${fails.length} of ${entries.length} failed: ${fails[0]}` : fails[0];
+        redraw();
+      }), fail);
     };
     const tabsOn = appKey => staysOpen(appKey, setting('terminalLayout'), hasWindowsTerminal);
 
@@ -875,7 +912,8 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
       const c = filteredChoices[selectedIndex];
       const start = `${scripts.pm} run ${scripts.list[scriptIndex].name}`;
       mode = 'browse';
-      if (tabsOn('cmd')) { openInTab(c, 'cmd', start); redraw(); return; }
+      const tab = tabsOn('cmd');
+      if (tab || settings.enter === 'stay') { openHere([{ shortcut: c.name, app: 'cmd', start }], `running "${start}"${tab ? ' in a new tab' : ''}`, [c.name]); return; }
       finish({ status: 'selected', name: c.name, app: 'cmd', count: 1, start });
     };
 
@@ -921,6 +959,7 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
           flash = result.message?.replace(/\.$/, '') || 'not found';
           return false;
         }
+        if (marks.delete(target)) marks.add(buf);
         rebuild(buf);
         done(`renamed "${target}" to "${buf}"`);
         return true;
@@ -1013,16 +1052,17 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
           const entry = victim && loadWorkspaces()[victim.name];
           if (entry) {
             removeWorkspace(victim.name);
-            undo = { name: victim.name, entry, ws: true };
+            undo = [{ name: victim.name, entry, ws: true }];
             done(`deleted workspace "${victim.name}" (^z undo)`);
           }
           rebuild();
         } else if (key.name === 'y') {
-          const victim = filteredChoices[selectedIndex];
-          const entry = victim && loadLinks()[victim.name];
-          if (entry && removeLink(victim.name)) {
-            undo = { name: victim.name, entry };
-            done(`deleted "${victim.name}" (^z undo)`);
+          // Marked ones all go in one save; otherwise the highlighted one.
+          const gone = Object.entries(removeLinks(marks.size ? [...marks] : [filteredChoices[selectedIndex]?.name])).map(([name, entry]) => ({ name, entry }));
+          marks.clear();
+          if (gone.length) {
+            undo = gone;
+            done(`deleted ${howMany(gone.map(g => g.name))} (^z undo)`);
           }
           rebuild();
         }
@@ -1064,9 +1104,14 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
       }
 
       // ── Browse mode ──
-      // Esc clears a typed filter first, then quits.
+      // Esc clears a typed filter first, then the marks, then quits.
       if (key.name === 'escape' && query) {
         clearQuery();
+        redraw();
+        return;
+      }
+      if (key.name === 'escape' && marks.size && view !== 'workspaces' && view !== 'settings') {
+        marks.clear();
         redraw();
         return;
       }
@@ -1077,8 +1122,8 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
       }
 
       if (key.name === 'tab') {
-        switchTo(!key.shift ? nextView(view) : view === 'settings' ? backView : 'settings');
-        redraw();
+        const to = !key.shift ? nextView(view, settings.views) : view === 'settings' ? backTo(backView, settings.views) : 'settings';
+        if (to !== view) { switchTo(to); redraw(); }
         return;
       }
 
@@ -1115,10 +1160,12 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
         if (err) {
           flash = `can't undo, ${err.replace(/\.$/, '')}`;
         } else {
-          if (undo.ws) saveWorkspaces({ ...loadWorkspaces(), [undo.name]: undo.entry });
-          else setLink(undo.name, undo.entry);
-          rebuild(undo.ws ? null : undo.name, undo.ws ? undo.name : null);
-          done(`restored "${undo.name}"`);
+          const [{ name, entry, ws }] = undo;
+          if (ws) saveWorkspaces({ ...loadWorkspaces(), [name]: entry });
+          // All in one save, like the delete.
+          else saveLinks({ ...loadLinks(), ...Object.fromEntries(undo.map(u => [u.name, u.entry])) });
+          rebuild(ws ? null : name, ws ? name : null);
+          done(`restored ${howMany(undo.map(u => u.name))}`);
           undo = null;
         }
         redraw();
@@ -1132,7 +1179,10 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
           return;
         }
         if (key.name === 'return') {
-          if (n > 0) finish({ status: 'workspace', name: filteredWs[wsIndex].name });
+          const name = filteredWs[wsIndex]?.name;
+          if (!name) return;
+          if (settings.enter === 'stay') openHere(loadWorkspaces()[name] || [], `opened workspace "${name}"`, [null, name]);
+          else finish({ status: 'workspace', name });
           return;
         }
         if ((key.name === 'up' || key.name === 'down') && n > 0) {
@@ -1157,7 +1207,7 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
         return;
       }
       if (key.ctrl && key.name === 'd') {
-        if (filteredChoices.length > 0) { mode = 'confirm'; redraw(); }
+        if (filteredChoices.length > 0 || marks.size) { mode = 'confirm'; redraw(); }
         return;
       }
       if (key.ctrl && key.name === 'e') {
@@ -1206,26 +1256,40 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
         return;
       }
 
+      // Space toggles a mark and moves down.
+      if (key.name === 'space' && !key.ctrl && !key.meta && view !== 'workspaces') {
+        const c = filteredChoices[selectedIndex];
+        if (!c) return;
+        if (!marks.delete(c.name)) marks.add(c.name);
+        selectedIndex = Math.min(selectedIndex + 1, filteredChoices.length - 1);
+        redraw();
+        return;
+      }
+
+      if (key.name === 'return' && marks.size) {
+        // Folders in the picked opener, else their own; apps and URLs launch directly.
+        const picked = appPicked && (appChoices[selectedAppIndex]?.key || fallback);
+        const entries = allChoices.filter(c => marks.has(c.name)).map((c) => {
+          const app = c.isApp || c.isUrl ? null : picked || ownOpener(c);
+          return { shortcut: c.name, app, count: isTerminalApp(app) ? cmdCount : 1 };
+        });
+        marks.clear();
+        if (settings.enter === 'stay') { openHere(entries, `opened ${howMany(entries.map(e => e.shortcut))}`, [filteredChoices[selectedIndex]?.name]); return; }
+        finish({ status: 'marked', entries });
+        return;
+      }
+
       if (key.name === 'return') {
         if (filteredChoices.length === 0) {
           return;
         }
 
         const selected = filteredChoices[selectedIndex];
-
-        // App and URL shortcuts launch directly, ignore the opener selector
-        if (selected.isApp || selected.isUrl) {
-          if (selected.isCmd && tabsOn('cmd')) { openInTab(selected, 'cmd'); redraw(); return; }
-          finish({
-            status: 'selected',
-            name: selected.name,
-            app: null,
-          });
-          return;
-        }
+        // App and URL shortcuts launch directly, ignore the opener selector.
+        const direct = selected.isApp || selected.isUrl;
 
         // A missing folder would only end in an error after exit: stay and say how to fix it.
-        const missing = missingFlash(selected);
+        const missing = !direct && missingFlash(selected);
         if (missing) {
           rebuild(selected.name);
           flash = missing;
@@ -1233,14 +1297,17 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
           return;
         }
 
-        const appKey = appChoices[selectedAppIndex]?.key || fallback;
-        if (tabsOn(appKey)) { openInTab(selected, appKey); redraw(); return; }
-        finish({
-          status: 'selected',
-          name: selected.name,
-          app: appKey,
-          count: isTerminalApp(appKey) ? cmdCount : 1,
-        });
+        const appKey = direct ? null : appChoices[selectedAppIndex]?.key || fallback;
+        const count = isTerminalApp(appKey) ? cmdCount : 1;
+        // Terminal tabs open beside the selector, so it stays either way.
+        const tab = tabsOn(selected.isCmd ? 'cmd' : appKey);
+        if (tab || settings.enter === 'stay') {
+          const n = selected.isCmd ? 1 : count;
+          const where = tab ? (n > 1 ? `${n} new tabs` : 'a new tab') : appKey && (appMap[appKey]?.displayName || appKey);
+          openHere([{ shortcut: selected.name, app: appKey, count: n }], `opened "${selected.name}"${where ? ` in ${where}` : ''}`, [selected.name]);
+          return;
+        }
+        finish({ status: 'selected', name: selected.name, app: appKey, count });
         return;
       }
 

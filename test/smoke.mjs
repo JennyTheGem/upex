@@ -22,7 +22,7 @@ import { applyShortcut, applyOpener, cleanEntries, startServer } from '../src/co
 import { COMMAND_NAMES } from '../src/fast.js';
 import { createProgram } from '../src/index.js';
 import { readScripts, detectPm } from '../src/commands/run.js';
-import { renderInteractiveView, accentOf, pathLook, inView, tidyPath, byOrder, optionRow, listRows, readMouse, hitTest, rowClick, undoError, clipName, prefill, editLine, inputLine, missingFlash, staysOpen, expandHome, underlineHits, movePinned, withRecent, maxListOf, isAlt } from '../src/interactive.js';
+import { renderInteractiveView, nextView, backTo, accentOf, pathLook, inView, tidyPath, byOrder, optionRow, listRows, readMouse, hitTest, rowClick, undoError, clipName, prefill, editLine, inputLine, missingFlash, staysOpen, expandHome, underlineHits, movePinned, withRecent, maxListOf, isAlt } from '../src/interactive.js';
 import chalk from 'chalk';
 import { resolveTarget, resolveName, suggestNames } from '../src/fuzzy.js';
 
@@ -411,13 +411,13 @@ assert.ok(!wsView.includes('Explorer'), 'no opener row in workspace view');
 assert.ok(strip(renderInteractiveView(viewArgs)).includes('tab apps'), 'shortcut view is the default');
 const appsView = strip(renderInteractiveView({ ...viewArgs, view: 'apps', choices: [{ name: 'g', path: 'x.dev', isUrl: true, exists: true }] }));
 assert.ok(appsView.includes('tab workspaces') && appsView.includes('open in browser') && !appsView.includes('Explorer'), 'apps view: no opener row');
-const setArgs = { ...viewArgs, view: 'settings', settings: { startView: 'apps', sort: 'name', terminalLayout: 'tabs', paneSplit: 'auto', terminalShell: 'pwsh', defaultOpener: 'explorer' }, settingIndex: 3, wt: false };
+const setArgs = { ...viewArgs, view: 'settings', settings: { startView: 'apps', sort: 'name', terminalLayout: 'tabs', paneSplit: 'auto', terminalShell: 'pwsh', defaultOpener: 'explorer' }, settingIndex: 5, wt: false };
 const setView = strip(renderInteractiveView(setArgs));
 assert.ok(setView.includes('‹ Tabs ›') && setView.includes('‹ PowerShell 7 ›') && setView.includes('‹ Explorer ›') && setView.includes('not found'), 'settings view: all rows + missing-wt note');
 assert.ok(!setView.includes('Pane split'), 'pane split hidden unless split panes');
 assert.ok(strip(renderInteractiveView({ ...setArgs, settings: { ...setArgs.settings, terminalLayout: 'panes' } })).includes('Pane split'), 'pane split shown for split panes');
 assert.ok(setView.includes('‹ A to Z ›'), 'sort row shows the saved sort');
-assert.ok(strip(renderInteractiveView({ ...setArgs, settingIndex: 5 })).includes('no opener of their own'), 'note follows the picked row');
+assert.ok(strip(renderInteractiveView({ ...setArgs, settingIndex: 7 })).includes('no opener of their own'), 'note follows the picked row');
 assert.ok(setView.indexOf('Workspaces') < setView.indexOf('Settings'), 'settings tab is last');
 
 // rows stay inside the given width, the missing badge survives a long path
@@ -545,9 +545,9 @@ assert.ok(renderInteractiveView({ ...setArgs, settings: { ...setArgs.settings, a
 const tall = strip(renderInteractiveView({ ...setArgs, height: 40, settings: { ...setArgs.settings, theme: 'light' } }));
 assert.ok(tall.includes('Web theme       System  Dark  ‹ Light ›'), 'web theme row');
 assert.ok(['General', 'Terminals', 'Opening', 'Appearance'].every(s => tall.includes(`\n  ${s}\n`)), 'settings grouped in sections');
-const short = rowsOf({ ...setArgs, height: 14, settingIndex: 14 });
+const short = rowsOf({ ...setArgs, height: 14, settingIndex: 16 });
 assert.ok(short.length <= 14 && short.some(l => l.startsWith('  › Web theme')) && short.at(-1).includes('setting'), 'short terminal scrolls settings, keeps the footer');
-assert.equal(at({ ...setArgs, height: 14, settingIndex: 14 }, 3, short.findIndex(l => l.startsWith('  › Web theme')) + 1)?.setting, 14, 'scrolled settings stay clickable');
+assert.equal(at({ ...setArgs, height: 14, settingIndex: 16 }, 3, short.findIndex(l => l.startsWith('  › Web theme')) + 1)?.setting, 16, 'scrolled settings stay clickable');
 assert.equal(checkSettings({ accent: 'red' }).error, 'accent must be one of: default, green, blue, purple, orange, or a hex color like #ff66aa.', 'bad accent refused');
 assert.deepEqual([checkSettings({ accent: '#FF66aa' }).next.accent, checkSettings({ accent: 'ff66aa' }).next.accent, checkSettings({ sort: '#ff66aa' }).error?.slice(0, 4)], ['#ff66aa', '#ff66aa', 'sort'], 'hex only for accent, normalized');
 assert.deepEqual([setting('accent', { accent: '#ff66aa' }), setting('accent', { accent: '#ff66a' }), setting('accent', { accent: '"><x' })], ['#ff66aa', 'default', 'default'], 'stored hex read back, junk falls back');
@@ -592,6 +592,44 @@ assert.match(undoError(gone, { x: { path: 'Q', aliases: ['old'] } }, {}), /alias
 assert.match(undoError(gone, { x: { path: 'Q', aliases: ['o'] } }, {}), /alias of x/, 'refused when its alias was taken');
 assert.equal(undoError({ name: 'dev', entry: [], ws: true }, { dev: {} }, {}), null, 'workspace names are their own namespace');
 assert.match(undoError({ name: 'dev', entry: [], ws: true }, {}, { dev: [] }), /already exists/, 'workspace refused when reused');
+const two = [{ name: 'a', entry: { path: 'A' } }, { name: 'b', entry: { path: 'B' } }];
+assert.equal(undoError(two, { c: { path: 'C' } }, {}), null, 'a deleted list restores when all names are free');
+assert.match(undoError(two, { b: { path: 'Q' } }, {}), /already exists/, 'a list is refused when any name was taken');
+
+// -- views setting: Tab cycle, header, start tab fallback --
+assert.deepEqual([nextView('shortcuts'), nextView('apps', 'no-workspaces'), nextView('shortcuts', 'no-apps'), nextView('shortcuts', 'shortcuts'), nextView('settings', 'shortcuts')],
+  ['apps', 'shortcuts', 'workspaces', 'shortcuts', 'shortcuts'], 'Tab cycles the shown tabs');
+assert.deepEqual([backTo('apps', 'all'), backTo('apps', 'no-apps'), backTo('workspaces', 'shortcuts')], ['apps', 'shortcuts', 'shortcuts'], 'Shift+Tab back to a hidden tab goes to Shortcuts');
+assert.deepEqual([startTab({ startView: 'apps', views: 'no-apps' }), startTab({ startView: 'last', lastView: 'workspaces', views: 'shortcuts' }), startTab({ startView: 'workspaces', views: 'no-apps' })],
+  ['shortcuts', 'shortcuts', 'workspaces'], 'a hidden start tab falls back to Shortcuts');
+const onlyS = strip(renderInteractiveView({ ...viewArgs, settings: { views: 'shortcuts' } }));
+assert.ok(!onlyS.includes('Apps') && !onlyS.includes('Workspaces') && !onlyS.includes('tab '), 'only Shortcuts: no other tabs, no tab hint');
+const noWs = strip(renderInteractiveView({ ...viewArgs, view: 'apps', choices: [], settings: { views: 'no-workspaces' } }));
+assert.ok(!noWs.includes('Workspaces') && noWs.includes('tab shortcuts'), 'hidden Workspaces: header and tab hint skip it');
+
+// -- marks: pointer column, count, hints, confirm --
+const markArgs = { ...viewArgs, selectedIndex: 1, choices: [{ name: 's', path: 'P', exists: true }, { name: 't', path: 'Q', exists: true }], marks: new Set(['s']) };
+const marked = strip(renderInteractiveView(markArgs)).split('\n');
+assert.ok(marked.some(l => l.startsWith('  ● s ')) && marked.some(l => l.startsWith('  › t ')), 'marked row shows ●, the highlight keeps ›');
+assert.equal(marked.find(l => l.startsWith('  ● s ')).indexOf('P'), marked.find(l => l.startsWith('  › t ')).indexOf('Q'), 'the mark keeps the row layout');
+assert.ok(marked.join('\n').includes('● 1 marked') && marked.join('\n').includes('↵ open 1 marked') && marked.join('\n').includes('^d delete 1 marked') && marked.join('\n').includes('esc unmark'), 'marked count and hints');
+assert.ok(strip(renderInteractiveView(viewArgs)).includes('space mark'), 'space mark hint');
+assert.ok(strip(renderInteractiveView({ ...markArgs, mode: 'confirm', marks: new Set(['s', 't']) })).includes('? delete 2 marked?  y / n'), 'confirm names the marked count');
+
+// -- removeLinks: one save, so one upex undo brings all of them back --
+{
+  const rhome = fs.mkdtempSync(path.join(os.tmpdir(), 'upex-rm-'));
+  const env = { ...process.env, USERPROFILE: rhome, HOME: rhome };
+  const file = path.join(rhome, '.upex', 'links.json');
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.writeFileSync(file, JSON.stringify({ a: { path: 'A' }, b: { path: 'B' }, c: { path: 'C' } }));
+  const storeUrl = new URL('../src/store.js', import.meta.url).href;
+  const rm = spawnSync(process.execPath, ['--input-type=module', '-e', `import { removeLinks } from '${storeUrl}'; console.log(Object.keys(removeLinks(['a', 'b', 'zz'])).join())`], { encoding: 'utf-8', env });
+  assert.equal(rm.stdout.trim(), 'a,b', 'removeLinks returns what it removed');
+  assert.deepEqual(Object.keys(JSON.parse(fs.readFileSync(file, 'utf-8'))), ['c'], 'removeLinks deletes them');
+  assert.equal(spawnSync(process.execPath, [cli, 'undo'], { encoding: 'utf-8', env }).status, 0, 'undo runs');
+  assert.deepEqual(Object.keys(JSON.parse(fs.readFileSync(file, 'utf-8'))).sort(), ['a', 'b', 'c'], 'one upex undo restores all of them');
+}
 const zs = new PassThrough();
 readline.emitKeypressEvents(zs);
 const zkey = await new Promise(r => { zs.once('keypress', (_, k) => r(k)); zs.write('\x1a'); });
@@ -843,7 +881,7 @@ try {
   assert.equal(cfg2.paneSplit, 'horizontal', 'refused request saved nothing, later one did');
   assert.equal(cfg2.defaultOpener, 'vscode', 'default opener stored as its key');
   const st2 = await (await fetch(base + '/api/state', { headers: { 'x-upex-token': token } })).json();
-  assert.deepEqual(st2.settings, { startView: 'apps', sort: 'name', terminalLayout: 'panes', paneSplit: 'horizontal', terminalShell: 'powershell', fullScreen: 'on', theme: 'system', accent: 'default', density: 'comfortable', paths: 'dim', keyHints: 'full', maxRows: '8', recentStrip: 'off', rowDetails: 'both', pinned: 'top', defaultOpener: 'vscode' }, 'state reports settings');
+  assert.deepEqual(st2.settings, { startView: 'apps', sort: 'name', terminalLayout: 'panes', paneSplit: 'horizontal', terminalShell: 'powershell', fullScreen: 'on', theme: 'system', accent: 'default', density: 'comfortable', paths: 'dim', keyHints: 'full', maxRows: '8', recentStrip: 'off', views: 'all', enter: 'quit', rowDetails: 'both', pinned: 'top', defaultOpener: 'vscode' }, 'state reports settings');
   assert.deepEqual(Object.keys(cfg2.workspaces), ['work'], 'settings save keeps workspaces');
   const note = path.join(webHome, 'note.txt');
   fs.writeFileSync(note, '');
