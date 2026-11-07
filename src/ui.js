@@ -151,6 +151,11 @@ export function truncate(str, cols) {
   return out + '…\x1B[0m';
 }
 
+// ASCII stand-ins for the selector's glyphs, one column each so layouts keep their widths.
+const ASCII = { '‹': '<', '›': '>', '▏': '|', '│': '|', '─': '-', '┬': '+', '┴': '+', '…': '.', '↑': '^', '↓': 'v', '←': '<', '→': '>', '●': '*', '★': '*', '×': 'x' };
+const ASCII_RE = new RegExp(`[${Object.keys(ASCII).join('')}]`, 'g');
+export const toAscii = s => s.replace(ASCII_RE, c => ASCII[c]);
+
 /**
  * Word-wrap [text, style] segments into styled lines of at most n columns.
  * "\n" forces a break; a word wider than n is clipped. \u00a0 keeps words together (printed as a space).

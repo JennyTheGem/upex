@@ -1093,10 +1093,11 @@
       "title": "ASCII-only glyphs",
       "body": "Setting that swaps ‹ › ▏ ─ … ↑↓ for plain ASCII in the selector, for terminals or fonts that show boxes.",
       "phase": "next",
-      "status": "planned",
+      "status": "done",
       "size": "S",
       "created": "2026-11-07",
-      "updated": "2026-11-07"
+      "updated": "2026-11-07",
+      "note": "Settings > Appearance > Glyphs (glyphs: unicode|ascii): ui.toAscii swaps selector glyphs 1:1 per frame, key hints spell out enter, up/down, left/right, bs"
     },
     {
       "id": "smoke-asserts-for-frecency-prunebroken",

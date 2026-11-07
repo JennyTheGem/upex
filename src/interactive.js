@@ -150,7 +150,11 @@ export const PIN = '★';
 export const badgeText = parts => { const t = parts.filter(Boolean).join(' '); return t.endsWith(PIN) ? `${t} ` : t; };
 // Row details setting: does `what` ('tags' | 'badges') show? Unset = both.
 export const showsDetail = (rowDetails = 'both', what) => rowDetails === 'both' || rowDetails === what;
-const keyHint = pairs => '  ' + pairs.filter(Boolean).map(([k, label]) => `${k} ${chalk.dim(label)}`).join('  ');
+// Glyphs setting ascii: hint keys spelled out (set per render), the rest of the frame goes through ui.toAscii.
+let asciiHints = false;
+const ASCII_KEYS = [['↑↓', 'up/down'], ['←→', 'left/right'], ['→', 'right'], ['←', 'left'], ['↵', 'enter'], ['⌫', 'bs']];
+const hintKey = k => (asciiHints ? ASCII_KEYS.reduce((s, [a, b]) => s.replace(a, b), k) : k);
+const keyHint = pairs => '  ' + pairs.filter(Boolean).map(([k, label]) => `${hintKey(k)} ${chalk.dim(label)}`).join('  ');
 // One hint row of at most w columns: from the first pair that doesn't fit on, pairs are left out.
 const fitHint = (pairs, w) => keyHint(pairs.filter(Boolean).filter((p, i, a) => vis(keyHint(a.slice(0, i + 1))) <= w));
 // Fuse hit ranges are UTF-16 offsets, inclusive.
@@ -372,6 +376,7 @@ const SETTING_ROWS = [
   { section: 'Appearance', key: 'paths', label: 'Paths', names: { dim: 'Dim folders', full: 'Full', hidden: 'Hidden' } },
   { section: 'Appearance', key: 'rowDetails', label: 'Row details', names: { both: 'Both', tags: 'Tags', badges: 'Badges', none: 'None' } },
   { section: 'Appearance', key: 'pinned', label: 'Pinned', names: { top: 'On top', section: 'Own section' } },
+  { section: 'Appearance', key: 'glyphs', label: 'Glyphs', names: { unicode: 'Unicode', ascii: 'ASCII' } },
   { section: 'Appearance', key: 'theme', label: 'Web theme', names: { system: 'System', dark: 'Dark', light: 'Light' } },
   { section: 'Detail pane', key: 'narrowPane', label: 'Narrow screens', names: { toggle: 'Shift+→ / ←', always: 'Always' } },
   { section: 'Detail pane', key: 'goals', label: 'Open goals', names: { off: 'Off', 3: '3', 5: '5', 10: '10' } },
@@ -407,6 +412,7 @@ function settingNote(key, s, wt) {
   if (key === 'goals') return 'Pane right of the list (full screen): open upgo goals of a folder, up to this many. S-→ picks one to copy.';
   if (key === 'git') return 'Pane right of the list (full screen): branch, ahead/behind, changes and last commit of a folder in git. ^g opens its web page.';
   if (key === 'keyHints') return 'Key rows under the list. Short: one row of the main keys. Off: more room for the list. Settings keeps its keys.';
+  if (key === 'glyphs') return 'Selector only. ASCII swaps arrows, pointers, lines and the ellipsis for plain characters, for fonts that show boxes.';
   if (key === 'theme') return 'upex ui only. The terminal keeps its own colors.';
   if (wt === null) return 'Windows only. Other systems use their own terminal.';
   if (key === 'terminalLayout') {
@@ -565,6 +571,7 @@ export function renderInteractiveView({
   paneOpen = false, // detail pane opened with Shift+Right on a narrow screen
   targets = null, // optional out: clickable { line, from, to, tab | row | opener | setting [+ option] }
 }) {
+  asciiHints = settings.glyphs === 'ascii';
   const isWs = view === 'workspaces';
   const isSettings = view === 'settings';
   const isScripts = mode === 'scripts' && !!scripts;
@@ -913,7 +920,7 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
         targets,
       });
       // Never taller than the screen, or the top scrolls away and frames stack up.
-      const clipped = output.split('\n').slice(0, height).map(line => ui.truncate(line, width));
+      const clipped = output.split('\n').slice(0, height).map(line => ui.truncate(line, width)).map(settings.glyphs === 'ascii' ? ui.toAscii : l => l);
 
       if (alt) {
         stdout.write(`\x1b[H${clipped.join('\x1b[K\n')}\x1b[K\x1b[J`);

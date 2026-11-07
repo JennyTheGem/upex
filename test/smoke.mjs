@@ -17,7 +17,7 @@ import { remoteWebUrl } from '../src/git.js';
 import { installCmdWrapper } from '../src/commands/setup.js';
 import { normalizeUrl, caretEscape, wtCommandLine, setting, shellCommand, defaultOpener, checkSettings, resetSettings, startTab } from '../src/launcher.js';
 import { parseTags, parseDuration, defaultName } from '../src/commands/add.js';
-import { truncate, span, width, dimParent, stripAnsi } from '../src/ui.js';
+import { truncate, span, width, dimParent, stripAnsi, toAscii } from '../src/ui.js';
 import { applyShortcut, applyOpener, cleanEntries, startServer } from '../src/commands/web.js';
 import { COMMAND_NAMES } from '../src/fast.js';
 import { createProgram } from '../src/index.js';
@@ -458,6 +458,10 @@ assert.ok(strip(renderInteractiveView({ ...setArgs, settings: { ...setArgs.setti
 const withHints = (keyHints, extra = {}) => strip(renderInteractiveView({ ...many, height: 30, settings: { keyHints }, ...extra })).split('\n');
 for (const k of ['full', 'short', 'off']) assert.equal(withHints(k).length, 30, `hints ${k}: fills the height`);
 const [full, short1, off] = ['full', 'short', 'off'].map(k => withHints(k));
+// glyphs ascii: one column per swapped glyph, hint keys spelled out
+assert.equal(toAscii('‹ a › ▏─│┬┴…↑↓←→●★×'), '< a > |-|++.^v<>**x', 'ascii glyphs');
+const asc = withHints('full', { settings: { glyphs: 'ascii' } }).join('\n');
+assert.ok(asc.includes('enter open') && asc.includes('up/down move') && !full.join('\n').includes('enter open'), 'ascii hint keys');
 assert.ok(full.some(l => l.includes('tab apps')) && full.some(l => l.includes('^a add')), 'full: both rows');
 assert.ok(!short1.some(l => l.includes('tab apps')) && short1.at(-1).includes('^a add') && short1.at(-1).includes('←→ opener'), 'short: one row, no learned keys');
 assert.ok(!off.some(l => l.includes('^a add') || l.includes('↵ open')) && off.at(-1).includes('open with'), 'off: no hints, opener row kept');
@@ -547,7 +551,7 @@ assert.ok(renderInteractiveView({ ...setArgs, settings: { ...setArgs.settings, a
 const tall = strip(renderInteractiveView({ ...setArgs, height: 40, settings: { ...setArgs.settings, theme: 'light' } }));
 assert.ok(tall.includes('Web theme       System  Dark  ‹ Light ›'), 'web theme row');
 assert.ok(['General', 'Terminals', 'Opening', 'Appearance'].every(s => tall.includes(`\n  ${s}\n`)), 'settings grouped in sections');
-const short = rowsOf({ ...setArgs, height: 14, settingIndex: 16 });
+const short = rowsOf({ ...setArgs, height: 14, settingIndex: 17 });
 assert.ok(short.length <= 14 && short.some(l => l.startsWith('  › Web theme')) && short.at(-1).includes('setting'), 'short terminal scrolls settings, keeps the footer');
 assert.equal(at({ ...setArgs, height: 14, settingIndex: 16 }, 3, short.findIndex(l => l.startsWith('  › Web theme')) + 1)?.setting, 16, 'scrolled settings stay clickable');
 assert.equal(checkSettings({ accent: 'red' }).error, 'accent must be one of: default, green, blue, purple, orange, or a hex color like #ff66aa.', 'bad accent refused');
@@ -978,7 +982,7 @@ try {
   assert.equal(cfg2.paneSplit, 'horizontal', 'refused request saved nothing, later one did');
   assert.equal(cfg2.defaultOpener, 'vscode', 'default opener stored as its key');
   const st2 = await (await fetch(base + '/api/state', { headers: { 'x-upex-token': token } })).json();
-  assert.deepEqual(st2.settings, { startView: 'apps', sort: 'name', terminalLayout: 'panes', paneSplit: 'horizontal', terminalShell: 'powershell', fullScreen: 'on', theme: 'system', accent: 'default', density: 'comfortable', paths: 'dim', keyHints: 'full', maxRows: 'auto', recentStrip: 'off', views: 'all', enter: 'quit', rowDetails: 'both', pinned: 'top', narrowPane: 'toggle', goals: 'off', git: 'off', defaultOpener: 'vscode' }, 'state reports settings');
+  assert.deepEqual(st2.settings, { startView: 'apps', sort: 'name', terminalLayout: 'panes', paneSplit: 'horizontal', terminalShell: 'powershell', fullScreen: 'on', theme: 'system', accent: 'default', density: 'comfortable', paths: 'dim', keyHints: 'full', maxRows: 'auto', recentStrip: 'off', views: 'all', enter: 'quit', rowDetails: 'both', pinned: 'top', narrowPane: 'toggle', goals: 'off', git: 'off', glyphs: 'unicode', defaultOpener: 'vscode' }, 'state reports settings');
   assert.deepEqual(Object.keys(cfg2.workspaces), ['work'], 'settings save keeps workspaces');
   const note = path.join(webHome, 'note.txt');
   fs.writeFileSync(note, '');
