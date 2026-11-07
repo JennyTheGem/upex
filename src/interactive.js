@@ -487,6 +487,22 @@ export function detailLines(c, pw, appChoices = [], now = Date.now(), { goals = 
   return out.filter(l => l !== null).map(l => ui.truncate(l, pw));
 }
 
+// Script picker in the pane, `rows` tall: a heading, then the scripts around `sel` as { text, i }.
+// No 3-row floor like listRows: the pane cuts overflow, which could hide the picked one.
+export function scriptLines({ list }, sel, pw, rows, pick = chalk.bold) {
+  const room = Math.max(1, rows - 2);
+  const { start, end } = getVisibleWindow(list, sel, list.length <= room ? room : Math.max(1, room - 1));
+  const nw = Math.min(nameCol(list), Math.floor(pw / 2));
+  const out = [`${chalk.bold('scripts')}${chalk.dim(` ${list.length}`)}`, ''];
+  for (let i = start; i < end; i++) {
+    const name = clipName(list[i].name, nw).text;
+    const lead = i === sel ? `${pick('›')} ${chalk.bold(name)}` : `  ${name}`;
+    out.push({ text: ui.truncate(`${lead}${' '.repeat(nw - vis(name) + 2)}${chalk.dim(list[i].path)}`, pw), i });
+  }
+  const more = scrollHint(start, end, list.length);
+  return more ? [...out, ui.truncate(more, pw)] : out;
+}
+
 export function renderInteractiveView({
   query,
   choices,
@@ -522,12 +538,14 @@ export function renderInteractiveView({
   const isSettings = view === 'settings';
   const isScripts = mode === 'scripts' && !!scripts;
   const currentChoice = (isWs ? workspaces : choices)[isWs ? wsIndex : selectedIndex];
-  const list = isScripts ? scripts.list : isWs ? workspaces : choices;
-  const index = isScripts ? scriptIndex : isWs ? wsIndex : selectedIndex;
-  // Workspace and script rows: plain text, no badges.
-  const plain = isWs || isScripts;
   // `width` leaves the terminal's last column free.
-  const pane = full && !isSettings && !isScripts && width + 1 >= PANE_MIN;
+  const pane = full && !isSettings && width + 1 >= PANE_MIN;
+  // Scripts go in the pane when there is one, else they replace the list.
+  const listScripts = isScripts && !pane;
+  const list = listScripts ? scripts.list : isWs ? workspaces : choices;
+  const index = listScripts ? scriptIndex : isWs ? wsIndex : selectedIndex;
+  // Workspace and script rows: plain text, no badges.
+  const plain = isWs || listScripts;
   const goals = pane && !isWs ? folderGoals(currentChoice, settings.goals) : null;
   const isGoals = mode === 'goals' && !!goals?.next.length;
   const w = Math.max(width, 20);
@@ -686,7 +704,8 @@ export function renderInteractiveView({
       const tags = tagsOn && c.tags?.length ? chalk.dim(`#${c.tags.join(' #')}`) : '';
       const kind = c.isCmd ? 'cmd' : c.isApp ? 'app' : c.isUrl ? 'url' : '';
       const badge = !badgesOn ? '' : !c.exists ? chalk.red('missing') : chalk.dim(badgeText([c.pinned && group(c) !== 'Pinned' && PIN, kind]));
-      hit(lines.length, 0, lw, { row: i });
+      // Picking in the pane: its rows are the clickable ones.
+      if (!isScripts || listScripts) hit(lines.length, 0, lw, { row: i });
       lines.push(renderRow(pathLook({
         sel: i === index,
         mark: !plain && marks.has(c.name),
@@ -711,12 +730,16 @@ export function renderInteractiveView({
   // Detail pane: the selected row's details right of the list, top-aligned.
   if (pane) {
     const sel = isGoals ? Math.min(goalIndex, goals.next.length - 1) : -1;
-    const detail = detailLines(currentChoice, pw, appChoices, Date.now(), { goals, sel, pick });
+    const detail = isScripts ? scriptLines(scripts, scriptIndex, pw, lines.length - bodyStart, pick)
+      : detailLines(currentChoice, pw, appChoices, Date.now(), { goals, sel, pick });
     // Picking and taller than the pane: scroll to its end (the goals), the picked one in view.
     const skip = isGoals ? Math.max(0, Math.min(detail.length - (lines.length - bodyStart), detail.length - goals.next.length + sel)) : 0;
     for (let i = bodyStart; i < lines.length; i++) {
+      const d = detail[i - bodyStart + skip];
+      // A script row { text, i } is clickable right of the │.
+      if (d?.i != null) hit(i, lw + 3, w, { row: d.i });
       const l = ui.truncate(lines[i], lw);
-      lines[i] = `${l}${' '.repeat(Math.max(0, lw - vis(l)))}${chalk.dim(' │ ')}${detail[i - bodyStart + skip] ?? ''}`;
+      lines[i] = `${l}${' '.repeat(Math.max(0, lw - vis(l)))}${chalk.dim(' │ ')}${d?.text ?? d ?? ''}`;
     }
   }
   // The opener row is the first footer row, after its rule; "  open with  " is 13 wide.
@@ -1220,11 +1243,11 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
         return;
       }
 
-      // ── Script picker: ↑↓ move, Enter runs, Esc back ──
+      // ── Script picker (the pane when wide, else the list): ↑↓ move, Enter runs, Esc / ← back ──
       if (mode === 'scripts') {
         const n = scripts.list.length;
         if (key.name === 'return') { runScript(); return; }
-        if (key.name === 'escape') mode = 'browse';
+        if (key.name === 'escape' || key.name === 'left') mode = 'browse';
         else if (key.name === 'up' || key.name === 'down') scriptIndex = (scriptIndex + (key.name === 'up' ? n - 1 : 1)) % n;
         redraw();
         return;

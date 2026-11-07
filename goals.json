@@ -1300,7 +1300,7 @@
       "title": "Scripts in the detail pane",
       "body": "^s shows the folder's package.json scripts in the right pane instead of replacing the list; pick one there (arrows/mouse), Enter runs it like upex run. Narrow or inline: keep today's script picker.",
       "phase": "next",
-      "status": "planned",
+      "status": "done",
       "size": "M",
       "pointers": {
         "files": [
@@ -1308,7 +1308,8 @@
         ]
       },
       "created": "2026-11-07",
-      "updated": "2026-11-07"
+      "updated": "2026-11-07",
+      "note": "^s lists scripts in the detail pane (list stays), pane rows clickable, scrolls; narrow/inline keeps the list picker; Left also goes back"
     },
     {
       "id": "shift-left-toggles-the-detail-pane-on-narrow",

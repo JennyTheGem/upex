@@ -22,7 +22,7 @@ import { applyShortcut, applyOpener, cleanEntries, startServer } from '../src/co
 import { COMMAND_NAMES } from '../src/fast.js';
 import { createProgram } from '../src/index.js';
 import { readScripts, detectPm } from '../src/commands/run.js';
-import { renderInteractiveView, nextView, backTo, accentOf, pathLook, inView, tidyPath, byOrder, optionRow, listRows, readMouse, hitTest, rowClick, undoError, clipName, prefill, editLine, inputLine, missingFlash, staysOpen, expandHome, underlineHits, movePinned, withRecent, maxListOf, isAlt, detailLines, rowOptions, pickedOf, goalSummary, goalsOf, goalText, oneLine } from '../src/interactive.js';
+import { renderInteractiveView, nextView, backTo, accentOf, pathLook, inView, tidyPath, byOrder, optionRow, listRows, readMouse, hitTest, rowClick, undoError, clipName, prefill, editLine, inputLine, missingFlash, staysOpen, expandHome, underlineHits, movePinned, withRecent, maxListOf, isAlt, detailLines, rowOptions, pickedOf, goalSummary, goalsOf, goalText, oneLine, scriptLines } from '../src/interactive.js';
 import chalk from 'chalk';
 import { resolveTarget, resolveName, suggestNames } from '../src/fuzzy.js';
 
@@ -817,6 +817,18 @@ const shortPane = goalPane('5', { mode: 'goals', goalIndex: 3, height: 14 }).spl
 assert.ok(shortPane.some(l => l.includes('› four')) && shortPane.length === 14, 'short pane scrolls to the picked goal');
 assert.equal(oneLine('a\x1b[2J\u009b1m\n b'), 'a [2J 1m b', 'goals.json text: no escapes, one line');
 fs.rmSync(gdir, { recursive: true, force: true });
+// ^s with the pane: scripts there, the shortcut list stays; a pane row click picks that script.
+{
+  const sargs = { ...viewArgs, choices: [det], full: true, width: 150, height: 30, mode: 'scripts', scriptIndex: 1, scripts: { pm: 'npm', list: [{ name: 'dev', path: 'vite' }, { name: 'build', path: 'vite build' }] } };
+  const sp = strip(renderInteractiveView(sargs)).split('\n');
+  const y = sp.findIndex(l => l.includes('› build'));
+  assert.ok(sp.some(l => /› web .*│ scripts 2$/.test(l)) && /│ › build +vite build$/.test(sp[y]) && !sp.some(l => l.includes('opens in')), 'pane script picker beside the list');
+  assert.deepEqual([at(sargs, 140, y + 1)?.row, at(sargs, 10, y + 1)?.row], [1, undefined], 'pane script rows are the clickable ones');
+  const tall = scriptLines({ list: Array.from({ length: 20 }, (_, i) => ({ name: `s${i}`, path: 'x' })) }, 15, 40, 8);
+  assert.ok(tall.some(l => l.i === 15) && tall.length <= 8 && strip(tall.at(-1)).includes('more'), 'pane scripts scroll to the picked one');
+  const short = scriptLines({ list: Array.from({ length: 10 }, (_, i) => ({ name: `s${i}`, path: 'x' })) }, 9, 40, 4);
+  assert.ok(short.length === 4 && short.some(l => l.i === 9), 'short pane: the picked script still fits');
+}
 // Full screen without the pane: the opener row is still clickable after the footer moves down.
 const fullA = { ...viewArgs, full: true, height: 30 };
 assert.equal(at(fullA, 15, strip(renderInteractiveView(fullA)).split('\n').findIndex(l => l.includes('open with')) + 1)?.opener, 0, 'full screen: opener row hit follows the pinned footer');

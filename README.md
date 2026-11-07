@@ -215,7 +215,7 @@ Run `upex` with no arguments to open the interactive selector. Pinned shortcuts 
 - `Ctrl+R` -- rename the selected shortcut (starts filled in)
 - `Ctrl+P` -- pin or unpin the selected shortcut; `Alt+Up` / `Alt+Down` moves a pinned one among the pinned (saved, `upex ui` uses the same order)
 - `Ctrl+Y` -- copy the selected shortcut's path (or app / URL) to the clipboard
-- `Ctrl+S` -- list the selected folder's package.json scripts; Enter runs one in a terminal (like `upex run`), Esc goes back
+- `Ctrl+S` -- list the selected folder's package.json scripts (in the detail pane when it shows, else in place of the list); Enter runs one in a terminal (like `upex run`), Esc or Left goes back
 - While typing a path or name: `Left` / `Right` move the cursor, `Ctrl+Left` / `Ctrl+Right` jump a word, `Home` / `End`, `Ctrl+Backspace` (or `Ctrl+W`) deletes a word, `Del` deletes forward. `Ctrl+Backspace` also works in the filter
 - `Ctrl+D` -- delete the selected shortcut (confirm with `y`), `Ctrl+Z` undoes the last delete
 - `Ctrl+U` -- start `upex ui` and open it in the browser; the selector stays open and shows the link. `Ctrl+U` again stops it, so does closing the selector
