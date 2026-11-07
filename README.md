@@ -332,6 +332,7 @@ Appearance:
 - `"theme"` (`upex ui` only): `"system"` (default, follows the OS), `"dark"` or `"light"`.
 - `"accent"`: `"default"` (green in `upex ui`, uncolored in the selector), `"green"`, `"blue"`, `"purple"`, `"orange"`, or any hex color like `"#ff66aa"` (`upex config set accent ff66aa`, the `#` is optional; truecolor in the selector, nearest color on terminals with fewer colors). The `upex ui` accent and the selector's `›` pointer and picked option.
 - `"density"`: `"comfortable"` (default) or `"compact"` (no spacer lines in the selector, tighter rows in `upex ui`).
+- `"keyHints"` (selector only): the key rows under the list. `"full"` (default, two rows), `"short"` (one row of the main keys, without ↑↓, Tab and Esc) or `"off"` (none, the list gets the rows). The Settings tab always shows its keys.
 - `"paths"`: `"dim"` (default, parent folders dimmed), `"full"` or `"hidden"` (no paths, commands or URLs) in the selector, `upex ls`, `upex stale` and `upex ui`. Piped output always shows paths.
 
 ### WebStorm on Windows (without `setx`)

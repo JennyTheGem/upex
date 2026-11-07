@@ -443,6 +443,20 @@ assert.ok(strip(renderInteractiveView(wideOpeners)).split('\n').some(l => l.incl
 assert.equal(setting('fullScreen', {}), 'on', 'full screen on by default');
 assert.equal(setting('fullScreen', { fullScreen: 'off' }), 'off', 'full screen can be turned off');
 assert.ok(strip(renderInteractiveView({ ...setArgs, settings: { ...setArgs.settings, fullScreen: 'off' } })).includes('Full screen     On  ‹ Off ›'), 'full screen row');
+// key hints: full = two rows, short = one row cut to the width, off = none; the list takes the freed rows
+const withHints = (keyHints, extra = {}) => strip(renderInteractiveView({ ...many, height: 30, settings: { keyHints }, ...extra })).split('\n');
+for (const k of ['full', 'short', 'off']) assert.equal(withHints(k).length, 30, `hints ${k}: fills the height`);
+const [full, short1, off] = ['full', 'short', 'off'].map(k => withHints(k));
+assert.ok(full.some(l => l.includes('tab apps')) && full.some(l => l.includes('^a add')), 'full: both rows');
+assert.ok(!short1.some(l => l.includes('tab apps')) && short1.at(-1).includes('^a add') && short1.at(-1).includes('←→ opener'), 'short: one row, no learned keys');
+assert.ok(!off.some(l => l.includes('^a add') || l.includes('↵ open')) && off.at(-1).includes('open with'), 'off: no hints, opener row kept');
+assert.ok(off.filter(l => /^  [ ›] p\d/.test(l)).length > full.filter(l => /^  [ ›] p\d/.test(l)).length, 'off: more list rows');
+const cut = withHints('short', { width: 40 }).at(-1);
+assert.ok(cut.length <= 40 && cut.includes('↵ open') && !cut.includes('^u'), 'short row cut to the width');
+assert.ok(withHints('off', { view: 'apps' }).at(-1).includes('↓'), 'off in apps: no footer rule, list runs to the bottom');
+assert.ok(/^ {2}─+$/.test(withHints('off', { view: 'apps', webUrl: 'http://h/?t=x' }).at(-2)), 'off: web link right under the rule');
+assert.ok(withHints('off', { view: 'settings' }).some(l => l.includes('change (saved)')), 'settings keeps its keys');
+assert.equal(withHints('short', { mode: 'input', action: 'rename' }).at(-1).trim().startsWith('↵ save'), true, 'short: typing shows input keys');
 
 // -- mouse: SGR reports through real readline never leak into keys; the hit map follows scroll and option windows --
 const feed = async (...chunks) => {
@@ -484,6 +498,7 @@ const openRow = strip(renderInteractiveView(narrow)).split('\n').findIndex(l => 
 assert.equal(at(narrow, 15, openRow)?.opener, 1, 'the ‹… marker steps to the hidden neighbour');
 assert.equal(at(narrow, 28, openRow)?.opener, 3, 'click an opener');
 assert.equal(at(narrow, 16, openRow), undefined, 'gap between options is nothing');
+assert.equal(at({ ...many, height: 30, settings: { keyHints: 'off' } }, 14, off.findIndex(l => l.includes('open with')) + 1)?.opener, 0, 'key hints off: opener row stays clickable');
 const setLines = strip(renderInteractiveView(setArgs)).split('\n');
 const sortLine = setLines.findIndex(l => l.includes('Sort')) + 1;
 assert.deepEqual([at(setArgs, setLines[sortLine - 1].indexOf('Most used') + 1, sortLine)].map(t => [t.setting, t.option]), [[1, 0]], 'click a settings option');
@@ -501,9 +516,9 @@ assert.ok(renderInteractiveView({ ...setArgs, settings: { ...setArgs.settings, a
 const tall = strip(renderInteractiveView({ ...setArgs, height: 40, settings: { ...setArgs.settings, theme: 'light' } }));
 assert.ok(tall.includes('Web theme       System  Dark  ‹ Light ›'), 'web theme row');
 assert.ok(['General', 'Terminals', 'Opening', 'Appearance'].every(s => tall.includes(`\n  ${s}\n`)), 'settings grouped in sections');
-const short = rowsOf({ ...setArgs, height: 14, settingIndex: 9 });
+const short = rowsOf({ ...setArgs, height: 14, settingIndex: 10 });
 assert.ok(short.length <= 14 && short.some(l => l.startsWith('  › Web theme')) && short.at(-1).includes('setting'), 'short terminal scrolls settings, keeps the footer');
-assert.equal(at({ ...setArgs, height: 14, settingIndex: 9 }, 3, short.findIndex(l => l.startsWith('  › Web theme')) + 1)?.setting, 9, 'scrolled settings stay clickable');
+assert.equal(at({ ...setArgs, height: 14, settingIndex: 10 }, 3, short.findIndex(l => l.startsWith('  › Web theme')) + 1)?.setting, 10, 'scrolled settings stay clickable');
 assert.equal(checkSettings({ accent: 'red' }).error, 'accent must be one of: default, green, blue, purple, orange, or a hex color like #ff66aa.', 'bad accent refused');
 assert.deepEqual([checkSettings({ accent: '#FF66aa' }).next.accent, checkSettings({ accent: 'ff66aa' }).next.accent, checkSettings({ sort: '#ff66aa' }).error?.slice(0, 4)], ['#ff66aa', '#ff66aa', 'sort'], 'hex only for accent, normalized');
 assert.deepEqual([setting('accent', { accent: '#ff66aa' }), setting('accent', { accent: '#ff66a' }), setting('accent', { accent: '"><x' })], ['#ff66aa', 'default', 'default'], 'stored hex read back, junk falls back');
@@ -784,7 +799,7 @@ try {
   assert.equal(cfg2.paneSplit, 'horizontal', 'refused request saved nothing, later one did');
   assert.equal(cfg2.defaultOpener, 'vscode', 'default opener stored as its key');
   const st2 = await (await fetch(base + '/api/state', { headers: { 'x-upex-token': token } })).json();
-  assert.deepEqual(st2.settings, { startView: 'apps', sort: 'name', terminalLayout: 'panes', paneSplit: 'horizontal', terminalShell: 'powershell', fullScreen: 'on', theme: 'system', accent: 'default', density: 'comfortable', paths: 'dim', defaultOpener: 'vscode' }, 'state reports settings');
+  assert.deepEqual(st2.settings, { startView: 'apps', sort: 'name', terminalLayout: 'panes', paneSplit: 'horizontal', terminalShell: 'powershell', fullScreen: 'on', theme: 'system', accent: 'default', density: 'comfortable', paths: 'dim', keyHints: 'full', defaultOpener: 'vscode' }, 'state reports settings');
   assert.deepEqual(Object.keys(cfg2.workspaces), ['work'], 'settings save keeps workspaces');
   const note = path.join(webHome, 'note.txt');
   fs.writeFileSync(note, '');

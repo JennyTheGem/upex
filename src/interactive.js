@@ -110,6 +110,8 @@ export function pathLook(r, paths) {
   return paths === 'full' ? { ...r, style: 'plain' } : r;
 }
 const keyHint = pairs => '  ' + pairs.filter(Boolean).map(([k, label]) => `${k} ${chalk.dim(label)}`).join('  ');
+// One hint row of at most w columns: from the first pair that doesn't fit on, pairs are left out.
+const fitHint = (pairs, w) => keyHint(pairs.filter(Boolean).filter((p, i, a) => vis(keyHint(a.slice(0, i + 1))) <= w));
 // Fuse hit ranges are UTF-16 offsets, inclusive.
 export const underlineHits = (s, hits = []) => ui.graphemes(s)
   .map(({ segment: g, index: i }) => (hits.some(([a, b]) => a < i + g.length && b >= i) ? chalk.underline(g) : g)).join('');
@@ -314,6 +316,7 @@ const SETTING_ROWS = [
   { section: 'Terminals', key: 'terminalShell', label: 'Shell', names: { cmd: 'cmd', powershell: 'PowerShell', pwsh: 'PowerShell 7', profile: 'WT profile' } },
   { section: 'Opening', key: 'defaultOpener', label: 'Default opener' },
   { section: 'Appearance', key: 'fullScreen', label: 'Full screen', names: { on: 'On', off: 'Off' } },
+  { section: 'Appearance', key: 'keyHints', label: 'Key hints', names: { full: 'Full', short: 'Short', off: 'Off' } },
   { section: 'Appearance', key: 'accent', label: 'Accent', names: { default: 'Default', green: 'Green', blue: 'Blue', purple: 'Purple', orange: 'Orange' } },
   { section: 'Appearance', key: 'density', label: 'Density', names: { comfortable: 'Comfortable', compact: 'Compact' } },
   { section: 'Appearance', key: 'paths', label: 'Paths', names: { dim: 'Dim folders', full: 'Full', hidden: 'Hidden' } },
@@ -334,6 +337,7 @@ function settingNote(key, s, wt) {
   if (key === 'accent') return 'Color of the › pointer and the picked option, here and in upex ui. Any color: upex config set accent ff66aa';
   if (key === 'density') return 'Compact drops the spacer lines, here and in upex ui.';
   if (key === 'paths') return 'Paths in the lists here, in upex ls / stale and in upex ui.';
+  if (key === 'keyHints') return 'Key rows under the list. Short: one row of the main keys. Off: more room for the list. Settings keeps its keys.';
   if (key === 'theme') return 'upex ui only. The terminal keeps its own colors.';
   if (wt === null) return 'Windows only. Other systems use their own terminal.';
   if (key === 'terminalLayout') {
@@ -439,8 +443,9 @@ export function renderInteractiveView({
   if (flash) lines.push((flash.ok ? chalk.green : chalk.yellow)(`    ${String(flash.text ?? flash).replace(/\s*\n\s*/g, ' ')}`));
   lines.push(rule);
 
+  // No rows (key hints off): no rule either.
   const footer = (rows) => {
-    lines.push(rule, ...rows);
+    if (rows.length) lines.push(rule, ...rows);
     return lines.join('\n');
   };
   const tabKey = ['tab', VIEWS[nextView(view)].toLowerCase()];
@@ -449,7 +454,6 @@ export function renderInteractiveView({
   const uiKey = ['^u', webUrl ? 'stop web ui' : 'web ui'];
   // Blank row first, so the link sits apart from the key hints.
   const webRows = webUrl ? [...gap, webStatus(webUrl, w)] : [];
-  const nav = (open) => keyHint([['↵', open], ['↑↓', 'move'], tabKey, escKey]);
 
   if (isSettings) {
     const rows = visibleRows(settings);
@@ -480,18 +484,23 @@ export function renderInteractiveView({
 
   const openerSpans = [];
   const openers = optionRow(appChoices.map(c => `${c.label}${isTerminalApp(c.key) && cmdCount > 1 ? ` ×${cmdCount}` : ''}`), selectedAppIndex, w - 13, openerSpans, pick);
-  const foot = isWs ? [nav('open all'), keyHint([['^d', 'delete'], undoKey, uiKey])]
-    : view === 'apps' ? [nav(currentChoice?.isUrl ? 'open in browser' : 'launch app'), keyHint([['^r', 'rename'], ['^d', 'delete'], undoKey, uiKey])]
-      : [
-        `  ${chalk.dim('open with')}  ${openers}`,
-        ...gap,
-        keyHint([['↵', 'open'], ['^s', 'scripts'], ['↑↓', 'move'], ['←→', 'opener'], terminal && ['S-↑↓', 'windows'], tabKey, escKey]),
-        keyHint([['^a', 'add'], ['^e', 'edit path'], ['^r', 'rename'], ['^d', 'delete'], undoKey, uiKey]),
-      ];
-  // Typing: input keys replace the last two hint rows, same height so the list stays put.
-  if (mode === 'input') foot.splice(-2, 2, keyHint([['↵', 'save'], ['←→', 'cursor'], ['^⌫', 'word'], ['^u', 'clear'], ['esc', 'cancel']]), '');
-  if (isScripts) foot.splice(0, foot.length, keyHint([['↵', 'run in a terminal'], ['↑↓', 'move'], escKey]));
-  foot.push(...webRows);
+  const isShortcuts = view === 'shortcuts';
+  const openKey = ['↵', isShortcuts ? 'open' : isWs ? 'open all' : currentChoice?.isUrl ? 'open in browser' : 'launch app'];
+  const opener = isShortcuts && ['←→', 'opener'];
+  const windows = isShortcuts && terminal && ['S-↑↓', 'windows'];
+  const scriptsKey = isShortcuts && ['^s', 'scripts'];
+  const navRow = [openKey, scriptsKey, ['↑↓', 'move'], opener, windows, tabKey, escKey];
+  const actRow = [isShortcuts && ['^a', 'add'], isShortcuts && ['^e', 'edit path'], !isWs && ['^r', 'rename'], ['^d', 'delete'], undoKey];
+  const inputRow = keyHint([['↵', 'save'], ['←→', 'cursor'], ['^⌫', 'word'], ['^u', 'clear'], ['esc', 'cancel']]);
+  // Key hints setting. Full: two rows (typing: input keys, same height so the list stays put). Short: one row
+  // without the keys you learn first (↑↓, tab, esc), cut to the width. Off: none.
+  const hints = settings.keyHints === 'off' ? []
+    : settings.keyHints === 'short' ? [mode === 'input' ? inputRow : fitHint([openKey, opener, windows, ...actRow, scriptsKey, uiKey], w)]
+      : mode === 'input' ? [inputRow, ''] : [keyHint(navRow), keyHint([...actRow, uiKey])];
+  const foot = isScripts ? (hints.length ? [keyHint([['↵', 'run in a terminal'], ['↑↓', 'move'], escKey])] : [])
+    : [...(isShortcuts ? [`  ${chalk.dim('open with')}  ${openers}`, ...(hints.length ? gap : [])] : []), ...hints];
+  // No footer rows above it: no blank row under the rule.
+  foot.push(...(foot.length ? webRows : webRows.slice(-1)));
 
   if (list.length === 0) {
     const empty = {
@@ -503,7 +512,7 @@ export function renderInteractiveView({
   } else {
     const nameWidth = nameCol(list);
     // Rows left after the header and the footer (its rule included).
-    const room = height - lines.length - foot.length - 1;
+    const room = height - lines.length - (foot.length && foot.length + 1);
     const { start, end } = getVisibleWindow(list, index, Math.min(maxList, listRows(list.length, room)));
     for (let i = start; i < end; i++) {
       const c = list[i];
@@ -528,7 +537,7 @@ export function renderInteractiveView({
   }
 
   // The opener row is the first footer row, after its rule; "  open with  " is 13 wide.
-  if (view === 'shortcuts' && !isScripts) for (const s of openerSpans) hit(lines.length + 1, 13 + s.from, 13 + s.to, { opener: s.index });
+  if (isShortcuts && !isScripts) for (const s of openerSpans) hit(lines.length + 1, 13 + s.from, 13 + s.to, { opener: s.index });
   return footer(foot);
 }
 

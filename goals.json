@@ -763,6 +763,18 @@
       "note": "startView last: selector saves lastView/lastOpener on exit, upex ui saves the tab on switch"
     },
     {
+      "id": "key-hints-setting",
+      "section": 3,
+      "title": "Key hints setting",
+      "body": "Selector footer: Full / Short (one row) / Off, frees rows for the list once the keys are learned.",
+      "phase": "next",
+      "status": "done",
+      "size": "S",
+      "created": "2026-11-07",
+      "updated": "2026-11-07",
+      "note": "keyHints setting: Full / Short (one row, fitted to width) / Off (no rows, no footer rule); Settings tab keeps its keys"
+    },
+    {
       "id": "cd-support-via-wrapper-hidden-resolve-public-go",
       "section": 4,
       "title": "`cd` support via wrapper + hidden `__resolve` / public `go`",
