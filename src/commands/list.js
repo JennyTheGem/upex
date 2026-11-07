@@ -61,7 +61,7 @@ export function registerList(program) {
         return {
           name,
           text: entry.url || tidyPath(entry.path || entry.app || ''),
-          style: entry.url ? 'plain' : 'path',
+          style: entry.url ? 'url' : 'path',
           right: right.filter(Boolean).join('  '),
         };
       }));

@@ -1,48 +1,41 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-theme="__THEME__" data-accent="__ACCENT__" data-density="__DENSITY__" data-paths="__PATHS__">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>upex</title>
 <meta name="color-scheme" content="dark light">
 <style>
+/* light-dark(light, dark): the Theme setting picks the scheme, System follows the OS. */
+:root { color-scheme: light dark; }
+:root[data-theme="light"] { color-scheme: light; }
+:root[data-theme="dark"] { color-scheme: dark; }
 :root {
-  --bg: #0e1012;
-  --panel: #15181b;
-  --raise: #1c2024;
-  --line: #262b31;
-  --line-strong: #353c43;
-  --text: #e4e7ea;
-  --muted: #9aa3ac;
-  --accent: #46d39a;
-  --accent-ink: #052016;
-  --accent-soft: rgba(70, 211, 154, .13);
-  --warn: #f0c050;
-  --warn-soft: rgba(240, 192, 80, .1);
-  --danger: #ff7a72;
-  --danger-soft: rgba(255, 122, 114, .12);
+  --bg: light-dark(#f6f6f4, #0e1012);
+  --panel: light-dark(#ffffff, #15181b);
+  --raise: light-dark(#eeeeeb, #1c2024);
+  --line: light-dark(#e0e0dc, #262b31);
+  --line-strong: light-dark(#c9c9c4, #353c43);
+  --text: light-dark(#1a1c1e, #e4e7ea);
+  --muted: light-dark(#5a6168, #9aa3ac);
+  --accent-soft: color-mix(in srgb, var(--accent) 12%, transparent);
+  --warn: light-dark(#8a6100, #f0c050);
+  --warn-soft: light-dark(rgba(176, 125, 0, .1), rgba(240, 192, 80, .1));
+  --danger: light-dark(#c0352b, #ff7a72);
+  --danger-soft: light-dark(rgba(192, 53, 43, .08), rgba(255, 122, 114, .12));
   --sans: "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, "Helvetica Neue", sans-serif;
   --mono: "Cascadia Mono", "Cascadia Code", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
   --r: 6px;
+  --h: 32px; /* control height */
+  --pad: 9px; /* list row padding */
 }
-@media (prefers-color-scheme: light) {
-  :root {
-    --bg: #f6f6f4;
-    --panel: #ffffff;
-    --raise: #eeeeeb;
-    --line: #e0e0dc;
-    --line-strong: #c9c9c4;
-    --text: #1a1c1e;
-    --muted: #5a6168;
-    --accent: #0c8455;
-    --accent-ink: #ffffff;
-    --accent-soft: rgba(12, 132, 85, .1);
-    --warn: #8a6100;
-    --warn-soft: rgba(176, 125, 0, .1);
-    --danger: #c0352b;
-    --danger-soft: rgba(192, 53, 43, .08);
-  }
-}
+/* Accent setting; the .ac-* classes color the swatches in Settings. */
+/* Default is green here, plain in the terminal. */
+:root, .ac-default, .ac-green { --accent: light-dark(#0c8455, #46d39a); --accent-ink: light-dark(#ffffff, #052016); }
+:root[data-accent="blue"], .ac-blue { --accent: light-dark(#1f6fd1, #5aa9ff); --accent-ink: light-dark(#ffffff, #04172b); }
+:root[data-accent="purple"], .ac-purple { --accent: light-dark(#7445d6, #b18cff); --accent-ink: light-dark(#ffffff, #1a0b33); }
+:root[data-accent="orange"], .ac-orange { --accent: light-dark(#b85a00, #ff9f4a); --accent-ink: light-dark(#ffffff, #2b1300); }
+:root[data-density="compact"] { --h: 28px; --pad: 4px; }
 
 * { box-sizing: border-box; }
 html { scrollbar-color: var(--line-strong) var(--bg); }
@@ -90,14 +83,14 @@ nav { display: flex; gap: 2px; }
 /* Controls */
 input[type="text"], input[type="number"], input[type="search"], select {
   background: var(--panel); border: 1px solid var(--line-strong); border-radius: var(--r);
-  padding: 6px 9px; min-width: 0; height: 32px;
+  padding: 6px 9px; min-width: 0; height: var(--h);
 }
 input::placeholder { color: var(--muted); opacity: .8; }
 input:hover, select:hover { border-color: var(--muted); }
 input[aria-invalid="true"] { border-color: var(--danger); }
 .btn {
   display: inline-flex; align-items: center; justify-content: center; gap: 6px;
-  height: 32px; padding: 0 12px; border-radius: var(--r); cursor: pointer; white-space: nowrap;
+  height: var(--h); padding: 0 12px; border-radius: var(--r); cursor: pointer; white-space: nowrap;
   background: var(--raise); border: 1px solid var(--line-strong);
   transition: background-color .15s ease-out, border-color .15s ease-out, color .15s ease-out;
 }
@@ -109,7 +102,7 @@ input[aria-invalid="true"] { border-color: var(--danger); }
 .btn.danger.solid { background: var(--danger); border-color: var(--danger); color: var(--bg); font-weight: 600; }
 .btn.ghost { background: none; border-color: transparent; color: var(--muted); }
 .btn.ghost:hover { color: var(--text); background: var(--raise); }
-.btn.icon { width: 32px; padding: 0; }
+.btn.icon { width: var(--h); padding: 0; }
 .btn.icon[aria-pressed="true"] { color: var(--accent); }
 .btn.ghost.danger:hover { color: var(--danger); background: var(--danger-soft); }
 
@@ -157,7 +150,7 @@ h1 { font-size: 20px; letter-spacing: -.015em; margin: 8px 0 4px; }
 .list { border: 1px solid var(--line); border-radius: var(--r); background: var(--panel); overflow: hidden; }
 .item {
   display: grid; grid-template-columns: 18px minmax(120px, 1.1fr) minmax(0, 2.2fr) 64px auto;
-  align-items: center; gap: 14px; padding: 9px 12px; border-top: 1px solid var(--line);
+  align-items: center; gap: 14px; padding: var(--pad) 12px; border-top: 1px solid var(--line);
 }
 .item:first-child { border-top: 0; }
 .item:hover { background: color-mix(in srgb, var(--raise) 55%, transparent); }
@@ -168,9 +161,14 @@ h1 { font-size: 20px; letter-spacing: -.015em; margin: 8px 0 4px; }
 .tag { font-size: 12px; color: var(--muted); }
 .target { color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; direction: ltr; }
 .target .miss { color: var(--warn); font-family: var(--sans); font-size: 12px; margin-right: 8px; }
+/* Paths setting: dim parent folders (default), full, or hidden */
+.target .leaf, :root[data-paths="full"] .target { color: var(--text); }
+:root[data-paths="hidden"] .item > .target { display: none; }
+:root[data-paths="hidden"] .item:not(.editing) { grid-template-columns: 18px minmax(120px, 1fr) 64px auto; }
+.swatch { width: 10px; height: 10px; border-radius: 3px; background: var(--accent); }
 .when { color: var(--muted); font-size: 12px; text-align: right; font-variant-numeric: tabular-nums; }
 .actions { display: flex; gap: 4px; align-items: center; justify-content: flex-end; }
-.actions select { height: 32px; width: 122px; }
+.actions select { height: var(--h); width: 122px; }
 .actions input.count { width: 56px; }
 .actions input.start { width: 150px; }
 [hidden] { display: none !important; }
@@ -188,7 +186,7 @@ h1 { font-size: 20px; letter-spacing: -.015em; margin: 8px 0 4px; }
 .ws-head { display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-bottom: 1px solid var(--line); }
 .ws-head h2 { font-size: 15px; margin: 0; flex: 1; }
 .ws-head input { flex: 1; }
-.ws-entry { display: grid; grid-template-columns: minmax(100px, 1fr) minmax(100px, 1fr) minmax(0, 2fr) auto; gap: 12px; align-items: center; padding: 7px 12px; border-bottom: 1px solid var(--line); }
+.ws-entry { display: grid; grid-template-columns: minmax(100px, 1fr) minmax(100px, 1fr) minmax(0, 2fr) auto; gap: 12px; align-items: center; padding: calc(var(--pad) - 2px) 12px; border-bottom: 1px solid var(--line); }
 .ws-entry .muted { color: var(--muted); }
 .ws-add { padding: 10px 12px; display: flex; gap: 8px; flex-wrap: wrap; }
 .ws-add select, .ws-add input { flex: 1 1 120px; }
@@ -220,6 +218,7 @@ h1 { font-size: 20px; letter-spacing: -.015em; margin: 8px 0 4px; }
   .item > .target { grid-area: t; }
   .item > .when { grid-area: w; }
   .item > .actions { grid-area: a; justify-content: flex-start; flex-wrap: wrap; }
+  :root[data-paths="hidden"] .item:not(.editing) { grid-template-columns: 18px minmax(0, 1fr) auto; grid-template-areas: "i n w" "a a a"; }
   .ws-entry { grid-template-columns: 1fr 1fr auto; }
   .ws-entry .start { grid-column: 1 / 3; }
 }
@@ -281,7 +280,13 @@ const SETTING_OPTS = {
   terminalLayout: { windows: 'Separate windows', tabs: 'Tabs', panes: 'Split panes' },
   paneSplit: { auto: 'Auto', vertical: 'Side by side', horizontal: 'Stacked' },
   terminalShell: { cmd: 'cmd', powershell: 'PowerShell', pwsh: 'PowerShell 7', profile: 'WT default profile' },
+  theme: { system: 'System', dark: 'Dark', light: 'Light' },
+  accent: { default: 'Default', green: 'Green', blue: 'Blue', purple: 'Purple', orange: 'Orange' },
+  density: { comfortable: 'Comfortable', compact: 'Compact' },
+  paths: { dim: 'Dim folders', full: 'Full', hidden: 'Hidden' },
 };
+// Appearance settings, mirrored onto <html data-*> for the CSS.
+const LOOK = ['theme', 'accent', 'density', 'paths'];
 // The archived toggle swaps the tab's list for its archived shortcuts.
 const tabLinks = (archived = S.archived) => S.links.filter(l => l.tab === S.view && l.archived === archived);
 const COPY_WORD = { folder: 'path', app: 'path', cmd: 'command', url: 'URL' };
@@ -503,6 +508,13 @@ function editRow(l) {
       err));
 }
 
+// Target as [parent folders, leaf], like the selector; a URL stays whole.
+function splitLeaf(l) {
+  const t = l.target;
+  const cut = l.kind === 'url' ? 0 : Math.max(t.lastIndexOf('/'), t.lastIndexOf('\\')) + 1;
+  return [t.slice(0, cut), h('span', { class: l.kind === 'url' ? null : 'leaf' }, t.slice(cut))];
+}
+
 function row(l) {
   if (S.editing === l.name) return editRow(l);
 
@@ -559,7 +571,7 @@ function row(l) {
       (l.tags.length > 0 || l.aliases.length > 0) && h('div', { class: 'tags' },
         l.aliases.length > 0 && h('span', { class: 'tag', title: 'Aliases' }, 'aka ' + l.aliases.join(', ')),
         l.tags.map(t => h('span', { class: 'tag' }, '#' + t)))),
-    h('div', { class: 'target mono', title: l.target }, l.broken && h('span', { class: 'miss' }, 'missing'), l.target),
+    h('div', { class: 'target mono', title: l.target }, l.broken && h('span', { class: 'miss' }, 'missing'), ...splitLeaf(l)),
     h('div', { class: 'when', title: 'Last opened' }, ago(l.lastUsed)),
     actions);
 }
@@ -761,14 +773,15 @@ function wsView() {
 function settingsView() {
   const s = S.settings;
   // One labelled radio group per setting; saves on change and keeps focus on the picked option.
-  const seg = (key, title, msg) => h('div', { class: 'row' },
+  // `deco(k)` adds something before an option's label (the accent swatches).
+  const seg = (key, title, msg, deco) => h('div', { class: 'row' },
     h('span', { class: 'set-label', id: 'lbl-' + key }, title),
     h('div', { class: 'seg', role: 'radiogroup', 'aria-labelledby': 'lbl-' + key },
       Object.entries(SETTING_OPTS[key]).map(([k, label]) => [
         h('input', { type: 'radio', name: key, id: `${key}-${k}`, checked: s[key] === k, onchange: () =>
           act(() => api('PUT', 'settings', { [key]: k }), msg(label))
             .then(() => document.getElementById(`${key}-${S.settings[key]}`)?.focus()) }),
-        h('label', { for: `${key}-${k}` }, label),
+        h('label', { for: `${key}-${k}` }, deco?.(k), label),
       ])));
   const notes = [
     S.wt === null && 'Windows only. Other systems use their own terminal.',
@@ -799,6 +812,13 @@ function settingsView() {
         h('select', { id: 'set-opener', onchange: pickOpener },
           S.apps.filter(a => a.key !== 'copy').map(a => h('option', { value: a.key, selected: s.defaultOpener === a.key }, a.label)),
           !S.apps.some(a => a.key === s.defaultOpener) && h('option', { value: s.defaultOpener, selected: true }, s.defaultOpener)))),
+    h('section', { class: 'form', 'aria-labelledby': 'set-look' },
+      h('h2', { id: 'set-look', style: 'font-size:15px;margin:0' }, 'Appearance'),
+      h('p', { class: 'lede', style: 'margin:0' }, 'Accent, density and paths also apply to the upex selector. Theme is this page only, the terminal keeps its own colors.'),
+      seg('theme', 'Theme', l => `Theme: ${l}`),
+      seg('accent', 'Accent', l => `Accent: ${l}`, k => h('span', { class: 'swatch ac-' + k, 'aria-hidden': 'true' })),
+      seg('density', 'Density', l => `Density: ${l}`),
+      seg('paths', 'Paths', l => `Paths: ${l}`)),
     h('section', { class: 'form', 'aria-labelledby': 'set-apps' },
       h('h2', { id: 'set-apps', style: 'font-size:15px;margin:0' }, 'Custom openers'),
       h('p', { class: 'lede', style: 'margin:0' }, 'More apps to open folders in, like Cursor or Sublime. upex runs the command with the folder path after it. Same list as upex app in the terminal.'),
@@ -864,6 +884,7 @@ function openerAdd() {
 // ---------- Shell ----------
 
 function render() {
+  for (const k of LOOK) if (S.settings[k]) document.documentElement.dataset[k] = S.settings[k];
   document.getElementById('n-links').textContent = S.links.filter(l => l.tab === 'links' && !l.archived).length;
   document.getElementById('n-apps').textContent = S.links.filter(l => l.tab === 'apps' && !l.archived).length;
   document.getElementById('n-ws').textContent = Object.keys(S.workspaces).length;

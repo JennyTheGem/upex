@@ -15,13 +15,13 @@ import { fileURLToPath } from 'node:url';
 import { frecency, pruneBroken, mergeLinks, lastUsedName, nameError, takenError, checkAliases, aliasClashes, staleLinks, sweepExpired, diffLinks, keepUsage } from '../src/store.js';
 import { remoteWebUrl } from '../src/git.js';
 import { installCmdWrapper } from '../src/commands/setup.js';
-import { normalizeUrl, caretEscape, wtCommandLine, setting, shellCommand, defaultOpener } from '../src/launcher.js';
+import { normalizeUrl, caretEscape, wtCommandLine, setting, shellCommand, defaultOpener, checkSettings } from '../src/launcher.js';
 import { parseTags, parseDuration, defaultName } from '../src/commands/add.js';
 import { truncate, span, width, dimParent, stripAnsi } from '../src/ui.js';
 import { applyShortcut, applyOpener, cleanEntries, startServer } from '../src/commands/web.js';
 import { COMMAND_NAMES } from '../src/fast.js';
 import { createProgram } from '../src/index.js';
-import { renderInteractiveView, inView, tidyPath, byOrder, optionRow, listRows, readMouse, hitTest, rowClick, undoError, clipName, prefill, editLine, inputLine, missingFlash, staysOpen, expandHome, underlineHits } from '../src/interactive.js';
+import { renderInteractiveView, pathLook, inView, tidyPath, byOrder, optionRow, listRows, readMouse, hitTest, rowClick, undoError, clipName, prefill, editLine, inputLine, missingFlash, staysOpen, expandHome, underlineHits } from '../src/interactive.js';
 import chalk from 'chalk';
 import { resolveTarget, resolveName, suggestNames } from '../src/fuzzy.js';
 
@@ -481,6 +481,23 @@ const sortLine = setLines.findIndex(l => l.includes('Sort')) + 1;
 assert.deepEqual([at(setArgs, setLines[sortLine - 1].indexOf('Most used') + 1, sortLine)].map(t => [t.setting, t.option]), [[1, 0]], 'click a settings option');
 assert.equal(at(setArgs, 5, sortLine)?.option, undefined, 'click a settings label just picks the row');
 
+// -- appearance: paths, compact density, accent, the appearance rows --
+assert.deepEqual([pathLook({ text: 'a/b' }, 'hidden').text, pathLook({ text: 'u', style: 'url' }, 'hidden').text, pathLook({ text: 'a', style: 'plain' }, 'hidden').text], ['', '', 'a'], 'hidden blanks paths and urls, not plain rows');
+assert.equal(pathLook({ text: 'a/b', style: 'path' }, 'full').style, 'plain', 'full = undimmed');
+assert.ok(!strip(renderInteractiveView({ ...viewArgs, settings: { paths: 'hidden' } })).split('\n').find(l => l.startsWith('  › s ')).includes('P'), 'hidden paths in the selector');
+const roomy = rowsOf({ ...many, height: 20 });
+const tight = rowsOf({ ...many, height: 20, settings: { density: 'compact' } });
+assert.ok(tight.length === 20 && tight.filter(l => / p\d+ /.test(l)).length > roomy.filter(l => / p\d+ /.test(l)).length, 'compact fits more rows in the same height');
+assert.equal(at({ ...tabArgs, settings: { density: 'compact' } }, rowsOf({ ...tabArgs, settings: { density: 'compact' } })[0].indexOf('Apps') + 1, 1)?.tab, 'apps', 'compact header still clickable');
+assert.ok(renderInteractiveView({ ...setArgs, settings: { ...setArgs.settings, accent: 'blue' } }).includes(chalk.blueBright('‹ A to Z ›')), 'accent colors the picked option');
+const tall = strip(renderInteractiveView({ ...setArgs, height: 40, settings: { ...setArgs.settings, theme: 'light' } }));
+assert.ok(tall.includes('Web theme       System  Dark  ‹ Light ›'), 'web theme row');
+assert.ok(['General', 'Terminals', 'Opening', 'Appearance'].every(s => tall.includes(`\n  ${s}\n`)), 'settings grouped in sections');
+const short = rowsOf({ ...setArgs, height: 14, settingIndex: 9 });
+assert.ok(short.length <= 14 && short.some(l => l.startsWith('  › Web theme')) && short.at(-1).includes('setting'), 'short terminal scrolls settings, keeps the footer');
+assert.equal(at({ ...setArgs, height: 14, settingIndex: 9 }, 3, short.findIndex(l => l.startsWith('  › Web theme')) + 1)?.setting, 9, 'scrolled settings stay clickable');
+assert.equal(checkSettings({ accent: 'red' }).error, 'accent must be one of: default, green, blue, purple, orange.', 'bad accent refused');
+
 // -- esc clears a filter first, success flash is green, ^z undo hint and restore checks --
 const v = (a) => strip(renderInteractiveView({ ...viewArgs, ...a }));
 assert.ok(v({}).includes('esc quit') && v({ query: 's' }).includes('esc clear') && v({ query: 's', mode: 'input', action: 'add' }).includes('esc cancel'), 'esc hint says what esc does');
@@ -674,7 +691,14 @@ try {
   const { origin: base, searchParams } = new URL(link);
   const token = searchParams.get('t');
   assert.equal((await fetch(base)).status, 403, 'page without token refused');
-  assert.ok((await (await fetch(link)).text()).includes(`const TOKEN = '${token}'`), 'page carries the token');
+  const pageHtml = await (await fetch(link)).text();
+  assert.ok(pageHtml.includes(`const TOKEN = '${token}'`), 'page carries the token');
+  assert.ok(pageHtml.includes('data-theme="system" data-accent="default"') && !/__[A-Z]+__/.test(pageHtml), 'page has the appearance baked in');
+  const webCfg = path.join(webHome, '.upex', 'config.json');
+  const webCfgText = fs.readFileSync(webCfg, 'utf-8');
+  fs.writeFileSync(webCfg, '{');
+  assert.equal((await fetch(link)).status, 500, 'bad config.json: page gets an error, server stays up');
+  fs.writeFileSync(webCfg, webCfgText);
   assert.equal((await fetch(base + '/api/state')).status, 403, 'api without token refused');
   const rebound = await new Promise((resolve) => http.get(base, { agent: false, headers: { host: 'evil.test' } }, (res) => { res.resume(); resolve(res.statusCode); }));
   assert.equal(rebound, 403, 'foreign Host header refused');
@@ -721,7 +745,7 @@ try {
   assert.equal(cfg2.paneSplit, 'horizontal', 'refused request saved nothing, later one did');
   assert.equal(cfg2.defaultOpener, 'vscode', 'default opener stored as its key');
   const st2 = await (await fetch(base + '/api/state', { headers: { 'x-upex-token': token } })).json();
-  assert.deepEqual(st2.settings, { startView: 'apps', sort: 'name', terminalLayout: 'panes', paneSplit: 'horizontal', terminalShell: 'powershell', fullScreen: 'on', defaultOpener: 'vscode' }, 'state reports settings');
+  assert.deepEqual(st2.settings, { startView: 'apps', sort: 'name', terminalLayout: 'panes', paneSplit: 'horizontal', terminalShell: 'powershell', fullScreen: 'on', theme: 'system', accent: 'default', density: 'comfortable', paths: 'dim', defaultOpener: 'vscode' }, 'state reports settings');
   assert.deepEqual(Object.keys(cfg2.workspaces), ['work'], 'settings save keeps workspaces');
   const note = path.join(webHome, 'note.txt');
   fs.writeFileSync(note, '');

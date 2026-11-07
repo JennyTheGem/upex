@@ -102,6 +102,11 @@ export const SETTINGS = {
   paneSplit: ['auto', 'vertical', 'horizontal'],
   terminalShell: ['cmd', 'powershell', 'pwsh', 'profile'],
   fullScreen: ['on', 'off'],
+  // Appearance: theme is upex ui only, the rest also the selector (paths: also upex ls / stale).
+  theme: ['system', 'dark', 'light'],
+  accent: ['default', 'green', 'blue', 'purple', 'orange'],
+  density: ['comfortable', 'compact'],
+  paths: ['dim', 'full', 'hidden'],
 };
 export const setting = (key, config = loadConfig()) => (SETTINGS[key].includes(config[key]) ? config[key] : SETTINGS[key][0]);
 // Is wt on PATH? null off Windows, where these settings don't apply.

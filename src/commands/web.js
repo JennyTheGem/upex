@@ -300,13 +300,15 @@ export function startServer({ port = DEFAULT_PORT, open = true, onReady, onError
       if (req.method === 'GET' && pathname === '/') {
         // The page holds the token, so it needs it too: other local users can reach 127.0.0.1.
         if (searchParams.get('t') !== token) return sendJson(res, 403, { error: 'Open the link printed by upex ui.' });
+        // Appearance baked in for the first paint (fixed setting names). Read before writeHead, so a bad config.json still gets the JSON error.
+        const s = readSettings();
         res.writeHead(200, {
           'content-type': 'text/html; charset=utf-8',
           'cache-control': 'no-store',
           'content-security-policy': `default-src 'none'; script-src 'nonce-${nonce}'; style-src 'unsafe-inline'; connect-src 'self'; img-src data:; frame-ancestors 'none'; base-uri 'none'; form-action 'none'`,
           'x-content-type-options': 'nosniff',
         });
-        return res.end(page);
+        return res.end(page.replace(/__(THEME|ACCENT|DENSITY|PATHS)__/g, (_, k) => s[k.toLowerCase()]));
       }
 
       const handler = routes[`${req.method} ${pathname}`];

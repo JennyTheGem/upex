@@ -497,9 +497,10 @@
       "title": "macOS WebStorm gets a stray -R for a file target",
       "body": "launcher.js: on darwin webstorm's cmd starts with open, so it hits the system file manager branch and a file yields open -na \"WebStorm\" --args -R \"<file>\". Found by the edges.mjs review.",
       "phase": "later",
-      "status": "planned",
+      "status": "dropped",
       "created": "2026-11-06",
-      "updated": "2026-11-06"
+      "updated": "2026-11-07",
+      "note": "Out of scope"
     },
     {
       "id": "exact-then-fuzzy-name-resolution-fuse-js",
@@ -689,6 +690,72 @@
       "created": "2026-11-07",
       "updated": "2026-11-07",
       "note": "^u starts upex ui inside the selector with a status line, ^u again or quitting stops it"
+    },
+    {
+      "id": "appearance-settings-theme-accent-density-paths",
+      "section": 3,
+      "title": "Appearance settings: theme, accent, density, paths",
+      "phase": "later",
+      "status": "done",
+      "size": "M",
+      "created": "2026-11-07",
+      "updated": "2026-11-07",
+      "note": "theme/accent/density/paths in config; selector Settings rows, upex ui Appearance section (light-dark CSS, baked into the page), paths also in ls/stale"
+    },
+    {
+      "id": "script-picker-in-selector",
+      "section": 3,
+      "title": "Script picker in selector",
+      "body": "From a highlighted shortcut, open a list of its package.json scripts and run one. upex run already exists, this makes it discoverable.",
+      "phase": "now",
+      "status": "planned",
+      "size": "M",
+      "created": "2026-11-07",
+      "updated": "2026-11-07"
+    },
+    {
+      "id": "reset-settings-to-defaults",
+      "section": 3,
+      "title": "Reset settings to defaults",
+      "body": "upex config reset [setting] plus a Reset button per section in upex ui Settings, so trying appearance options is risk free.",
+      "phase": "next",
+      "status": "planned",
+      "size": "S",
+      "created": "2026-11-07",
+      "updated": "2026-11-07"
+    },
+    {
+      "id": "custom-accent-color",
+      "section": 3,
+      "title": "Custom accent color",
+      "body": "accent also takes a hex like #ff66aa: exact color in upex ui, truecolor in the selector (nearest ansi256 fallback).",
+      "phase": "now",
+      "status": "planned",
+      "size": "S",
+      "created": "2026-11-07",
+      "updated": "2026-11-07"
+    },
+    {
+      "id": "more-sort-options",
+      "section": 3,
+      "title": "More sort options",
+      "body": "Add Last opened and Recently added next to Most used and A to Z, in the selector, upex ui and config.",
+      "phase": "next",
+      "status": "planned",
+      "size": "S",
+      "created": "2026-11-07",
+      "updated": "2026-11-07"
+    },
+    {
+      "id": "start-view-last-used",
+      "section": 3,
+      "title": "Start view: last used",
+      "body": "startView option that reopens the tab (and opener) you left the selector or upex ui on.",
+      "phase": "next",
+      "status": "planned",
+      "size": "S",
+      "created": "2026-11-07",
+      "updated": "2026-11-07"
     },
     {
       "id": "cd-support-via-wrapper-hidden-resolve-public-go",

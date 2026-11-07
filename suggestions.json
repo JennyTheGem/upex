@@ -26,14 +26,6 @@
       "created": "2026-11-06"
     },
     {
-      "id": "upex-undo",
-      "title": "upex undo",
-      "body": "Keep the last N store versions and roll back the last add/edit/rm/prune. Cheap safety net next to auto-backup.",
-      "section": 1,
-      "size": "S",
-      "created": "2026-11-06"
-    },
-    {
       "id": "selector-preview-line",
       "title": "Selector preview line",
       "body": "Show the highlighted shortcut's full path, git branch and last-used time under the list. Less guessing between similar names.",
@@ -66,14 +58,6 @@
       "created": "2026-11-06"
     },
     {
-      "id": "script-picker-in-selector",
-      "title": "Script picker in selector",
-      "body": "From a highlighted shortcut, open a list of its package.json scripts and run one. upex run already exists, this makes it discoverable.",
-      "section": 3,
-      "size": "M",
-      "created": "2026-11-06"
-    },
-    {
       "id": "import-from-other-tools",
       "title": "Import from other tools",
       "body": "Seed shortcuts from VS Code recent workspaces, zoxide/autojump history or Windows Terminal profiles.",
@@ -98,30 +82,6 @@
       "created": "2026-11-06"
     },
     {
-      "id": "temporary-shortcuts",
-      "title": "Temporary shortcuts",
-      "body": "add --ttl 7d for short-lived folders (downloads, client handoffs). Expired ones get flagged or archived automatically.",
-      "section": 1,
-      "size": "S",
-      "created": "2026-11-06"
-    },
-    {
-      "id": "global-hotkey-launcher",
-      "title": "Global hotkey launcher",
-      "body": "PowerToys Run / Raycast / Alfred plugin that queries upex __names and opens the pick. Opens projects without a terminal.",
-      "section": 4,
-      "size": "L",
-      "created": "2026-11-06"
-    },
-    {
-      "id": "faster-startup-for-go",
-      "title": "Faster startup for go",
-      "body": "Lazy-load commander/fuse.js on the hot path of go and __resolve so cd via the wrapper feels instant. Measure first.",
-      "section": 6,
-      "size": "S",
-      "created": "2026-11-06"
-    },
-    {
       "id": "json-output-flag",
       "title": "JSON output flag",
       "body": "list, go, tag and doctor print machine-readable JSON with --json. Makes upex scriptable from other tools and agents.",
@@ -136,6 +96,62 @@
       "section": 2,
       "size": "S",
       "created": "2026-11-06"
+    },
+    {
+      "id": "text-size-setting-for-upex-ui",
+      "title": "Text size setting for upex ui",
+      "body": "Small / Normal / Large (and a bit more letter spacing on Large), easier reading without browser zoom breaking the layout.",
+      "section": 7,
+      "size": "S",
+      "created": "2026-11-07"
+    },
+    {
+      "id": "high-contrast-theme",
+      "title": "High contrast theme",
+      "body": "A theme option with stronger text/line contrast and no muted grays, for bright rooms and tired eyes.",
+      "section": 7,
+      "size": "S",
+      "created": "2026-11-07"
+    },
+    {
+      "id": "ascii-only-glyphs",
+      "title": "ASCII-only glyphs",
+      "body": "Setting that swaps ‹ › ▏ ─ … ↑↓ for plain ASCII in the selector, for terminals or fonts that show boxes.",
+      "section": 5,
+      "size": "S",
+      "created": "2026-11-07"
+    },
+    {
+      "id": "key-hints-setting",
+      "title": "Key hints setting",
+      "body": "Selector footer: Full / Short (one row) / Off, frees rows for the list once the keys are learned.",
+      "section": 3,
+      "size": "S",
+      "created": "2026-11-07"
+    },
+    {
+      "id": "row-details-setting",
+      "title": "Row details setting",
+      "body": "Choose what shows on the right of a row: tags, badges (pinned, app, missing), both or none, in the selector, ls and upex ui.",
+      "section": 3,
+      "size": "S",
+      "created": "2026-11-07"
+    },
+    {
+      "id": "per-shortcut-color-label",
+      "title": "Per-shortcut color label",
+      "body": "Optional color (or emoji) per shortcut, shown as a dot before the name in the selector and upex ui, to spot work vs personal at a glance.",
+      "section": 1,
+      "size": "M",
+      "created": "2026-11-07"
+    },
+    {
+      "id": "confirm-deletes-setting",
+      "title": "Confirm deletes setting",
+      "body": "Turn off the y / n delete confirm in the selector and the inline confirm in upex ui, since ^z undo and backups already cover mistakes.",
+      "section": 3,
+      "size": "S",
+      "created": "2026-11-07"
     }
   ]
 }

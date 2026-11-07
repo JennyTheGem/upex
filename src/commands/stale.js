@@ -31,7 +31,7 @@ export function registerStale(program) {
       printRows(stale.map(({ name, entry, since }) => ({
         name,
         text: entry.url || tidyPath(entry.path || entry.app || ''),
-        style: entry.url ? 'plain' : 'path',
+        style: entry.url ? 'url' : 'path',
         right: entry.lastUsed ? `${ui.span(now - since)} ago` : chalk.dim(since ? `never, added ${ui.span(now - since)} ago` : 'never'),
       })));
       ui.separator();

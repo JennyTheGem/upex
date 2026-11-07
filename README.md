@@ -326,6 +326,13 @@ Settings, also on the Settings tab of `upex ui` and the selector (`Shift+Tab`), 
 - `"defaultOpener"`: opener for folder shortcuts without their own `opener`, e.g. `"vscode"`. Default `"explorer"`. Files still open in their default app.
 - `"fullScreen"` (selector only): `"on"` (default, the whole terminal with mouse support, restored on exit) or `"off"` (drawn inline, no mouse).
 
+Appearance:
+
+- `"theme"` (`upex ui` only): `"system"` (default, follows the OS), `"dark"` or `"light"`.
+- `"accent"`: `"default"` (green in `upex ui`, uncolored in the selector), `"green"`, `"blue"`, `"purple"` or `"orange"`. The `upex ui` accent and the selector's `›` pointer and picked option.
+- `"density"`: `"comfortable"` (default) or `"compact"` (no spacer lines in the selector, tighter rows in `upex ui`).
+- `"paths"`: `"dim"` (default, parent folders dimmed), `"full"` or `"hidden"` (no paths, commands or URLs) in the selector, `upex ls`, `upex stale` and `upex ui`. Piped output always shows paths.
+
 ### WebStorm on Windows (without `setx`)
 
 If `upex <name> webstorm` does not find WebStorm, add this file:

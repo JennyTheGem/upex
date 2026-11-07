@@ -17,7 +17,7 @@ Jenny's CLI for named shortcuts to folders, apps, command lines and URLs. Data: 
 - `upex stale` without `--yes` only lists when not in a TTY (safe to run); `--yes` archives every listed shortcut, so only use it when she asks.
 - `--ttl` shortcuts are archived automatically once expired (by the next command other than `go` and the hidden ones, notice on stderr; `go` already refuses them); `upex restore` brings one back permanently.
 - Never edit `~/.upex/*.json` by hand; use the commands below.
-- To change a setting (terminalLayout, sort, defaultOpener, ...) use `upex config set <setting> <value>`, never edit config.json by hand; `upex config get <setting>` prints just the value.
+- To change a setting (terminalLayout, sort, defaultOpener, appearance: theme, accent, density, paths, ...) use `upex config set <setting> <value>`, never edit config.json by hand; `upex config get <setting>` prints just the value.
 - "What do I use most?" questions: `upex stats` (read-only, safe to run). Every open is logged with its opener (`cd` for go, `app`, `url`, `web`, or the opener key); counting started when the log was added, so older use shows only in the all-time column.
 
 ## Commands

@@ -87,6 +87,22 @@ export const expandHome = p => p.replace(/^~(?=$|[/\\])/, () => HOME);
 const vis = ui.width;
 // Selection highlight: dark gray bar (bright black on 16-color terminals).
 const highlight = s => (chalk.level >= 2 ? chalk.bgAnsi256(238) : chalk.bgBlackBright)(s);
+// Accent setting: colors the › pointers and the picked option.
+const ACCENT = {
+  green: s => chalk.green(s),
+  blue: s => chalk.blueBright(s),
+  purple: s => chalk.magentaBright(s),
+  orange: s => (chalk.level >= 2 ? chalk.ansi256(208) : chalk.yellow)(s),
+};
+// Default: no color, the look before the setting existed.
+const accentOf = key => ACCENT[key] || (s => s);
+// Paths setting for a target row (style path or url): dim parents (default), full (plain) or hidden.
+export function pathLook(r, paths) {
+  const style = r.style || 'path';
+  if (style !== 'path' && style !== 'url') return r;
+  if (paths === 'hidden') return { ...r, text: '' };
+  return paths === 'full' ? { ...r, style: 'plain' } : r;
+}
 const keyHint = pairs => '  ' + pairs.filter(Boolean).map(([k, label]) => `${k} ${chalk.dim(label)}`).join('  ');
 // Fuse hit ranges are UTF-16 offsets, inclusive.
 export const underlineHits = (s, hits = []) => ui.graphemes(s)
@@ -145,14 +161,14 @@ export function clipName(name, width, hits = []) {
   return { text: `${name.slice(0, cut)}…`, hits: hits.map(([a, b]) => [a, Math.min(b, cut - 1)]).filter(([a, b]) => a <= b) };
 }
 
-// One list row: "› name  path ..... #tags  badge". `style` = path | dim | plain.
-function renderRow({ sel, name, nameWidth, hits, text = '', style = 'path', right = '', cw }) {
+// One list row: "› name  path ..... #tags  badge". `style` = path | url | dim | plain (url looks plain).
+function renderRow({ sel, name, nameWidth, hits, text = '', style = 'path', right = '', cw, pick = s => s }) {
   const n = clipName(name, nameWidth, hits);
   const nm = chalk.bold(underlineHits(n.text, n.hits)) + ' '.repeat(Math.max(0, nameWidth - vis(n.text)));
   const room = cw - 2 - nameWidth - 2 - (right ? vis(right) + 2 : 0);
   const t = clipStart(text, Math.max(0, room));
-  const body = sel || style === 'plain' ? t : style === 'dim' ? chalk.dim(t) : ui.dimParent(t);
-  const left = `${sel ? '›' : ' '} ${nm}  ${body}`;
+  const body = sel || style === 'plain' || style === 'url' ? t : style === 'dim' ? chalk.dim(t) : ui.dimParent(t);
+  const left = `${sel ? pick('›') : ' '} ${nm}  ${body}`;
   const line = sel || right ? left + ' '.repeat(Math.max(right ? 2 : 0, cw - vis(left) - vis(right))) + right : left;
   return `  ${sel ? highlight(line) : line}`;
 }
@@ -167,12 +183,14 @@ export function printRows(items) {
   const nameWidth = piped ? Math.max(12, ...items.map(c => vis(c.name))) : nameCol(items);
   const fit = r => nameWidth + 4 + vis(r.text || '') + (r.right ? vis(r.right) + 2 : 0);
   const cw = Math.max(ui.cols(), ...(piped ? items.map(fit) : []));
-  for (const r of items) console.log(renderRow({ nameWidth, cw, ...r }));
+  // Piped output keeps every path, agents read it.
+  const paths = piped ? 'dim' : setting('paths');
+  for (const r of items) console.log(renderRow({ nameWidth, cw, ...pathLook(r, paths) }));
 }
 
 // "‹ sel ›" bold, others dim; scrolls around the selection with ‹… / …› edges when the row is wider than `width`.
 // `spans` (optional) gets { from, to, index } per visible part; an edge marker points at the hidden neighbour.
-export function optionRow(all, sel, width, spans) {
+export function optionRow(all, sel, width, spans, pick = s => s) {
   // Clipped so even the selected one fits with its ‹ › and both edge markers.
   const labels = all.map(l => clipName(l, Math.max(1, width - 12)).text);
   const n = labels.length;
@@ -188,7 +206,7 @@ export function optionRow(all, sel, width, spans) {
   }
   const parts = [
     lo > 0 && [lo - 1, chalk.dim('‹…')],
-    ...labels.slice(lo, hi + 1).map((l, i) => [lo + i, lo + i === sel ? chalk.bold(`‹ ${l} ›`) : chalk.dim(l)]),
+    ...labels.slice(lo, hi + 1).map((l, i) => [lo + i, lo + i === sel ? chalk.bold(pick(`‹ ${l} ›`)) : chalk.dim(l)]),
     hi < n - 1 && [hi + 1, chalk.dim('…›')],
   ].filter(Boolean);
   let col = 0;
@@ -283,13 +301,17 @@ const VIEWS = { shortcuts: 'Shortcuts', apps: 'Apps', workspaces: 'Workspaces', 
 const CYCLE = ['shortcuts', 'apps', 'workspaces'];
 const nextView = (view) => CYCLE[(CYCLE.indexOf(view) + 1) % CYCLE.length];
 const SETTING_ROWS = [
-  { key: 'startView', label: 'Start view', names: { shortcuts: 'Shortcuts', apps: 'Apps', workspaces: 'Workspaces' } },
-  { key: 'sort', label: 'Sort', names: { recent: 'Most used', name: 'A to Z' } },
-  { key: 'terminalLayout', label: 'Terminals', names: { windows: 'Separate windows', tabs: 'Tabs', panes: 'Split panes' } },
-  { key: 'paneSplit', label: 'Pane split', names: { auto: 'Auto', vertical: 'Side by side', horizontal: 'Stacked' } },
-  { key: 'terminalShell', label: 'Shell', names: { cmd: 'cmd', powershell: 'PowerShell', pwsh: 'PowerShell 7', profile: 'WT profile' } },
-  { key: 'defaultOpener', label: 'Default opener' },
-  { key: 'fullScreen', label: 'Full screen', names: { on: 'On', off: 'Off' } },
+  { section: 'General', key: 'startView', label: 'Start view', names: { shortcuts: 'Shortcuts', apps: 'Apps', workspaces: 'Workspaces' } },
+  { section: 'General', key: 'sort', label: 'Sort', names: { recent: 'Most used', name: 'A to Z' } },
+  { section: 'Terminals', key: 'terminalLayout', label: 'Layout', names: { windows: 'Separate windows', tabs: 'Tabs', panes: 'Split panes' } },
+  { section: 'Terminals', key: 'paneSplit', label: 'Pane split', names: { auto: 'Auto', vertical: 'Side by side', horizontal: 'Stacked' } },
+  { section: 'Terminals', key: 'terminalShell', label: 'Shell', names: { cmd: 'cmd', powershell: 'PowerShell', pwsh: 'PowerShell 7', profile: 'WT profile' } },
+  { section: 'Opening', key: 'defaultOpener', label: 'Default opener' },
+  { section: 'Appearance', key: 'fullScreen', label: 'Full screen', names: { on: 'On', off: 'Off' } },
+  { section: 'Appearance', key: 'accent', label: 'Accent', names: { default: 'Default', green: 'Green', blue: 'Blue', purple: 'Purple', orange: 'Orange' } },
+  { section: 'Appearance', key: 'density', label: 'Density', names: { comfortable: 'Comfortable', compact: 'Compact' } },
+  { section: 'Appearance', key: 'paths', label: 'Paths', names: { dim: 'Dim folders', full: 'Full', hidden: 'Hidden' } },
+  { section: 'Appearance', key: 'theme', label: 'Web theme', names: { system: 'System', dark: 'Dark', light: 'Light' } },
 ];
 // Pane split only matters for split panes.
 const visibleRows = s => SETTING_ROWS.filter(r => r.key !== 'paneSplit' || s.terminalLayout === 'panes');
@@ -303,6 +325,10 @@ function settingNote(key, s, wt) {
   if (key === 'sort') return 'Shortcut order here and in upex ui.';
   if (key === 'defaultOpener') return 'Opens folder shortcuts that have no opener of their own.';
   if (key === 'fullScreen') return 'Whole terminal plus mouse, restored on exit. Off: inline, no mouse.';
+  if (key === 'accent') return 'Color of the › pointer and the picked option, here and in upex ui.';
+  if (key === 'density') return 'Compact drops the spacer lines, here and in upex ui.';
+  if (key === 'paths') return 'Paths in the lists here, in upex ls / stale and in upex ui.';
+  if (key === 'theme') return 'upex ui only. The terminal keeps its own colors.';
   if (wt === null) return 'Windows only. Other systems use their own terminal.';
   if (key === 'terminalLayout') {
     return !wt && s.terminalLayout !== 'windows'
@@ -360,8 +386,11 @@ export function renderInteractiveView({
   const cw = w - 2; // row width after the 2-space indent
   const rule = chalk.dim(`  ${'─'.repeat(cw)}`);
   const terminal = isTerminalApp(appChoices[selectedAppIndex]?.key);
+  const pick = accentOf(settings.accent);
+  // Compact: no spacer lines.
+  const gap = settings.density === 'compact' ? [] : [''];
 
-  const lines = [''];
+  const lines = [...gap];
   const hit = (line, from, to, t) => { targets?.push({ line, from, to, ...t }); return to; };
 
   // Header: name, tabs (active one highlighted), Settings on the right.
@@ -374,23 +403,23 @@ export function renderInteractiveView({
   const headRight = `${tab('settings')} ${chalk.dim('S-Tab')}`;
   const head = headLeft + ' '.repeat(Math.max(2, w - vis(headLeft) - vis(headRight))) + headRight;
   let col = vis(headLead);
-  for (const key of CYCLE) col = hit(1, col, col + vis(tab(key)), { tab: key }) + 1;
-  hit(1, vis(head) - vis(headRight), vis(head) - vis(headRight) + vis(tab('settings')), { tab: 'settings' });
-  lines.push(head);
-  lines.push('');
+  const headLine = lines.length;
+  for (const key of CYCLE) col = hit(headLine, col, col + vis(tab(key)), { tab: key }) + 1;
+  hit(headLine, vis(head) - vis(headRight), vis(head) - vis(headRight) + vis(tab('settings')), { tab: 'settings' });
+  lines.push(head, ...gap);
 
   // Prompt line: filter, or the live action (input / delete confirm).
   if (mode === 'input') {
     const label = PROMPT_LABEL[action](clipName(currentChoice?.name || '', 24).text);
     // Keep the end of a long value in view, where the cursor is.
-    lines.push(`  ${chalk.bold('›')} ${label} ${inputLine(inputBuffer, inputCursor, Math.max(1, cw - vis(label) - 3))}`);
+    lines.push(`  ${chalk.bold(pick('›'))} ${label} ${inputLine(inputBuffer, inputCursor, Math.max(1, cw - vis(label) - 3))}`);
   } else if (mode === 'confirm') {
     const what = `  ? delete ${isWs ? 'workspace ' : ''}`;
     // Clip the name, not the line, so "y / n" stays visible.
     const name = clipName(currentChoice?.name || '', Math.max(1, w - vis(what) - 10)).text;
     lines.push(chalk.yellow(`${what}"${name}"?`) + chalk.dim('  y / n'));
   } else if (!isSettings) {
-    lines.push(`  ${chalk.bold('›')} ${query ? `${query}${chalk.dim('▏')}` : chalk.dim('▏type to filter')}`);
+    lines.push(`  ${chalk.bold(pick('›'))} ${query ? `${query}${chalk.dim('▏')}` : chalk.dim('▏type to filter')}`);
   }
   // A plain string is a warning; { text, ok: true } a success. One line, or rows below shift off the hit map.
   if (flash) lines.push((flash.ok ? chalk.green : chalk.yellow)(`    ${String(flash.text ?? flash).replace(/\s*\n\s*/g, ' ')}`));
@@ -405,31 +434,43 @@ export function renderInteractiveView({
   const undoKey = undo && ['^z', 'undo'];
   const uiKey = ['^u', webUrl ? 'stop web ui' : 'web ui'];
   // Blank row first, so the link sits apart from the key hints.
-  const webRows = webUrl ? ['', webStatus(webUrl, w)] : [];
+  const webRows = webUrl ? [...gap, webStatus(webUrl, w)] : [];
   const nav = (open) => keyHint([['↵', open], ['↑↓', 'move'], tabKey, escKey]);
 
   if (isSettings) {
     const rows = visibleRows(settings);
+    // Body lines { text, hits, i }: a bold heading where the section changes, then its rows.
+    const body = [];
     rows.forEach((row, i) => {
+      if (row.section !== rows[i - 1]?.section) {
+        if (i) body.push(...gap.map(text => ({ text })));
+        body.push({ text: `  ${chalk.bold(row.section)}` });
+      }
       const opts = rowOptions(row, appChoices);
       const sel = i === settingIndex;
       const spans = [];
-      const picker = optionRow(opts.map(([, l]) => l), opts.findIndex(([k]) => k === settings[row.key]), w - 20, spans);
-      for (const s of spans) hit(lines.length, 20 + s.from, 20 + s.to, { setting: i, option: s.index });
-      hit(lines.length, 0, w, { setting: i });
-      lines.push(`  ${sel ? '›' : ' '} ${(sel ? chalk.bold : chalk.dim)(row.label.padEnd(16))}${picker}`);
+      const picker = optionRow(opts.map(([, l]) => l), opts.findIndex(([k]) => k === settings[row.key]), w - 20, spans, pick);
+      const hits = [...spans.map(s => [20 + s.from, 20 + s.to, { setting: i, option: s.index }]), [0, w, { setting: i }]];
+      body.push({ text: `  ${sel ? pick('›') : ' '} ${(sel ? chalk.bold : chalk.dim)(row.label.padEnd(16))}${picker}`, hits, i });
     });
-    lines.push('', chalk.dim(`    ${settingNote(rows[settingIndex].key, settings, wt)}`));
+    // Too tall for the terminal: scroll so the picked row stays in view (note + footer take the rest).
+    const room = height - lines.length - gap.length - 3 - webRows.length;
+    const { start, end } = getVisibleWindow(body, body.findIndex(b => b.i === settingIndex), Math.max(1, room));
+    for (const b of body.slice(start, end)) {
+      for (const [from, to, t] of b.hits || []) hit(lines.length, from, to, t);
+      lines.push(b.text);
+    }
+    lines.push(...gap, chalk.dim(`    ${settingNote(rows[settingIndex].key, settings, wt)}`));
     return footer([keyHint([['↑↓', 'setting'], ['←→', 'change (saved)'], tabKey, ['S-Tab', 'back'], ['esc', 'quit'], uiKey]), ...webRows]);
   }
 
   const openerSpans = [];
-  const openers = optionRow(appChoices.map(c => `${c.label}${isTerminalApp(c.key) && cmdCount > 1 ? ` ×${cmdCount}` : ''}`), selectedAppIndex, w - 13, openerSpans);
+  const openers = optionRow(appChoices.map(c => `${c.label}${isTerminalApp(c.key) && cmdCount > 1 ? ` ×${cmdCount}` : ''}`), selectedAppIndex, w - 13, openerSpans, pick);
   const foot = isWs ? [nav('open all'), keyHint([['^d', 'delete'], undoKey, uiKey])]
     : view === 'apps' ? [nav(currentChoice?.isUrl ? 'open in browser' : 'launch app'), keyHint([['^r', 'rename'], ['^d', 'delete'], undoKey, uiKey])]
       : [
         `  ${chalk.dim('open with')}  ${openers}`,
-        '',
+        ...gap,
         keyHint([['↵', 'open'], ['↑↓', 'move'], ['←→', 'opener'], terminal && ['S-↑↓', 'windows'], tabKey, escKey]),
         keyHint([['^a', 'add'], ['^e', 'edit path'], ['^r', 'rename'], ['^d', 'delete'], undoKey, uiKey]),
       ];
@@ -455,16 +496,17 @@ export function renderInteractiveView({
       const kind = c.isCmd ? 'cmd' : c.isApp ? 'app' : c.isUrl ? 'url' : '';
       const badge = isWs ? '' : !c.exists ? chalk.red('missing') : chalk.dim([c.pinned && 'pinned', kind].filter(Boolean).join(' '));
       hit(lines.length, 0, w, { row: i });
-      lines.push(renderRow({
+      lines.push(renderRow(pathLook({
         sel: i === index,
         name: c.name,
         nameWidth,
         hits: c.hits,
         text: isWs || c.isUrl ? c.path : tidyPath(c.path),
-        style: isWs ? 'dim' : c.isUrl ? 'plain' : 'path',
+        style: isWs ? 'dim' : c.isUrl ? 'url' : 'path',
         right: [tags, badge].filter(Boolean).join('  '),
         cw,
-      }));
+        pick,
+      }, settings.paths)));
     }
     const more = scrollHint(start, end, list.length);
     if (more) lines.push(more);
@@ -518,7 +560,7 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
     let flash = '';
     let undo = null; // last delete: { name, entry, ws? }
     let backView = view; // where Shift+Tab returns from Settings
-    let settings = {};
+    let settings = readSettings(); // appearance applies on every tab
     let settingIndex = 0;
     let wt = null;
     const appIndex = (key) => appChoices.findIndex(choice => choice.key === key);
