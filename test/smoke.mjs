@@ -21,7 +21,7 @@ import { truncate, span, width, dimParent, stripAnsi } from '../src/ui.js';
 import { applyShortcut, applyOpener, cleanEntries, startServer } from '../src/commands/web.js';
 import { COMMAND_NAMES } from '../src/fast.js';
 import { createProgram } from '../src/index.js';
-import { renderInteractiveView, inView, tidyPath, byOrder, optionRow, listRows, readMouse, hitTest, rowClick, undoError, clipName, prefill, missingFlash, staysOpen, expandHome, underlineHits } from '../src/interactive.js';
+import { renderInteractiveView, inView, tidyPath, byOrder, optionRow, listRows, readMouse, hitTest, rowClick, undoError, clipName, prefill, editLine, inputLine, missingFlash, staysOpen, expandHome, underlineHits } from '../src/interactive.js';
 import chalk from 'chalk';
 import { resolveTarget, resolveName, suggestNames } from '../src/fuzzy.js';
 
@@ -520,6 +520,22 @@ assert.ok(typing.includes('rename "s" to: s▏') && typing.includes('^u clear') 
 assert.equal(typing.split('\n').length, v({ height: 20 }).split('\n').length, 'typing keeps the frame height');
 const deep = v({ mode: 'input', action: 'edit', inputBuffer: `C:/${'d/'.repeat(60)}leaf`, width: 60 }).split('\n').find(l => l.includes('path for'));
 assert.ok(deep.includes('(empty = cwd): …') && deep.endsWith('leaf▏') && deep.length <= 60, 'long input keeps its end in view');
+// -- line editing: cursor moves, inserts mid-text, word delete stops at path separators --
+{
+  const ed = (st, ...keys) => keys.reduce((s, [str, key]) => editLine(s, str, key) ?? s, st);
+  const s0 = { text: 'C:/foo/bar', cur: 10 };
+  assert.deepEqual(ed(s0, [null, { name: 'left' }], [null, { name: 'left' }], ['x', { name: 'x' }]), { text: 'C:/foo/bxar', cur: 9 }, 'insert at cursor');
+  assert.deepEqual(ed(s0, [null, { name: 'w', ctrl: true }]), { text: 'C:/foo/', cur: 7 }, '^w deletes one segment');
+  assert.deepEqual(ed(s0, [null, { name: 'backspace', meta: true }], [null, { name: 'backspace', meta: true }]), { text: 'C:/', cur: 3 }, 'word delete repeats');
+  assert.equal(ed(s0, [null, { name: 'left', ctrl: true }]).cur, 7, '^← jumps a word');
+  assert.deepEqual(ed(s0, [null, { name: 'home' }], [null, { name: 'delete' }]), { text: ':/foo/bar', cur: 0 }, 'home + delete');
+  assert.deepEqual(ed({ text: 'a😀', cur: 3 }, [null, { name: 'backspace', sequence: '\x7f' }]), { text: 'a', cur: 1 }, 'backspace drops a whole emoji');
+  assert.deepEqual(ed(s0, [null, { name: 'backspace', sequence: '\b' }]), { text: 'C:/foo/', cur: 7 }, 'ctrl+backspace (0x08) deletes a word');
+  assert.equal(editLine(s0, null, { name: 'up' }), null, 'non-edit keys pass through');
+  assert.equal(stripAnsi(inputLine('abc', 1, 20)), 'abc', 'mid cursor adds no column');
+  assert.equal(stripAnsi(inputLine('abc', 3, 20)), 'abc▏');
+  assert.ok(width(inputLine('x'.repeat(100), 50, 30)) <= 30, 'long input fits');
+}
 assert.equal(missingFlash({ path: '/gone' }, () => false), 'path missing, ^e to fix', 'missing folder flagged');
 assert.equal(missingFlash({ path: os.tmpdir() }), null, 'existing folder opens (checked on disk)');
 assert.equal(staysOpen('cmd', 'tabs', () => true), true, 'terminal tabs keep the selector open');

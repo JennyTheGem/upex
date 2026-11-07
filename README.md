@@ -212,6 +212,7 @@ Run `upex` with no arguments to open the interactive selector. Pinned shortcuts 
 - `Ctrl+A` -- add a shortcut for the current directory
 - `Ctrl+E` -- edit the selected shortcut's path (starts filled in, `Ctrl+U` clears it)
 - `Ctrl+R` -- rename the selected shortcut (starts filled in)
+- While typing a path or name: `Left` / `Right` move the cursor, `Ctrl+Left` / `Ctrl+Right` jump a word, `Home` / `End`, `Ctrl+Backspace` (or `Ctrl+W`) deletes a word, `Del` deletes forward. `Ctrl+Backspace` also works in the filter
 - `Ctrl+D` -- delete the selected shortcut (confirm with `y`), `Ctrl+Z` undoes the last delete
 - `Ctrl+U` -- start `upex ui` and open it in the browser; the selector stays open and shows the link. `Ctrl+U` again stops it, so does closing the selector
 - `Esc` -- clear the filter, then quit

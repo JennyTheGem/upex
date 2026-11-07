@@ -95,6 +95,49 @@ export const underlineHits = (s, hits = []) => ui.graphemes(s)
 // Keeps the end of a too-long string, where the folder name is.
 const clipStart = (s, n) => (vis(s) <= n ? s : n <= 1 ? '…'.slice(0, n) : `…${ui.fit(s, n - 1, true)}`);
 
+// Word stops for ^←/^→ and word delete: path separators count, so ^⌫ drops one path segment.
+const SEP = /[\s/\\._-]/;
+const wordLeft = (t, i) => { while (i > 0 && SEP.test(t[i - 1])) i--; while (i > 0 && !SEP.test(t[i - 1])) i--; return i; };
+const wordRight = (t, i) => { while (i < t.length && SEP.test(t[i])) i++; while (i < t.length && !SEP.test(t[i])) i++; return i; };
+const stops = t => ui.graphemes(t).map(g => g.index).concat(t.length);
+const prevStop = (t, i) => stops(t).filter(s => s < i).pop() ?? 0;
+const nextStop = (t, i) => stops(t).find(s => s > i) ?? t.length;
+// Ctrl+Backspace has no ctrl flag: terminals send 0x7f for Backspace and 0x08 for Ctrl+Backspace.
+// Windows Node before 22.17 / 24.2 (no VT input) has the two swapped.
+const [nodeMajor, nodeMinor] = process.versions.node.split('.').map(Number);
+const swapped = os.platform() === 'win32' && (nodeMajor < 22 || nodeMajor === 23 || (nodeMajor === 22 && nodeMinor < 17) || (nodeMajor === 24 && nodeMinor < 2));
+const CTRL_BACKSPACE = swapped ? '\x7f' : '\b';
+const isWordBackspace = key => (key.ctrl && key.name === 'w') || (key.name === 'backspace' && (key.ctrl || key.meta || key.sequence === CTRL_BACKSPACE));
+
+// Line editing for a text field at cursor `cur`: returns the new { text, cur }, or null when `key` isn't an edit key.
+export function editLine({ text, cur }, str, key = {}) {
+  const cut = (from, to) => ({ text: text.slice(0, from) + text.slice(to), cur: from });
+  if (isWordBackspace(key)) return cut(wordLeft(text, cur), cur);
+  if (key.name === 'backspace') return cut(prevStop(text, cur), cur);
+  if (key.name === 'delete') return cut(cur, (key.ctrl || key.meta ? wordRight : nextStop)(text, cur));
+  if (key.ctrl && key.name === 'u') return { text: '', cur: 0 };
+  if (key.name === 'left') return { text, cur: (key.ctrl || key.meta ? wordLeft : prevStop)(text, cur) };
+  if (key.name === 'right') return { text, cur: (key.ctrl || key.meta ? wordRight : nextStop)(text, cur) };
+  if (key.name === 'home') return { text, cur: 0 };
+  if (key.name === 'end') return { text, cur: text.length };
+  if (!key.ctrl && !key.meta && str && str >= ' ' && str.charCodeAt(0) !== 127) {
+    return { text: text.slice(0, cur) + str + text.slice(cur), cur: cur + str.length };
+  }
+  return null;
+}
+
+// A text field in `n` columns with the cursor drawn in; the text left of the cursor stays in view.
+export function inputLine(text, cur, n) {
+  const before = text.slice(0, cur);
+  const after = text.slice(cur);
+  const a = clipStart(before, Math.max(1, n - 1 - Math.min(vis(after), Math.floor(n / 3))));
+  if (!after) return a + chalk.dim('▏');
+  const room = Math.max(1, n - vis(a));
+  const b = vis(after) <= room ? after : `${ui.fit(after, room - 1)}…`;
+  const g = ui.graphemes(b)[0].segment;
+  return a + chalk.inverse(g) + b.slice(g.length);
+}
+
 // Name clipped to `width` columns with …; highlight ranges past the cut are dropped.
 export function clipName(name, width, hits = []) {
   if (vis(name) <= width) return { text: name, hits };
@@ -295,6 +338,7 @@ export function renderInteractiveView({
   mode = 'browse',
   action = null,
   inputBuffer = '',
+  inputCursor = inputBuffer.length,
   flash = '',
   undo = false,
   settings = {},
@@ -339,7 +383,7 @@ export function renderInteractiveView({
   if (mode === 'input') {
     const label = PROMPT_LABEL[action](clipName(currentChoice?.name || '', 24).text);
     // Keep the end of a long value in view, where the cursor is.
-    lines.push(`  ${chalk.bold('›')} ${label} ${clipStart(inputBuffer, Math.max(1, cw - vis(label) - 4))}${chalk.dim('▏')}`);
+    lines.push(`  ${chalk.bold('›')} ${label} ${inputLine(inputBuffer, inputCursor, Math.max(1, cw - vis(label) - 3))}`);
   } else if (mode === 'confirm') {
     const what = `  ? delete ${isWs ? 'workspace ' : ''}`;
     // Clip the name, not the line, so "y / n" stays visible.
@@ -390,7 +434,7 @@ export function renderInteractiveView({
         keyHint([['^a', 'add'], ['^e', 'edit path'], ['^r', 'rename'], ['^d', 'delete'], undoKey, uiKey]),
       ];
   // Typing: input keys replace the last two hint rows, same height so the list stays put.
-  if (mode === 'input') foot.splice(-2, 2, keyHint([['↵', 'save'], ['^u', 'clear'], ['esc', 'cancel']]), '');
+  if (mode === 'input') foot.splice(-2, 2, keyHint([['↵', 'save'], ['←→', 'cursor'], ['^⌫', 'word'], ['^u', 'clear'], ['esc', 'cancel']]), '');
   foot.push(...webRows);
 
   if (list.length === 0) {
@@ -470,6 +514,7 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
     let mode = 'browse';   // 'browse' | 'input' | 'confirm'
     let action = null;     // 'edit' | 'rename' | 'add'
     let inputBuffer = '';
+    let inputCursor = 0;
     let flash = '';
     let undo = null; // last delete: { name, entry, ws? }
     let backView = view; // where Shift+Tab returns from Settings
@@ -526,6 +571,7 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
         mode,
         action,
         inputBuffer,
+        inputCursor,
         flash,
         undo: !!undo,
         settings,
@@ -587,7 +633,13 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
       reselect(...keep);
     };
 
-    const done = text => { flash = { text, ok: true }; };
+    // Success messages fade after 3s; warnings stay until the next key.
+    let flashTimer = null;
+    const done = (text) => {
+      const f = flash = { text, ok: true };
+      clearTimeout(flashTimer);
+      flashTimer = setTimeout(guard(() => { if (flash === f) { flash = ''; redraw(); } }), 3000);
+    };
 
     // Open in new terminal tab(s) without leaving the selector.
     const openInTab = (c, appKey) => {
@@ -632,6 +684,7 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
     };
 
     const cleanup = () => {
+      clearTimeout(flashTimer);
       stopWeb();
       stdin.removeListener('keypress', onKeypress);
       stdout.removeListener('resize', onResize);
@@ -659,6 +712,7 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
     const startAction = (name) => {
       action = name;
       inputBuffer = prefill(name, filteredChoices[selectedIndex]);
+      inputCursor = inputBuffer.length;
       mode = 'input';
     };
 
@@ -817,13 +871,9 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
           redraw();
           return;
         }
-        if (key.name === 'backspace' || (key.ctrl && key.name === 'u')) {
-          inputBuffer = key.name === 'u' ? '' : inputBuffer.slice(0, -1);
-          redraw();
-          return;
-        }
-        if (!key.ctrl && !key.meta && str && str >= ' ' && str.charCodeAt(0) !== 127) {
-          inputBuffer += str;
+        const edit = editLine({ text: inputBuffer, cur: inputCursor }, str, key);
+        if (edit) {
+          ({ text: inputBuffer, cur: inputCursor } = edit);
           redraw();
         }
         return;
@@ -907,7 +957,7 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
           return;
         }
         // Shortcut-only keys (^A/^E/^R, Left/Right) do nothing here.
-        if (key.ctrl || key.name === 'left' || key.name === 'right' || key.name === 'up' || key.name === 'down') return;
+        if ((key.ctrl && key.name !== 'w') || key.name === 'left' || key.name === 'right' || key.name === 'up' || key.name === 'down') return;
       }
 
       // Live actions (Ctrl+key so they never clash with search typing).
@@ -1010,17 +1060,10 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
         return;
       }
 
-      if (key.name === 'backspace') {
-        if (query.length > 0) {
-          query = query.slice(0, -1);
-          updateFilter();
-          redraw();
-        }
-        return;
-      }
-
-      if (!key.ctrl && !key.meta && str && str >= ' ' && str.charCodeAt(0) !== 127) {
-        query += str;
+      // The filter has no cursor (arrows move the list), so it edits at the end only.
+      const edit = !['left', 'right', 'home', 'end', 'delete'].includes(key.name) && editLine({ text: query, cur: query.length }, str, key);
+      if (edit && edit.text !== query) {
+        query = edit.text;
         updateFilter();
         redraw();
       }
