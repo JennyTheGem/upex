@@ -148,7 +148,7 @@ assert.equal(upexIn('config', 'set', 'terminalLayout', 'nope').status, 1, 'bad v
 assert.equal(upexIn('config', 'set', 'bogus', 'x').status, 1, 'unknown setting refused');
 assert.equal(upexIn('config', 'get', 'bogus').status, 1, 'unknown setting get refused');
 assert.equal(upexIn('config', 'get', 'terminalLayout').stdout.trim(), 'tabs', 'refused sets saved nothing');
-assert.match(upexIn('config').stdout, /terminalLayout\s+tabs\s+windows, tabs, panes/, 'config lists settings with options');
+assert.match(upexIn('config').stdout, /terminalLayout\s+tabs · windows, tabs, panes/, 'config lists settings with options');
 assert.equal(upexIn('config', 'set', 'accent', 'FF66AA').status, 0, 'hex accent without # accepted');
 assert.equal(upexIn('config', 'get', 'accent').stdout.trim(), '#ff66aa', 'hex accent stored as #rrggbb');
 assert.equal(upexIn('config', 'reset', 'accent').status, 0, 'config reset one');
@@ -156,6 +156,15 @@ assert.deepEqual([upexIn('config', 'get', 'accent').stdout.trim(), upexIn('confi
 assert.equal(upexIn('config', 'reset', 'bogus').status, 1, 'reset unknown setting refused');
 assert.equal(upexIn('config', 'reset').status, 0, 'config reset all');
 assert.deepEqual([upexIn('config', 'get', 'terminalLayout').stdout.trim(), upexIn('config', 'get', 'defaultOpener').stdout.trim()], ['windows', 'explorer'], 'reset all = defaults');
+{
+  const cfgFile = path.join(home, '.upex', 'config.json');
+  const cfgText = fs.readFileSync(cfgFile, 'utf-8');
+  assert.match(upexIn('help').stdout, /Settings\n\s+startView/, 'help shows the settings');
+  fs.writeFileSync(cfgFile, '{');
+  const bad = upexIn('help');
+  assert.ok(bad.status === 0 && bad.stdout.includes('Settings unavailable'), 'help survives a broken config.json');
+  fs.writeFileSync(cfgFile, cfgText);
+}
 assert.equal(upexIn('stats', '--days', '0').status, 1, 'bad --days rejected');
 
 // -- subpaths: go prints a folder inside the shortcut, missing subfolder fails --
@@ -457,15 +466,6 @@ assert.ok(withHints('off', { view: 'apps' }).at(-1).includes('↓'), 'off in app
 assert.ok(/^ {2}─+$/.test(withHints('off', { view: 'apps', webUrl: 'http://h/?t=x' }).at(-2)), 'off: web link right under the rule');
 assert.ok(withHints('off', { view: 'settings' }).some(l => l.includes('change (saved)')), 'settings keeps its keys');
 assert.equal(withHints('short', { mode: 'input', action: 'rename' }).at(-1).trim().startsWith('↵ save'), true, 'short: typing shows input keys');
-
-// -- mouse: SGR reports through real readline never leak into keys; the hit map follows scroll and option windows --
-const feed = async (...chunks) => {
-  const s = new PassThrough();
-  readline.emitKeypressEvents(s);
-  let state = null;
-  const keys = [];
-  const events = [];
-  s.on('keypress', (str, key) => {
 // row details + pinned section
 {
   const two = [{ name: 'pin', path: 'P', exists: true, pinned: true, tags: ['w'] }, { name: 'gone', path: 'Q', exists: false, tags: ['x'] }];
@@ -486,6 +486,15 @@ const feed = async (...chunks) => {
   assert.ok(look({}).includes('^p unpin') && look({}, { selectedIndex: 1 }).includes('^p pin'), 'pin key hint follows the row');
   assert.deepEqual([withPinned({ path: 'x', pinned: true }, false), withPinned({ path: 'x' }, true)], [{ path: 'x' }, { path: 'x', pinned: true }], 'withPinned');
 }
+
+// -- mouse: SGR reports through real readline never leak into keys; the hit map follows scroll and option windows --
+const feed = async (...chunks) => {
+  const s = new PassThrough();
+  readline.emitKeypressEvents(s);
+  let state = null;
+  const keys = [];
+  const events = [];
+  s.on('keypress', (str, key) => {
     const r = readMouse(state, key);
     state = r.state;
     if (r.event) events.push(r.event);
@@ -862,4 +871,20 @@ try {
   fs.rmSync(webHome, { recursive: true, force: true });
 }
 
-console.log('ok - frecency + prune + cmd wrapper + resolve guard + go args + safe store + edit url + merge + lastUsed + url + tags + truncate + web ui + subpaths + opener + doctor + apps tab + names + ws rename + cmd quoting + wt layout + settings + shells + default opener + auto-backup + aliases + archive + remote url + add cwd + pins + undo + fast cd + custom openers');
+// -- help: grouped, wraps to any width, lists every visible command --
+import { helpLines } from '../src/commands/help.js';
+import { wrap } from '../src/ui.js';
+assert.deepEqual(wrap([['aa bb cc'], ['\ndd']], 5).map(stripAnsi), ['aa bb', 'cc', 'dd'], 'wrap fills lines, \n breaks');
+assert.equal(width(wrap([['abcdefgh']], 4)[0]), 4, 'a too long word is clipped');
+assert.deepEqual(wrap([['a\u00a0b c']], 3), ['a b', 'c'], 'nbsp keeps words together, printed as a space');
+const lvl3 = chalk.level;
+chalk.level = 1;
+for (const total of [20, 40, 80, 120]) {
+  const text = helpLines(createProgram(), total);
+  assert.ok(text.every(l => width(l) <= total), `help fits ${total} columns`);
+  const plain = text.map(stripAnsi).join('\n');
+  for (const c of createProgram().commands.filter(c => !c._hidden)) assert.match(plain, new RegExp(`^ {4}${c.name()}\\b`, 'm'), `help lists ${c.name()} at ${total}`);
+}
+chalk.level = lvl3;
+
+console.log('ok - frecency + prune + cmd wrapper + resolve guard + go args + safe store + edit url + merge + lastUsed + url + tags + truncate + web ui + subpaths + opener + doctor + apps tab + names + ws rename + cmd quoting + wt layout + settings + shells + default opener + auto-backup + aliases + archive + remote url + add cwd + pins + undo + fast cd + custom openers + help');

@@ -17,6 +17,10 @@ const choices = (key) => (key === 'defaultOpener'
   ? getInteractiveAppChoices().map(c => c.key).filter(k => k !== 'copy')
   : key === 'accent' ? [...SETTINGS.accent, '#rrggbb'] : SETTINGS[key]);
 
+// defList rows: setting, current value bold, options dim.
+export const settingRows = (settings = readSettings()) => Object.entries(settings)
+  .map(([k, v]) => ({ term: k, text: [[v, chalk.bold], [`· ${choices(k).join(', ')}`, chalk.dim]] }));
+
 export function registerConfig(program) {
   program
     .command('config [action] [key] [value]')
@@ -28,12 +32,9 @@ export function registerConfig(program) {
 
       if (!action || action === 'list') {
         ui.heading('Settings');
-        ui.table([
-          [chalk.bold('SETTING'), chalk.bold('VALUE'), chalk.bold('OPTIONS')],
-          ...Object.entries(settings).map(([k, v]) => [k, chalk.bold(v), chalk.dim(choices(k).join(', '))]),
-        ], { header: true });
+        for (const line of ui.defList(settingRows(settings))) console.log(line);
         ui.blank();
-        ui.dim('Change one with: upex config set <setting> <value>, back to default: upex config reset [setting]');
+        for (const line of ui.wrap([['Change one with: upex config set <setting> <value>, back to default: upex config reset [setting]']], ui.cols())) ui.dim(line);
         ui.blank();
         return;
       }

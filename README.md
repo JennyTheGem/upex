@@ -59,7 +59,7 @@ npm link
 | `upex config` / `config get <setting>` / `config set <setting> <value>` / `config reset [setting]` | Show, print, change or reset a setting (see Settings below) |
 | `upex completion [shell]` | Print a shell completion script (bash/zsh/fish/powershell) |
 | `upex setup [cmd]` | Shell integration; `setup cmd` installs the cmd.exe wrapper |
-| `upex help` | Show all available commands |
+| `upex help` | Commands by section plus current settings, wrapped to the window width |
 
 ## Supported Apps
 

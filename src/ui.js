@@ -151,6 +151,52 @@ export function truncate(str, cols) {
   return out + '…\x1B[0m';
 }
 
+/**
+ * Word-wrap [text, style] segments into styled lines of at most n columns.
+ * "\n" forces a break; a word wider than n is clipped. \u00a0 keeps words together (printed as a space).
+ */
+export function wrap(segs, n) {
+  const lines = [];
+  let cur = [];
+  let used = 0;
+  const flush = () => { lines.push(cur.join(' ').replace(/\u00a0/g, ' ')); cur = []; used = 0; };
+  for (const [text, style = s => s] of segs) {
+    for (const part of text.split(/(\n)/)) {
+      if (part === '\n') { if (cur.length) flush(); continue; }
+      for (const word of part.split(/ +/).filter(Boolean)) {
+        const w = width(word);
+        if (cur.length && used + 1 + w > n) flush();
+        used += (cur.length ? 1 : 0) + w;
+        cur.push(style(w > n ? truncate(word, n) : word));
+      }
+    }
+  }
+  if (cur.length) flush();
+  return lines;
+}
+
+/**
+ * Term + wrapped text rows ({ term, text: segs }) that never pass `total` columns.
+ * A term wider than its column gets its own line; when the text column gets too narrow, text goes under the term.
+ */
+export function defList(rows, { indent = 2, total = cols() + 2, terms = rows } = {}) {
+  const inner = total - indent;
+  // `terms`: rows to size the term column by, so several lists can line up.
+  const termW = Math.min(Math.max(0, ...terms.map(r => width(r.term))), Math.floor(inner * 0.4));
+  const stacked = inner - termW - 2 < 24;
+  const pad = ' '.repeat(indent + (stacked ? 2 : termW + 2));
+  const out = [];
+  for (const r of rows) {
+    const term = truncate(r.term, inner);
+    const text = wrap(r.text, total - pad.length);
+    out.push(' '.repeat(indent) + term + (!stacked && width(term) <= termW && text.length
+      ? ' '.repeat(termW - width(term) + 2) + text.shift()
+      : ''));
+    out.push(...text.map(l => pad + l));
+  }
+  return out;
+}
+
 export function separator(length = cols()) {
   console.log(chalk.dim('  ' + '─'.repeat(length)));
 }
