@@ -23,7 +23,7 @@ import { COMMAND_NAMES } from '../src/fast.js';
 import { createProgram } from '../src/index.js';
 import { readScripts, detectPm } from '../src/commands/run.js';
 import { renderInteractiveView, nextView, backTo, accentOf, pathLook, inView, tidyPath, byOrder, optionRow, listRows, readMouse, hitTest, rowClick, undoError, clipName, prefill, editLine, inputLine, missingFlash, staysOpen, expandHome, underlineHits, movePinned, withRecent, maxListOf, isAlt, detailLines, rowOptions, pickedOf, goalSummary, goalsOf, goalText, oneLine, scriptLines, paneShown, paneToggles } from '../src/interactive.js';
-import { parseStatus, parseLog, gitOf, stopGit } from '../src/git.js';
+import { parseStatus, parseDiff, parseLog, gitOf, stopGit } from '../src/git.js';
 import chalk from 'chalk';
 import { resolveTarget, resolveName, suggestNames } from '../src/fuzzy.js';
 
@@ -845,6 +845,7 @@ assert.equal(oneLine('a\x1b[2J\u009b1m\n b'), 'a [2J 1m b', 'goals.json text: no
 fs.rmSync(gdir, { recursive: true, force: true });
 // Git status: parsed from porcelain v2, shown when the setting is on, web line clickable.
 assert.deepEqual(parseStatus('# branch.oid abc\n# branch.head main\n# branch.ab +2 -1\n1 .M N... 100644 100644 100644 a b src/x.js\n? new.txt\n'), { branch: 'main', ahead: 2, behind: 1, changed: 2 }, 'parseStatus');
+assert.deepEqual([parseDiff(' 3 files changed, 10 insertions(+), 2 deletions(-)\n'), parseDiff(' 1 file changed, 1 deletion(-)'), parseDiff(null)], [{ added: 10, deleted: 2 }, { added: 0, deleted: 1 }, { added: 0, deleted: 0 }], 'parseDiff');
 assert.deepEqual([parseLog('1700000000 fix it'), parseLog(''), parseLog(null)], [{ time: 1700000000000, subject: 'fix it' }, null, null], 'parseLog');
 {
   const g = { branch: 'dev', ahead: 1, behind: 0, changed: 3, last: { time: Date.now() - 7200000, subject: 'ship\nit' }, web: 'https://github.com/o/r' };

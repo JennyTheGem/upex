@@ -477,8 +477,9 @@ export const oneLine = v => String(v ?? '').replace(/[\s\x00-\x1f\x7f-\x9f]+/g, 
 export function gitLines(g, pw, now = Date.now()) {
   const row = (k, v) => `${chalk.dim(k.padEnd(10))}${v}`;
   const ab = [g.ahead && `↑${g.ahead}`, g.behind && `↓${g.behind}`].filter(Boolean).join(' ');
+  const lines = [g.added && chalk.green(`+${g.added}`), g.deleted && chalk.red(`-${g.deleted}`)].filter(Boolean).join(' ');
   const out = ['', row('git', `${oneLine(g.branch) || '?'}${ab ? `  ${ab}` : ''}`),
-    row('changes', g.changed ? `${g.changed} file${g.changed > 1 ? 's' : ''}` : chalk.dim('clean'))];
+    row('changes', g.changed ? `${g.changed} file${g.changed > 1 ? 's' : ''}${lines ? `  ${lines}` : ''}` : chalk.dim('clean'))];
   // Age first, so a long subject clips and the age stays.
   if (g.last) out.push(row('commit', `${chalk.dim(`${ui.span(now - g.last.time)} ago`)}  ${oneLine(g.last.subject)}`));
   if (g.web) out.push({ text: ui.truncate(row('web', `${g.web.replace(/^https:\/\//, '')}  ${chalk.dim('^g')}`), pw), web: true });

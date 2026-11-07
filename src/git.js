@@ -74,6 +74,12 @@ export function parseStatus(text) {
   return out;
 }
 
+// `git diff HEAD --shortstat`: lines added and deleted (tracked files only).
+export function parseDiff(text) {
+  const n = re => Number(String(text ?? '').match(re)?.[1] ?? 0);
+  return { added: n(/(\d+) insertion/), deleted: n(/(\d+) deletion/) };
+}
+
 // `git log -1 --format="%ct %s"`: commit time (ms) and subject. Empty repo: null.
 export function parseLog(text) {
   const m = String(text ?? '').match(/^(\d+) ?(.*)/);
@@ -87,11 +93,11 @@ function start(dir, onDone) {
   const git = (...args) => new Promise(res => execFile('git', ['--no-optional-locks', '-C', dir, ...args],
     // No maxBuffer cap: thousands of changes would otherwise fail like "not a repo".
     { timeout: 4000, windowsHide: true, maxBuffer: Infinity, signal: ac.signal }, (err, out) => res(err ? null : out)));
-  Promise.all([git('status', '--porcelain=v2', '--branch'), git('log', '-1', '--format=%ct %s'), git('remote', 'get-url', 'origin')])
-    .then(([status, log, remote]) => {
+  Promise.all([git('status', '--porcelain=v2', '--branch'), git('log', '-1', '--format=%ct %s'), git('remote', 'get-url', 'origin'), git('diff', 'HEAD', '--shortstat')])
+    .then(([status, log, remote, diff]) => {
       if (ac.signal.aborted) return;
       job = null;
-      cache.set(dir, { at: Date.now(), info: status == null ? null : { ...parseStatus(status), last: parseLog(log), web: remote ? remoteWebUrl(remote) : null } });
+      cache.set(dir, { at: Date.now(), info: status == null ? null : { ...parseStatus(status), ...parseDiff(diff), last: parseLog(log), web: remote ? remoteWebUrl(remote) : null } });
       onDone?.();
     });
 }
