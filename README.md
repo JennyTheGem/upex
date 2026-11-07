@@ -212,6 +212,7 @@ Run `upex` with no arguments to open the interactive selector. Pinned shortcuts 
 - `Ctrl+A` -- add a shortcut for the current directory
 - `Ctrl+E` -- edit the selected shortcut's path (starts filled in, `Ctrl+U` clears it)
 - `Ctrl+R` -- rename the selected shortcut (starts filled in)
+- `Ctrl+P` -- pin or unpin the selected shortcut
 - `Ctrl+S` -- list the selected folder's package.json scripts; Enter runs one in a terminal (like `upex run`), Esc goes back
 - While typing a path or name: `Left` / `Right` move the cursor, `Ctrl+Left` / `Ctrl+Right` jump a word, `Home` / `End`, `Ctrl+Backspace` (or `Ctrl+W`) deletes a word, `Del` deletes forward. `Ctrl+Backspace` also works in the filter
 - `Ctrl+D` -- delete the selected shortcut (confirm with `y`), `Ctrl+Z` undoes the last delete
@@ -334,6 +335,8 @@ Appearance:
 - `"density"`: `"comfortable"` (default) or `"compact"` (no spacer lines in the selector, tighter rows in `upex ui`).
 - `"keyHints"` (selector only): the key rows under the list. `"full"` (default, two rows), `"short"` (one row of the main keys, without ↑↓, Tab and Esc) or `"off"` (none, the list gets the rows). The Settings tab always shows its keys.
 - `"paths"`: `"dim"` (default, parent folders dimmed), `"full"` or `"hidden"` (no paths, commands or URLs) in the selector, `upex ls`, `upex stale` and `upex ui`. Piped output always shows paths.
+- `"rowDetails"`: what shows on the right of a row in the selector, `upex ls` and `upex ui`. `"both"` (default), `"tags"` (#tags), `"badges"` (★ pinned, app, cmd, url, missing) or `"none"`. Piped `upex ls` always shows both.
+- `"pinned"`: `"top"` (default, pinned shortcuts first) or `"section"` (first, under a Pinned heading, the rest under All) in the selector and `upex ui`. A search in the selector sorts by match, so it drops the headings.
 
 ### WebStorm on Windows (without `setx`)
 

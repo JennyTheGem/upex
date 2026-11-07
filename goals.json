@@ -503,6 +503,22 @@
       "note": "Out of scope"
     },
     {
+      "id": "commandexists-without-spawning-where-which",
+      "section": 2,
+      "title": "commandExists without spawning where/which",
+      "body": "launchApp spawns 'where X' per launch (Windows ~30 to 50ms, not measured). Scan PATH (+PATHEXT on win32) in-process with fs instead.",
+      "phase": "maybe",
+      "status": "planned",
+      "size": "S",
+      "pointers": {
+        "files": [
+          "src/launcher.js"
+        ]
+      },
+      "created": "2026-11-07",
+      "updated": "2026-11-07"
+    },
+    {
       "id": "exact-then-fuzzy-name-resolution-fuse-js",
       "section": 3,
       "title": "Exact-then-fuzzy name resolution (fuse.js)",
@@ -763,6 +779,17 @@
       "note": "startView last: selector saves lastView/lastOpener on exit, upex ui saves the tab on switch"
     },
     {
+      "id": "upex-help-sections-wraps-to-narrow-windows",
+      "section": 3,
+      "title": "upex help: sections, wraps to narrow windows, shows settings",
+      "phase": "later",
+      "status": "done",
+      "size": "S",
+      "created": "2026-11-07",
+      "updated": "2026-11-07",
+      "note": "Sections, defList/wrap layout, Settings section; config list uses the same layout"
+    },
+    {
       "id": "key-hints-setting",
       "section": 3,
       "title": "Key hints setting",
@@ -773,6 +800,153 @@
       "created": "2026-11-07",
       "updated": "2026-11-07",
       "note": "keyHints setting: Full / Short (one row, fitted to width) / Off (no rows, no footer rule); Settings tab keeps its keys"
+    },
+    {
+      "id": "row-details-setting",
+      "section": 3,
+      "title": "Row details setting",
+      "body": "Choose what shows on the right of a row: tags, badges (pinned, app, missing), both or none, in the selector, ls and upex ui.",
+      "phase": "later",
+      "status": "done",
+      "size": "S",
+      "created": "2026-11-07",
+      "updated": "2026-11-07",
+      "note": "rowDetails both/tags/badges/none in selector, ls (TTY only) and upex ui"
+    },
+    {
+      "id": "hide-unused-views",
+      "section": 3,
+      "title": "Hide unused views",
+      "body": "Pick which views Tab cycles through, e.g. hide Workspaces if never used.",
+      "phase": "next",
+      "status": "planned",
+      "size": "S",
+      "created": "2026-11-07",
+      "updated": "2026-11-07"
+    },
+    {
+      "id": "max-rows-setting",
+      "section": 3,
+      "title": "Max rows setting",
+      "body": "Cap the list height so the selector does not take over tall terminals.",
+      "phase": "next",
+      "status": "planned",
+      "size": "S",
+      "created": "2026-11-07",
+      "updated": "2026-11-07"
+    },
+    {
+      "id": "enter-behavior-setting",
+      "section": 3,
+      "title": "Enter behavior setting",
+      "body": "Open and quit, or open and stay so you can open several in a row.",
+      "phase": "next",
+      "status": "planned",
+      "size": "S",
+      "created": "2026-11-07",
+      "updated": "2026-11-07"
+    },
+    {
+      "id": "pinned-placement-setting",
+      "section": 3,
+      "title": "Pinned placement setting",
+      "body": "Pinned on top always, or as their own section in the selector.",
+      "phase": "next",
+      "status": "done",
+      "size": "S",
+      "created": "2026-11-07",
+      "updated": "2026-11-07",
+      "note": "pinned top/section: Pinned / All headings in selector (not while searching) and upex ui"
+    },
+    {
+      "id": "multi-select-in-selector",
+      "section": 3,
+      "title": "Multi-select in selector",
+      "body": "Space marks rows, Enter opens all marked, ^d deletes all marked (one undo).",
+      "phase": "next",
+      "status": "planned",
+      "size": "M",
+      "created": "2026-11-07",
+      "updated": "2026-11-07"
+    },
+    {
+      "id": "keybind-help-overlay",
+      "section": 3,
+      "title": "Keybind help overlay",
+      "body": "? shows every keybind in one screen, so the footer can stay short.",
+      "phase": "maybe",
+      "status": "planned",
+      "size": "S",
+      "created": "2026-11-07",
+      "updated": "2026-11-07"
+    },
+    {
+      "id": "reorder-pinned-shortcuts",
+      "section": 3,
+      "title": "Reorder pinned shortcuts",
+      "body": "Alt+Up/Down moves a pinned item; order saved on the entry.",
+      "phase": "next",
+      "status": "planned",
+      "size": "S",
+      "created": "2026-11-07",
+      "updated": "2026-11-07"
+    },
+    {
+      "id": "recent-strip-in-selector",
+      "section": 3,
+      "title": "Recent strip in selector",
+      "body": "Last 3 opened shown above the list, even when sort is A to Z. as sub setting off by default ",
+      "phase": "next",
+      "status": "planned",
+      "size": "S",
+      "created": "2026-11-07",
+      "updated": "2026-11-07"
+    },
+    {
+      "id": "copy-path-from-selector",
+      "section": 3,
+      "title": "Copy path from selector",
+      "body": "^y copies the highlighted shortcut's path to the clipboard and flashes it.",
+      "phase": "next",
+      "status": "planned",
+      "size": "S",
+      "created": "2026-11-07",
+      "updated": "2026-11-07"
+    },
+    {
+      "id": "wrap-around-navigation",
+      "section": 3,
+      "title": "Wrap-around navigation",
+      "body": "Up on the first row jumps to the last row and back. As a setting or default.",
+      "phase": "later",
+      "status": "planned",
+      "size": "S",
+      "created": "2026-11-07",
+      "updated": "2026-11-07"
+    },
+    {
+      "id": "confirm-deletes-setting",
+      "section": 3,
+      "title": "Confirm deletes setting",
+      "body": "Turn off the y / n delete confirm in the selector and the inline confirm in upex ui, since ^z undo and backups already cover mistakes.",
+      "phase": "later",
+      "status": "dropped",
+      "size": "S",
+      "created": "2026-11-07",
+      "updated": "2026-11-07",
+      "note": "Not worth it"
+    },
+    {
+      "id": "pin-from-the-selector",
+      "section": 3,
+      "title": "Pin from the selector",
+      "body": "^p in the selector pins or unpins the selected shortcut.",
+      "phase": "later",
+      "status": "done",
+      "size": "S",
+      "created": "2026-11-07",
+      "updated": "2026-11-07",
+      "note": "^p toggles pin in the selector (hint shows pin/unpin); pinned badge is now ★"
     },
     {
       "id": "cd-support-via-wrapper-hidden-resolve-public-go",
@@ -857,6 +1031,22 @@
       "updated": "2026-11-07"
     },
     {
+      "id": "resolve-exits-1-at-once-for-command-names-and",
+      "section": 4,
+      "title": "__resolve exits 1 at once for command names and flags",
+      "body": "Wrapper sends 'upex ls' to __resolve first; fastPath falls through to the full CLI (~190ms) just to exit 1, then runs upex ls again. Every wrapped command except go runs node twice (~380ms). Exit 1 in fastPath instead, saves ~190ms.",
+      "phase": "maybe",
+      "status": "planned",
+      "size": "S",
+      "pointers": {
+        "files": [
+          "src/fast.js"
+        ]
+      },
+      "created": "2026-11-07",
+      "updated": "2026-11-07"
+    },
+    {
       "id": "windows-macos-linux-launch-paths",
       "section": 5,
       "title": "Windows / macOS / Linux launch paths",
@@ -924,6 +1114,22 @@
       "created": "2026-11-07",
       "updated": "2026-11-07",
       "note": "src/fast.js answers go/__resolve before commander and the commands load; fuse.js lazy. __resolve 200ms -> ~95ms (bare node 80ms)."
+    },
+    {
+      "id": "lazy-load-command-modules",
+      "section": 6,
+      "title": "Lazy-load command modules",
+      "body": "index.js imports every command plus interactive.js (~32ms), chalk, commander on every run. Import only the module of the command being run. Est. 30 to 50ms off non-go commands; help/completion still need command names.",
+      "phase": "maybe",
+      "status": "planned",
+      "size": "M",
+      "pointers": {
+        "files": [
+          "src/index.js"
+        ]
+      },
+      "created": "2026-11-07",
+      "updated": "2026-11-07"
     },
     {
       "id": "upex-ui-local-web-page-to-add-edit-rename-tag",
@@ -1008,6 +1214,30 @@
       "note": "Settings tab: Custom openers section, add / change command / delete (no rename). API POST/PUT/DELETE /api/opener, applyOpener."
     },
     {
+      "id": "text-size-setting-for-upex-ui",
+      "section": 7,
+      "title": "Text size setting for upex ui",
+      "body": "Small / Normal / Large (and a bit more letter spacing on Large), easier reading without browser zoom breaking the layout.",
+      "phase": "later",
+      "status": "dropped",
+      "size": "S",
+      "created": "2026-11-07",
+      "updated": "2026-11-07",
+      "note": "Out of scope"
+    },
+    {
+      "id": "high-contrast-theme",
+      "section": 7,
+      "title": "High contrast theme",
+      "body": "A theme option with stronger text/line contrast and no muted grays, for bright rooms and tired eyes.",
+      "phase": "later",
+      "status": "dropped",
+      "size": "S",
+      "created": "2026-11-07",
+      "updated": "2026-11-07",
+      "note": "Out of scope"
+    },
+    {
       "id": "publish-to-npm",
       "section": 8,
       "title": "Publish to npm so a new PC only needs npm i -g upex",
@@ -1018,6 +1248,17 @@
       "created": "2026-11-02",
       "updated": "2026-11-06",
       "note": "Published as @uplift-beyond/upex (commit 0e61f84)."
+    },
+    {
+      "id": "bundle-with-esbuild-on-publish",
+      "section": 8,
+      "title": "Bundle with esbuild on publish",
+      "body": "Measured: ls 190ms to 137ms bundled (module lookup ~45ms is the main cost). Needs createRequire banner for commander, package.json/web asset paths, prepublishOnly step and esbuild devDep. Repo has no build step today.",
+      "phase": "maybe",
+      "status": "planned",
+      "size": "M",
+      "created": "2026-11-07",
+      "updated": "2026-11-07"
     }
   ]
 }

@@ -152,7 +152,8 @@ h1 { font-size: 20px; letter-spacing: -.015em; margin: 8px 0 4px; }
   display: grid; grid-template-columns: 18px minmax(120px, 1.1fr) minmax(0, 2.2fr) 64px auto;
   align-items: center; gap: 14px; padding: var(--pad) 12px; border-top: 1px solid var(--line);
 }
-.item:first-child { border-top: 0; }
+.item:first-child, .group:first-child { border-top: 0; }
+.group { padding: 6px 12px; font-size: 12px; color: var(--muted); border-top: 1px solid var(--line); background: var(--raise); }
 .item:hover { background: color-mix(in srgb, var(--raise) 55%, transparent); }
 .item > .kind { display: flex; color: var(--muted); }
 .item.broken > .kind { color: var(--warn); }
@@ -293,7 +294,11 @@ const SETTING_OPTS = {
   accent: { default: 'Default', green: 'Green', blue: 'Blue', purple: 'Purple', orange: 'Orange' },
   density: { comfortable: 'Comfortable', compact: 'Compact' },
   paths: { dim: 'Dim folders', full: 'Full', hidden: 'Hidden' },
+  rowDetails: { both: 'Both', tags: 'Tags', badges: 'Badges', none: 'None' },
+  pinned: { top: 'On top', section: 'Own section' },
 };
+// Row details setting: does `what` ('tags' | 'badges') show?
+const shows = what => [undefined, 'both', what].includes(S.settings.rowDetails);
 // Appearance settings, mirrored onto <html data-*> for the CSS.
 const LOOK = ['theme', 'accent', 'density', 'paths'];
 // The archived toggle swaps the tab's list for its archived shortcuts.
@@ -580,10 +585,10 @@ function row(l) {
     h('span', { class: 'kind', title: l.broken ? 'Path missing' : KINDS[l.kind] }, icon(l.broken ? 'alert' : l.kind)),
     h('div', { class: 'nm' },
       h('div', { class: 'name', title: l.name }, l.name),
-      (l.tags.length > 0 || l.aliases.length > 0) && h('div', { class: 'tags' },
+      ((shows('tags') && l.tags.length > 0) || l.aliases.length > 0) && h('div', { class: 'tags' },
         l.aliases.length > 0 && h('span', { class: 'tag', title: 'Aliases' }, 'aka ' + l.aliases.join(', ')),
-        l.tags.map(t => h('span', { class: 'tag' }, '#' + t)))),
-    h('div', { class: 'target mono', title: l.target }, l.broken && h('span', { class: 'miss' }, 'missing'), ...splitLeaf(l)),
+        shows('tags') && l.tags.map(t => h('span', { class: 'tag' }, '#' + t)))),
+    h('div', { class: 'target mono', title: l.target }, l.broken && shows('badges') && h('span', { class: 'miss' }, 'missing'), ...splitLeaf(l)),
     h('div', { class: 'when', title: 'Last opened' }, ago(l.lastUsed)),
     actions);
 }
@@ -638,7 +643,12 @@ function linksView() {
       `No shortcut has "${S.q || '#' + S.tag}" in its name, alias, target or tags.`,
       h('div', null, btn('Clear filters', '', () => { S.q = ''; S.tag = null; document.getElementById('q').value = ''; render(); })))));
   } else {
-    out.push(h('div', { class: 'list' }, list.map(row)));
+    // Pinned setting 'section': Pinned / All headings.
+    const heads = S.settings.pinned === 'section' && list[0].pinned;
+    out.push(h('div', { class: 'list' }, list.map((l, i) => [
+      heads && (i === 0 || l.pinned !== list[i - 1].pinned) && h('div', { class: 'group', role: 'heading', 'aria-level': '2' }, l.pinned ? 'Pinned' : 'All'),
+      row(l),
+    ])));
   }
   return out;
 }
@@ -837,12 +847,14 @@ function settingsView() {
           S.apps.filter(a => a.key !== 'copy').map(a => h('option', { value: a.key, selected: s.defaultOpener === a.key }, a.label)),
           !S.apps.some(a => a.key === s.defaultOpener) && h('option', { value: s.defaultOpener, selected: true }, s.defaultOpener)))),
     h('section', { class: 'form', 'aria-labelledby': 'set-look' },
-      head('set-look', 'Appearance', ['theme', 'accent', 'density', 'paths']),
-      h('p', { class: 'lede', style: 'margin:0' }, 'Accent, density and paths also apply to the upex selector. Theme is this page only, the terminal keeps its own colors.'),
+      head('set-look', 'Appearance', ['theme', 'accent', 'density', 'paths', 'rowDetails', 'pinned']),
+      h('p', { class: 'lede', style: 'margin:0' }, 'All but theme also apply to the upex selector. Theme is this page only, the terminal keeps its own colors.'),
       seg('theme', 'Theme', l => `Theme: ${l}`),
       seg('accent', 'Accent', l => `Accent: ${l}`, k => h('span', { class: 'swatch ac-' + k, 'aria-hidden': 'true' }), customAccent),
       seg('density', 'Density', l => `Density: ${l}`),
-      seg('paths', 'Paths', l => `Paths: ${l}`)),
+      seg('paths', 'Paths', l => `Paths: ${l}`),
+      seg('rowDetails', 'Row details', l => `Row details: ${l}`),
+      seg('pinned', 'Pinned', l => `Pinned: ${l}`)),
     h('section', { class: 'form', 'aria-labelledby': 'set-apps' },
       h('h2', { id: 'set-apps', style: 'font-size:15px;margin:0' }, 'Custom openers'),
       h('p', { class: 'lede', style: 'margin:0' }, 'More apps to open folders in, like Cursor or Sublime. upex runs the command with the folder path after it. Same list as upex app in the terminal.'),

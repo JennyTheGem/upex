@@ -93,7 +93,7 @@ const INTERACTIVE_APP_KEYS = [
 // Openers that open terminal windows (and so take a window count).
 export const isTerminalApp = key => key === 'cmd' || key === 'claude';
 
-// Settings in config.json; the first value is the default. Start view and sort are shared by the selector and upex ui; fullScreen and keyHints are selector only.
+// Settings in config.json; the first value is the default. Start view, sort and pinned are shared by the selector and upex ui; fullScreen and keyHints are selector only.
 // Layout: separate windows, or tabs/panes in one Windows Terminal window. Shell 'profile' = wt default profile.
 export const SETTINGS = {
   // last = the tab (and opener) the selector or upex ui was left on.
@@ -111,6 +111,10 @@ export const SETTINGS = {
   paths: ['dim', 'full', 'hidden'],
   // Selector footer: both key rows, one row, or none. Settings always keeps its keys.
   keyHints: ['full', 'short', 'off'],
+  // Right side of a row (selector, ls, upex ui): #tags, badges (pinned, app, missing), both or none.
+  rowDetails: ['both', 'tags', 'badges', 'none'],
+  // Pinned shortcuts first, or first under their own Pinned heading (selector, upex ui).
+  pinned: ['top', 'section'],
 };
 // Accent also takes a hex color, stored as #rrggbb.
 export const isHex = v => typeof v === 'string' && /^#[0-9a-f]{6}$/i.test(v);

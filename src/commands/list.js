@@ -7,7 +7,8 @@ import fs from 'node:fs';
 import chalk from 'chalk';
 import { loadLinks, activeLinks, aliasesOf } from '../store.js';
 import { gitStatus } from '../git.js';
-import { printRows, tidyPath } from '../interactive.js';
+import { printRows, tidyPath, showsDetail, PIN, badgeText } from '../interactive.js';
+import { setting } from '../launcher.js';
 import * as ui from '../ui.js';
 
 // Compact git cell: "main" (clean, dim) or "main*" (dirty, yellow); none outside a repo.
@@ -45,17 +46,20 @@ export function registerList(program) {
       ui.heading(`${options.archived ? 'Archived shortcuts' : 'Shortcuts'}${tag ? ` tagged #${tag}` : ''}`);
 
       // Same rows as the selector: name, path (parent dim), then aliases, git, #tags and a badge on the right.
+      // Piped output keeps every detail, agents read it.
+      const details = process.stdout.isTTY ? setting('rowDetails') : 'both';
+      const badgesOn = showsDetail(details, 'badges');
       printRows(entries.map(([name, entry]) => {
         const exists = entry.path ? fs.existsSync(entry.path) : !!(entry.app || entry.url);
         const left = entry.expires && !entry.archived ? entry.expires - Date.now() : 0;
         const kind = entry.terminal ? 'cmd' : entry.app ? 'app' : entry.url ? 'url' : entry.opener;
-        const badge = !exists ? chalk.red('missing')
-          : chalk.dim([entry.pinned && 'pinned', kind, left > 0 && `${ui.span(left, Math.ceil)} left`].filter(Boolean).join(' '));
+        const badge = !badgesOn ? '' : !exists ? chalk.red('missing')
+          : chalk.dim(badgeText([entry.pinned && PIN, kind, left > 0 && `${ui.span(left, Math.ceil)} left`]));
         const aliases = aliasesOf(entry);
         const right = [
           aliases.length && chalk.dim(`(${aliases.join(', ')})`),
           showGit && gitCell(entry.path),
-          entry.tags?.length && chalk.dim(`#${entry.tags.join(' #')}`),
+          showsDetail(details, 'tags') && entry.tags?.length && chalk.dim(`#${entry.tags.join(' #')}`),
           badge,
         ];
         return {

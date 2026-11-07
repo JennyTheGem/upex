@@ -5,7 +5,7 @@
  *        upex unpin <name>   unpin it
  */
 
-import { loadLinks, setLink, activeLinks } from '../store.js';
+import { loadLinks, setLink, activeLinks, withPinned } from '../store.js';
 import { exactShortcut } from './remove.js';
 import * as ui from '../ui.js';
 
@@ -17,8 +17,7 @@ function setPinned(name, on) {
     ui.info(`${owner} is ${on ? 'already' : 'not'} pinned.`);
     return;
   }
-  const { pinned: _old, ...entry } = links[owner];
-  setLink(owner, on ? { ...entry, pinned: true } : entry);
+  setLink(owner, withPinned(links[owner], on));
   ui.success(`${on ? 'Pinned' : 'Unpinned'}: ${owner}`);
 }
 

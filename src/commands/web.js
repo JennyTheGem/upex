@@ -8,7 +8,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import crypto from 'node:crypto';
-import { loadLinks, saveLinks, loadWorkspaces, saveWorkspaces, pruneBroken, targetField, nameError, takenError, checkAliases, aliasesOf, frecency, loadConfig, saveConfig } from '../store.js';
+import { loadLinks, saveLinks, loadWorkspaces, saveWorkspaces, pruneBroken, targetField, nameError, takenError, checkAliases, aliasesOf, frecency, loadConfig, saveConfig, withPinned } from '../store.js';
 import { getInteractiveAppChoices, launchUrl, openerKey, isTerminalApp, checkSettings, readSettings, resetSettings, startTab, SETTING_KEYS, hasWindowsTerminal, configApps } from '../launcher.js';
 import { handleOpen, isFile } from './open.js';
 import { openEntries } from './workspace.js';
@@ -167,7 +167,7 @@ const routes = {
   'PUT /api/pin': (b) => {
     const links = loadLinks();
     if (!Object.hasOwn(links, String(b.name))) throw new HttpError(404, `Shortcut not found: ${b.name}`);
-    if (b.pinned) links[b.name].pinned = true; else delete links[b.name].pinned;
+    links[b.name] = withPinned(links[b.name], b.pinned);
     saveLinks(links);
     return {};
   },

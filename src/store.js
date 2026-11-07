@@ -184,6 +184,12 @@ export function setLink(name, pathOrEntry) {
   saveLinks(links);
 }
 
+// Entry with pinned set or dropped (never stored as false).
+export function withPinned(entry, on) {
+  const { pinned: _old, ...rest } = entry;
+  return on ? { ...rest, pinned: true } : rest;
+}
+
 export function removeLink(name) {
   const links = loadLinks();
   if (!Object.hasOwn(links, name)) return false;

@@ -12,7 +12,7 @@ import readline from 'node:readline';
 import { PassThrough } from 'node:stream';
 import { spawn, spawnSync, execSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { frecency, pruneBroken, mergeLinks, lastUsedName, nameError, takenError, checkAliases, aliasClashes, staleLinks, sweepExpired, diffLinks, keepUsage } from '../src/store.js';
+import { frecency, pruneBroken, mergeLinks, lastUsedName, nameError, takenError, checkAliases, aliasClashes, staleLinks, sweepExpired, diffLinks, keepUsage, withPinned } from '../src/store.js';
 import { remoteWebUrl } from '../src/git.js';
 import { installCmdWrapper } from '../src/commands/setup.js';
 import { normalizeUrl, caretEscape, wtCommandLine, setting, shellCommand, defaultOpener, checkSettings, resetSettings, startTab } from '../src/launcher.js';
@@ -466,6 +466,26 @@ const feed = async (...chunks) => {
   const keys = [];
   const events = [];
   s.on('keypress', (str, key) => {
+// row details + pinned section
+{
+  const two = [{ name: 'pin', path: 'P', exists: true, pinned: true, tags: ['w'] }, { name: 'gone', path: 'Q', exists: false, tags: ['x'] }];
+  const look = (s, extra = {}) => strip(renderInteractiveView({ ...viewArgs, choices: two, settings: s, ...extra }));
+  const both = look({});
+  assert.ok(both.includes('#w  ★') && both.includes('#x  missing'), 'details: both by default');
+  assert.ok(!look({ rowDetails: 'tags' }).includes('missing') && look({ rowDetails: 'tags' }).includes('#x'), 'details: tags only');
+  assert.ok(!look({ rowDetails: 'badges' }).includes('#w') && look({ rowDetails: 'badges' }).includes('missing'), 'details: badges only');
+  assert.ok(!/#w|#x|★|missing/.test(look({ rowDetails: 'none' })), 'details: none');
+  const sec = look({ pinned: 'section' }).split('\n');
+  assert.ok(sec.findIndex(l => l.trim() === 'Pinned') < sec.findIndex(l => l.includes('pin ')) && sec.some(l => l.trim() === 'All'), 'section: headings');
+  assert.ok(!sec.some(l => l.includes('★')), 'section: no pinned badge');
+  assert.ok(!look({ pinned: 'section' }, { query: 'p' }).includes('Pinned'), 'section: no headings while searching');
+  assert.ok(look({ pinned: 'section' }, { query: ' ' }).includes('Pinned'), 'section: a blank query keeps the headings');
+  const manyPinned = { ...many, choices: many.choices.map((c, i) => ({ ...c, pinned: i < 3 })), settings: { pinned: 'section' } };
+  for (const selectedIndex of [0, 3, 29]) assert.equal(renderInteractiveView({ ...manyPinned, height: 20, selectedIndex }).split('\n').length, 20, `section: fills the height (sel ${selectedIndex})`);
+  assert.ok(strip(renderInteractiveView({ ...manyPinned, height: 20, selectedIndex: 29 })).includes('more'), 'section: scroll hint');
+  assert.ok(look({}).includes('^p unpin') && look({}, { selectedIndex: 1 }).includes('^p pin'), 'pin key hint follows the row');
+  assert.deepEqual([withPinned({ path: 'x', pinned: true }, false), withPinned({ path: 'x' }, true)], [{ path: 'x' }, { path: 'x', pinned: true }], 'withPinned');
+}
     const r = readMouse(state, key);
     state = r.state;
     if (r.event) events.push(r.event);
@@ -516,9 +536,9 @@ assert.ok(renderInteractiveView({ ...setArgs, settings: { ...setArgs.settings, a
 const tall = strip(renderInteractiveView({ ...setArgs, height: 40, settings: { ...setArgs.settings, theme: 'light' } }));
 assert.ok(tall.includes('Web theme       System  Dark  ‹ Light ›'), 'web theme row');
 assert.ok(['General', 'Terminals', 'Opening', 'Appearance'].every(s => tall.includes(`\n  ${s}\n`)), 'settings grouped in sections');
-const short = rowsOf({ ...setArgs, height: 14, settingIndex: 10 });
+const short = rowsOf({ ...setArgs, height: 14, settingIndex: 12 });
 assert.ok(short.length <= 14 && short.some(l => l.startsWith('  › Web theme')) && short.at(-1).includes('setting'), 'short terminal scrolls settings, keeps the footer');
-assert.equal(at({ ...setArgs, height: 14, settingIndex: 10 }, 3, short.findIndex(l => l.startsWith('  › Web theme')) + 1)?.setting, 10, 'scrolled settings stay clickable');
+assert.equal(at({ ...setArgs, height: 14, settingIndex: 12 }, 3, short.findIndex(l => l.startsWith('  › Web theme')) + 1)?.setting, 12, 'scrolled settings stay clickable');
 assert.equal(checkSettings({ accent: 'red' }).error, 'accent must be one of: default, green, blue, purple, orange, or a hex color like #ff66aa.', 'bad accent refused');
 assert.deepEqual([checkSettings({ accent: '#FF66aa' }).next.accent, checkSettings({ accent: 'ff66aa' }).next.accent, checkSettings({ sort: '#ff66aa' }).error?.slice(0, 4)], ['#ff66aa', '#ff66aa', 'sort'], 'hex only for accent, normalized');
 assert.deepEqual([setting('accent', { accent: '#ff66aa' }), setting('accent', { accent: '#ff66a' }), setting('accent', { accent: '"><x' })], ['#ff66aa', 'default', 'default'], 'stored hex read back, junk falls back');
@@ -799,7 +819,7 @@ try {
   assert.equal(cfg2.paneSplit, 'horizontal', 'refused request saved nothing, later one did');
   assert.equal(cfg2.defaultOpener, 'vscode', 'default opener stored as its key');
   const st2 = await (await fetch(base + '/api/state', { headers: { 'x-upex-token': token } })).json();
-  assert.deepEqual(st2.settings, { startView: 'apps', sort: 'name', terminalLayout: 'panes', paneSplit: 'horizontal', terminalShell: 'powershell', fullScreen: 'on', theme: 'system', accent: 'default', density: 'comfortable', paths: 'dim', keyHints: 'full', defaultOpener: 'vscode' }, 'state reports settings');
+  assert.deepEqual(st2.settings, { startView: 'apps', sort: 'name', terminalLayout: 'panes', paneSplit: 'horizontal', terminalShell: 'powershell', fullScreen: 'on', theme: 'system', accent: 'default', density: 'comfortable', paths: 'dim', keyHints: 'full', rowDetails: 'both', pinned: 'top', defaultOpener: 'vscode' }, 'state reports settings');
   assert.deepEqual(Object.keys(cfg2.workspaces), ['work'], 'settings save keeps workspaces');
   const note = path.join(webHome, 'note.txt');
   fs.writeFileSync(note, '');

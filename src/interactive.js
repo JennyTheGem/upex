@@ -9,7 +9,7 @@ import readline from 'node:readline';
 import chalk from 'chalk';
 import Fuse from 'fuse.js';
 import { getInteractiveAppChoices, getAppMap, isTerminalApp, hasWindowsTerminal, defaultOpener, readSettings, setting, startTab, isHex, launchApp } from './launcher.js';
-import { loadLinks, activeLinks, aliasesOf, takenError, checkAliases, frecency, recordUse, removeLink, setLink, renameLink, loadWorkspaces, saveWorkspaces, removeWorkspace, nameError, loadConfig, saveConfig } from './store.js';
+import { loadLinks, activeLinks, aliasesOf, takenError, checkAliases, frecency, recordUse, removeLink, setLink, renameLink, loadWorkspaces, saveWorkspaces, removeWorkspace, nameError, loadConfig, saveConfig, withPinned } from './store.js';
 import { describeEntry } from './commands/workspace.js';
 import { startServer } from './commands/web.js';
 import { readScripts, detectPm } from './commands/run.js';
@@ -109,6 +109,12 @@ export function pathLook(r, paths) {
   if (paths === 'hidden') return { ...r, text: '' };
   return paths === 'full' ? { ...r, style: 'plain' } : r;
 }
+// Pinned badge.
+export const PIN = '★';
+// Badge words joined; a trailing ★ gets a space so it doesn't touch the edge.
+export const badgeText = parts => { const t = parts.filter(Boolean).join(' '); return t.endsWith(PIN) ? `${t} ` : t; };
+// Row details setting: does `what` ('tags' | 'badges') show? Unset = both.
+export const showsDetail = (rowDetails = 'both', what) => rowDetails === 'both' || rowDetails === what;
 const keyHint = pairs => '  ' + pairs.filter(Boolean).map(([k, label]) => `${k} ${chalk.dim(label)}`).join('  ');
 // One hint row of at most w columns: from the first pair that doesn't fit on, pairs are left out.
 const fitHint = (pairs, w) => keyHint(pairs.filter(Boolean).filter((p, i, a) => vis(keyHint(a.slice(0, i + 1))) <= w));
@@ -320,6 +326,8 @@ const SETTING_ROWS = [
   { section: 'Appearance', key: 'accent', label: 'Accent', names: { default: 'Default', green: 'Green', blue: 'Blue', purple: 'Purple', orange: 'Orange' } },
   { section: 'Appearance', key: 'density', label: 'Density', names: { comfortable: 'Comfortable', compact: 'Compact' } },
   { section: 'Appearance', key: 'paths', label: 'Paths', names: { dim: 'Dim folders', full: 'Full', hidden: 'Hidden' } },
+  { section: 'Appearance', key: 'rowDetails', label: 'Row details', names: { both: 'Both', tags: 'Tags', badges: 'Badges', none: 'None' } },
+  { section: 'Appearance', key: 'pinned', label: 'Pinned', names: { top: 'On top', section: 'Own section' } },
   { section: 'Appearance', key: 'theme', label: 'Web theme', names: { system: 'System', dark: 'Dark', light: 'Light' } },
 ];
 // Pane split only matters for split panes.
@@ -337,6 +345,8 @@ function settingNote(key, s, wt) {
   if (key === 'accent') return 'Color of the › pointer and the picked option, here and in upex ui. Any color: upex config set accent ff66aa';
   if (key === 'density') return 'Compact drops the spacer lines, here and in upex ui.';
   if (key === 'paths') return 'Paths in the lists here, in upex ls / stale and in upex ui.';
+  if (key === 'rowDetails') return 'Right side of a row: #tags, badges (pinned, app, missing), both or none. Here, in upex ls and upex ui.';
+  if (key === 'pinned') return 'Pinned shortcuts first, or first under their own Pinned heading. Here and in upex ui. ^p pins.';
   if (key === 'keyHints') return 'Key rows under the list. Short: one row of the main keys. Off: more room for the list. Settings keeps its keys.';
   if (key === 'theme') return 'upex ui only. The terminal keeps its own colors.';
   if (wt === null) return 'Windows only. Other systems use their own terminal.';
@@ -490,13 +500,14 @@ export function renderInteractiveView({
   const windows = isShortcuts && terminal && ['S-↑↓', 'windows'];
   const scriptsKey = isShortcuts && ['^s', 'scripts'];
   const navRow = [openKey, scriptsKey, ['↑↓', 'move'], opener, windows, tabKey, escKey];
-  const actRow = [isShortcuts && ['^a', 'add'], isShortcuts && ['^e', 'edit path'], !isWs && ['^r', 'rename'], ['^d', 'delete'], undoKey];
+  const actRow = [isShortcuts && ['^a', 'add'], isShortcuts && ['^e', 'edit path'], !isWs && ['^r', 'rename'],
+    !isWs && list.length > 0 && ['^p', currentChoice?.pinned ? 'unpin' : 'pin'], ['^d', 'delete'], undoKey];
   const inputRow = keyHint([['↵', 'save'], ['←→', 'cursor'], ['^⌫', 'word'], ['^u', 'clear'], ['esc', 'cancel']]);
   // Key hints setting. Full: two rows (typing: input keys, same height so the list stays put). Short: one row
   // without the keys you learn first (↑↓, tab, esc), cut to the width. Off: none.
   const hints = settings.keyHints === 'off' ? []
     : settings.keyHints === 'short' ? [mode === 'input' ? inputRow : fitHint([openKey, opener, windows, ...actRow, scriptsKey, uiKey], w)]
-      : mode === 'input' ? [inputRow, ''] : [keyHint(navRow), keyHint([...actRow, uiKey])];
+      : mode === 'input' ? [inputRow, ''] : [fitHint(navRow, w), fitHint([...actRow, uiKey], w)];
   const foot = isScripts ? (hints.length ? [keyHint([['↵', 'run in a terminal'], ['↑↓', 'move'], escKey])] : [])
     : [...(isShortcuts ? [`  ${chalk.dim('open with')}  ${openers}`, ...(hints.length ? gap : [])] : []), ...hints];
   // No footer rows above it: no blank row under the rule.
@@ -513,12 +524,21 @@ export function renderInteractiveView({
     const nameWidth = nameCol(list);
     // Rows left after the header and the footer (its rule included).
     const room = height - lines.length - (foot.length && foot.length + 1);
-    const { start, end } = getVisibleWindow(list, index, Math.min(maxList, listRows(list.length, room)));
-    for (let i = start; i < end; i++) {
+    // Pinned setting 'section': Pinned / All headings, unless a search reorders the list.
+    const heads = settings.pinned === 'section' && !plain && !query?.trim() && list[0]?.pinned;
+    const items = list.flatMap((c, i) => [
+      ...(heads && (i === 0 || c.pinned !== list[i - 1].pinned) ? [{ head: c.pinned ? 'Pinned' : 'All' }] : []),
+      { i },
+    ]);
+    const { start, end } = getVisibleWindow(items, items.findIndex(x => x.i === index), Math.min(maxList, listRows(items.length, room)));
+    const tagsOn = !plain && showsDetail(settings.rowDetails, 'tags');
+    const badgesOn = !plain && showsDetail(settings.rowDetails, 'badges');
+    for (const { head, i } of items.slice(start, end)) {
+      if (head) { lines.push(chalk.dim(`    ${head}`)); continue; }
       const c = list[i];
-      const tags = c.tags?.length ? chalk.dim(`#${c.tags.join(' #')}`) : '';
+      const tags = tagsOn && c.tags?.length ? chalk.dim(`#${c.tags.join(' #')}`) : '';
       const kind = c.isCmd ? 'cmd' : c.isApp ? 'app' : c.isUrl ? 'url' : '';
-      const badge = plain ? '' : !c.exists ? chalk.red('missing') : chalk.dim([c.pinned && 'pinned', kind].filter(Boolean).join(' '));
+      const badge = !badgesOn ? '' : !c.exists ? chalk.red('missing') : chalk.dim(badgeText([c.pinned && !heads && PIN, kind]));
       hit(lines.length, 0, w, { row: i });
       lines.push(renderRow(pathLook({
         sel: i === index,
@@ -532,7 +552,9 @@ export function renderInteractiveView({
         pick,
       }, settings.paths)));
     }
-    const more = scrollHint(start, end, list.length);
+    // Counts rows, not headings.
+    const rowsIn = a => a.filter(x => !x.head).length;
+    const more = scrollHint(rowsIn(items.slice(0, start)), list.length - rowsIn(items.slice(end)), list.length);
     if (more) lines.push(more);
   }
 
@@ -1107,6 +1129,16 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
       }
       if (key.ctrl && key.name === 'r') {
         if (filteredChoices.length > 0) { startAction('rename'); redraw(); }
+        return;
+      }
+      if (key.ctrl && key.name === 'p') {
+        const c = filteredChoices[selectedIndex];
+        const entry = c && loadLinks()[c.name];
+        if (!entry) return;
+        setLink(c.name, withPinned(entry, !entry.pinned));
+        rebuild(c.name);
+        done(`${entry.pinned ? 'unpinned' : 'pinned'} "${c.name}"`);
+        redraw();
         return;
       }
 

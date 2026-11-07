@@ -98,42 +98,10 @@
       "created": "2026-11-06"
     },
     {
-      "id": "text-size-setting-for-upex-ui",
-      "title": "Text size setting for upex ui",
-      "body": "Small / Normal / Large (and a bit more letter spacing on Large), easier reading without browser zoom breaking the layout.",
-      "section": 7,
-      "size": "S",
-      "created": "2026-11-07"
-    },
-    {
-      "id": "high-contrast-theme",
-      "title": "High contrast theme",
-      "body": "A theme option with stronger text/line contrast and no muted grays, for bright rooms and tired eyes.",
-      "section": 7,
-      "size": "S",
-      "created": "2026-11-07"
-    },
-    {
       "id": "ascii-only-glyphs",
       "title": "ASCII-only glyphs",
       "body": "Setting that swaps ‹ › ▏ ─ … ↑↓ for plain ASCII in the selector, for terminals or fonts that show boxes.",
       "section": 5,
-      "size": "S",
-      "created": "2026-11-07"
-    },
-    {
-      "id": "key-hints-setting",
-      "title": "Key hints setting",
-      "body": "Selector footer: Full / Short (one row) / Off, frees rows for the list once the keys are learned.",
-      "section": 3,
-      "size": "S",
-      "created": "2026-11-07"
-    },
-    {
-      "id": "row-details-setting",
-      "title": "Row details setting",
-      "body": "Choose what shows on the right of a row: tags, badges (pinned, app, missing), both or none, in the selector, ls and upex ui.",
-      "section": 3,
       "size": "S",
       "created": "2026-11-07"
     },
@@ -146,11 +114,67 @@
       "created": "2026-11-07"
     },
     {
-      "id": "confirm-deletes-setting",
-      "title": "Confirm deletes setting",
-      "body": "Turn off the y / n delete confirm in the selector and the inline confirm in upex ui, since ^z undo and backups already cover mistakes.",
+      "id": "show-archived-setting",
+      "title": "Show archived setting",
+      "body": "Archived shortcuts hidden, dimmed at the bottom, or in their own tab.",
       "section": 3,
       "size": "S",
+      "created": "2026-11-07"
+    },
+    {
+      "id": "fuzzy-strictness-setting",
+      "title": "Fuzzy strictness setting",
+      "body": "Exact, normal or loose: sets the Fuse threshold for the filter and name resolution.",
+      "section": 3,
+      "size": "S",
+      "created": "2026-11-07"
+    },
+    {
+      "id": "search-scope-setting",
+      "title": "Search scope setting",
+      "body": "Filter matches the name only, or name + path + tags.",
+      "section": 3,
+      "size": "S",
+      "created": "2026-11-07"
+    },
+    {
+      "id": "usage-column-setting",
+      "title": "Usage column setting",
+      "body": "Hide usage, show the open count, or show relative time like 3d ago.",
+      "section": 3,
+      "size": "S",
+      "created": "2026-11-07"
+    },
+    {
+      "id": "flash-duration-setting",
+      "title": "Flash duration setting",
+      "body": "Success flash fades after 3s, 6s, or stays until the next key.",
+      "section": 3,
+      "size": "S",
+      "created": "2026-11-07"
+    },
+    {
+      "id": "tag-filter-in-selector",
+      "title": "Tag filter in selector",
+      "body": "Typing #web filters to that tag; a key cycles through tags.",
+      "section": 3,
+      "size": "M",
+      "created": "2026-11-07"
+    },
+    {
+      "id": "number-keys-open-rows",
+      "title": "Number keys open rows",
+      "body": "1 to 9 opens that visible row right away. Needs care with the filter input.",
+      "section": 3,
+      "size": "S",
+      "created": "2026-11-07"
+    },
+    {
+      "id": "git-dirty-badge-in-selector",
+      "title": "Git dirty badge in selector",
+      "body": "A dot on rows whose repo has uncommitted changes. Pairs with ls --dirty, must stay fast.",
+      "section": 3,
+      "size": "M",
       "created": "2026-11-07"
     }
   ]
