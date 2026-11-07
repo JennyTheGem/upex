@@ -20,6 +20,12 @@ import * as ui from './ui.js';
 const MAX_VISIBLE_CHOICES = 8;
 // Full screen in a terminal at least this wide: detail pane right of the list.
 const PANE_MIN = 140;
+// Narrower: only once opened (Shift+Right, or Narrow screens Always), and never under this.
+const PANE_FLOOR = 60;
+// Is the detail pane shown? `open` = opened on a narrow screen.
+export const paneShown = (columns, full, open) => !!full && (columns >= PANE_MIN || (!!open && columns >= PANE_FLOOR));
+// Can Shift+Right open it and Shift+Left close it here?
+export const paneToggles = (columns, full, s = {}) => !!full && columns < PANE_MIN && columns >= PANE_FLOOR && s.narrowPane !== 'always';
 const ALT_ON = '\x1b[?1049h';
 const ALT_OFF = '\x1b[?1049l';
 const HIDE_CURSOR = '\x1b[?25l';
@@ -367,6 +373,7 @@ const SETTING_ROWS = [
   { section: 'Appearance', key: 'rowDetails', label: 'Row details', names: { both: 'Both', tags: 'Tags', badges: 'Badges', none: 'None' } },
   { section: 'Appearance', key: 'pinned', label: 'Pinned', names: { top: 'On top', section: 'Own section' } },
   { section: 'Appearance', key: 'theme', label: 'Web theme', names: { system: 'System', dark: 'Dark', light: 'Light' } },
+  { section: 'Detail pane', key: 'narrowPane', label: 'Narrow screens', names: { toggle: 'Shift+→ / ←', always: 'Always' } },
   { section: 'Detail pane', key: 'goals', label: 'Open goals', names: { off: 'Off', 3: '3', 5: '5', 10: '10' } },
   { section: 'Detail pane', key: 'git', label: 'Git status', names: { off: 'Off', on: 'On' } },
 ];
@@ -396,8 +403,9 @@ function settingNote(key, s, wt) {
   if (key === 'paths') return 'Paths in the lists here, in upex ls / stale and in upex ui.';
   if (key === 'rowDetails') return 'Right side of a row: #tags, badges (pinned, app, missing), both or none. Here, in upex ls and upex ui.';
   if (key === 'pinned') return 'Pinned shortcuts first, or first under their own Pinned heading. Here and in upex ui. ^p pins, Alt+↑↓ moves one.';
-  if (key === 'goals') return 'Pane right of the list (full screen, 140+ columns): open upgo goals of a folder, up to this many. S-→ picks one to copy.';
-  if (key === 'git') return 'Pane right of the list (full screen, 140+ columns): branch, ahead/behind, changes and last commit of a folder in git. ^g opens its web page.';
+  if (key === 'narrowPane') return 'Under 140 columns (full screen): Shift+→ opens the pane, Shift+← or Esc closes it, or it always shows. Not under 60.';
+  if (key === 'goals') return 'Pane right of the list (full screen): open upgo goals of a folder, up to this many. S-→ picks one to copy.';
+  if (key === 'git') return 'Pane right of the list (full screen): branch, ahead/behind, changes and last commit of a folder in git. ^g opens its web page.';
   if (key === 'keyHints') return 'Key rows under the list. Short: one row of the main keys. Off: more room for the list. Settings keeps its keys.';
   if (key === 'theme') return 'upex ui only. The terminal keeps its own colors.';
   if (wt === null) return 'Windows only. Other systems use their own terminal.';
@@ -554,6 +562,7 @@ export function renderInteractiveView({
   height = 24,
   maxList = Infinity,
   full = false, // full screen: footer at the bottom, detail pane when wide
+  paneOpen = false, // detail pane opened with Shift+Right on a narrow screen
   targets = null, // optional out: clickable { line, from, to, tab | row | opener | setting [+ option] }
 }) {
   const isWs = view === 'workspaces';
@@ -561,7 +570,8 @@ export function renderInteractiveView({
   const isScripts = mode === 'scripts' && !!scripts;
   const currentChoice = (isWs ? workspaces : choices)[isWs ? wsIndex : selectedIndex];
   // `width` leaves the terminal's last column free.
-  const pane = full && !isSettings && width + 1 >= PANE_MIN;
+  const pane = !isSettings && paneShown(width + 1, full, paneOpen || settings.narrowPane === 'always');
+  const toggles = !isSettings && paneToggles(width + 1, full, settings);
   // Scripts go in the pane when there is one, else they replace the list.
   const listScripts = isScripts && !pane;
   const list = listScripts ? scripts.list : isWs ? workspaces : choices;
@@ -639,7 +649,7 @@ export function renderInteractiveView({
   // Only Shortcuts shown: Tab there does nothing.
   const tabKey = next !== view && ['tab', VIEWS[next].toLowerCase()];
   const many = !isWs && !isSettings && marks.size;
-  const escKey = ['esc', isScripts ? 'back' : mode !== 'browse' ? 'cancel' : query ? 'clear' : many ? 'unmark' : 'quit'];
+  const escKey = ['esc', isScripts ? 'back' : mode !== 'browse' ? 'cancel' : query ? 'clear' : many ? 'unmark' : toggles && pane ? 'hide details' : 'quit'];
   const undoKey = undo && ['^z', 'undo'];
   const uiKey = ['^u', webUrl ? 'stop web ui' : 'web ui'];
   // Blank row first, so the link sits apart from the key hints.
@@ -683,7 +693,9 @@ export function renderInteractiveView({
   const movePin = !isWs && !query?.trim() && currentChoice?.pinned && ['A-↑↓', 'move pin'];
   const goalsKey = goals?.next.length && ['S-→', 'goals'];
   const webKey = git?.web && ['^g', hostName(git.web)];
-  const navRow = [openKey, scriptsKey, ['↑↓', 'move'], opener, windows, tabKey, escKey, movePin, markKey, goalsKey, webKey];
+  const paneKey = toggles && (pane ? ['S-←', 'hide details'] : ['S-→', 'details']);
+  // Esc already says "hide details": no second hint, so goals and ^g still fit on narrow screens.
+  const navRow = [openKey, scriptsKey, ['↑↓', 'move'], opener, windows, tabKey, escKey, escKey[1] !== paneKey[1] && paneKey, movePin, markKey, goalsKey, webKey];
   const actRow = [isShortcuts && ['^a', 'add'], isShortcuts && ['^e', 'edit path'], !isWs && ['^r', 'rename'],
     !isWs && list.length > 0 && ['^p', currentChoice?.pinned ? 'unpin' : 'pin'], ['^d', many ? `delete ${many} marked` : 'delete'], undoKey];
   // Last in their rows, so a narrow terminal drops them first.
@@ -692,7 +704,7 @@ export function renderInteractiveView({
   // Key hints setting. Full: two rows (typing: input keys, same height so the list stays put). Short: one row
   // without the keys you learn first (↑↓, tab, esc), cut to the width. Off: none.
   const hints = settings.keyHints === 'off' ? []
-    : settings.keyHints === 'short' ? [mode === 'input' ? inputRow : fitHint([openKey, opener, windows, ...actRow, markKey, scriptsKey, goalsKey, webKey, uiKey, copyKey, movePin], w)]
+    : settings.keyHints === 'short' ? [mode === 'input' ? inputRow : fitHint([openKey, opener, windows, ...actRow, markKey, scriptsKey, goalsKey, webKey, paneKey, uiKey, copyKey, movePin], w)]
       : mode === 'input' ? [inputRow, ''] : [fitHint(navRow, w), fitHint([...actRow, uiKey, copyKey], w)];
   const foot = isScripts ? (hints.length ? [keyHint([['↵', 'run in a terminal'], ['↑↓', 'move'], escKey])] : [])
     : isGoals ? (hints.length ? [keyHint([['↵', 'copy'], ['↑↓', 'move'], ['esc', 'back']])] : [])
@@ -813,6 +825,7 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
     let frame = [];   // inline mode: lines drawn last time
     let alt = false;  // on the alternate screen
     let mode = 'browse';   // 'browse' | 'input' | 'confirm' | 'scripts' | 'goals'
+    let paneOpen = false;  // Shift+Right on a narrow screen
     let goalIndex = 0;     // goal picker
     let scripts = null;    // script picker: { pm, list }
     let scriptIndex = 0;
@@ -896,6 +909,7 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
         height,
         maxList: maxListOf(settings.maxRows, alt),
         full: alt,
+        paneOpen,
         targets,
       });
       // Never taller than the screen, or the top scrolls away and frames stack up.
@@ -1084,7 +1098,8 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
     };
 
     // Goals the pane shows now (same checks as the render), else null.
-    const paneOn = () => alt && view === 'shortcuts' && (stdout.columns || 80) >= PANE_MIN;
+    const paneOn = () => view === 'shortcuts' && paneShown(stdout.columns || 80, alt, paneOpen || settings.narrowPane === 'always');
+    const toggles = () => view !== 'settings' && paneToggles(stdout.columns || 80, alt, settings);
     const paneGoals = () => (paneOn() ? folderGoals(filteredChoices[selectedIndex], settings.goals) : null);
     // A git lookup landing redraws, which shows it (and looks up the row selected meanwhile).
     let closed = false;
@@ -1309,7 +1324,7 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
       }
 
       // ── Browse mode ──
-      // Esc clears a typed filter first, then the marks, then quits.
+      // Esc clears a typed filter first, then the marks, then closes a Shift+Right pane, then quits.
       if (key.name === 'escape' && query) {
         clearQuery();
         redraw();
@@ -1320,9 +1335,22 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
         redraw();
         return;
       }
+      if (key.name === 'escape' && paneOpen && toggles()) {
+        paneOpen = false;
+        redraw();
+        return;
+      }
       if (key.name === 'escape') {
         stdout.write('\n');
         finish({ status: 'cancelled' });
+        return;
+      }
+
+      // Narrow screen: Shift+Right opens the detail pane, Shift+Left closes it; else they change the opener.
+      // Before the Workspaces keys, which drop Left/Right.
+      if (key.shift && toggles() && (key.name === 'right' ? !paneOpen : key.name === 'left' && paneOpen)) {
+        paneOpen = !paneOpen;
+        redraw();
         return;
       }
 

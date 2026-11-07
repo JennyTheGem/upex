@@ -219,7 +219,7 @@ Run `upex` with no arguments to open the interactive selector. Pinned shortcuts 
 - While typing a path or name: `Left` / `Right` move the cursor, `Ctrl+Left` / `Ctrl+Right` jump a word, `Home` / `End`, `Ctrl+Backspace` (or `Ctrl+W`) deletes a word, `Del` deletes forward. `Ctrl+Backspace` also works in the filter
 - `Ctrl+D` -- delete the selected shortcut (confirm with `y`), `Ctrl+Z` undoes the last delete
 - `Ctrl+U` -- start `upex ui` and open it in the browser; the selector stays open and shows the link. `Ctrl+U` again stops it, so does closing the selector
-- `Esc` -- clear the filter, then the marks, then quit
+- `Esc` -- clear the filter, then the marks, then close a detail pane opened with Shift+→ (see `narrowPane`), then quit
 - Mouse (full screen) -- click a tab, opener or setting; click a row to select it, again or double-click to open; the wheel moves the selection
 
 ## Web UI
@@ -344,8 +344,9 @@ Appearance:
 - `"rowDetails"`: what shows on the right of a row in the selector, `upex ls` and `upex ui`. `"both"` (default), `"tags"` (#tags), `"badges"` (★ pinned, app, cmd, url, missing) or `"none"`. Piped `upex ls` always shows both.
 - `"pinned"`: `"top"` (default, pinned shortcuts first) or `"section"` (first, under a Pinned heading, the rest under All) in the selector and `upex ui`. A search in the selector sorts by match, so it drops the headings.
 
-Detail pane (selector only, full screen, 140+ columns):
+Detail pane (selector only, full screen, 140+ columns, or narrower with `narrowPane`):
 
+- `"narrowPane"`: `"toggle"` (default) or `"always"`. Under 140 columns, Shift+→ opens the pane anyway (the list gets narrower) and Shift+← or Esc closes it; `"always"` shows it there without asking. Never under 60 columns. Shift+↑↓ still sets the terminal count.
 - `"goals"`: `"off"` (default), `"3"`, `"5"` or `"10"`. A folder shortcut with an [upgo](https://github.com/JennyTheGem/upgo) `goals.json` shows its open goal count and up to that many open goals, soonest phase first. Shift+→ picks one in the pane (↑↓ move, Enter copies `id: title` and its body, Esc or ← goes back).
 - `"git"`: `"off"` (default) or `"on"`. A folder shortcut inside a git repo shows its branch, ahead/behind, changed file count and last commit (age and message), looked up in the background and cached per folder for a few seconds, so scrolling stays fast. With an `origin` remote it also shows the repo's web page: Ctrl+G or a click opens it in the browser.
 

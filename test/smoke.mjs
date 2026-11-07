@@ -22,7 +22,7 @@ import { applyShortcut, applyOpener, cleanEntries, startServer } from '../src/co
 import { COMMAND_NAMES } from '../src/fast.js';
 import { createProgram } from '../src/index.js';
 import { readScripts, detectPm } from '../src/commands/run.js';
-import { renderInteractiveView, nextView, backTo, accentOf, pathLook, inView, tidyPath, byOrder, optionRow, listRows, readMouse, hitTest, rowClick, undoError, clipName, prefill, editLine, inputLine, missingFlash, staysOpen, expandHome, underlineHits, movePinned, withRecent, maxListOf, isAlt, detailLines, rowOptions, pickedOf, goalSummary, goalsOf, goalText, oneLine, scriptLines } from '../src/interactive.js';
+import { renderInteractiveView, nextView, backTo, accentOf, pathLook, inView, tidyPath, byOrder, optionRow, listRows, readMouse, hitTest, rowClick, undoError, clipName, prefill, editLine, inputLine, missingFlash, staysOpen, expandHome, underlineHits, movePinned, withRecent, maxListOf, isAlt, detailLines, rowOptions, pickedOf, goalSummary, goalsOf, goalText, oneLine, scriptLines, paneShown, paneToggles } from '../src/interactive.js';
 import { parseStatus, parseLog, gitOf, stopGit } from '../src/git.js';
 import chalk from 'chalk';
 import { resolveTarget, resolveName, suggestNames } from '../src/fuzzy.js';
@@ -796,6 +796,14 @@ const paneV = strip(renderInteractiveView({ ...viewArgs, choices: [det], full: t
 assert.ok(paneV.some(l => l.includes('┬')) && paneV.some(l => l.includes('┴')) && paneV.every(l => l.length <= 150), 'pane joins the rules and stays in width');
 assert.ok(paneV.some(l => /│ web +★ pinned$/.test(l)) && paneV.some(l => l.includes('│ opened    3×, last 2h ago')) && paneV.some(l => l.includes('│ opens in  Explorer')), 'pane shows the selected details');
 assert.ok(!paneV.some(l => l.includes('aliases')) && !strip(renderInteractiveView({ ...viewArgs, choices: [det], width: 150 })).includes('│'), 'no empty rows, no pane inline');
+// Narrow: Shift+Right opens the pane (or Narrow screens Always), never under 60 or inline.
+assert.deepEqual([paneShown(150, true), paneShown(100, true), paneShown(100, true, true), paneShown(59, true, true), paneShown(150, false)], [true, false, true, false, false], 'pane: wide, or opened on narrow');
+assert.deepEqual([paneToggles(100, true), paneToggles(150, true), paneToggles(100, false), paneToggles(100, true, { narrowPane: 'always' })], [true, false, false, false], 'Shift+Right/Left toggle only narrow, full screen, not Always');
+const thin = extra => strip(renderInteractiveView({ ...viewArgs, choices: [det], full: true, width: 99, height: 30, ...extra }));
+assert.ok(!thin().includes('│') && thin().includes('S-→ details'), 'narrow: no pane, Shift+Right hint');
+assert.ok(thin({ paneOpen: true }).includes('│ opens in') && thin({ paneOpen: true }).includes('esc hide details') && !thin({ paneOpen: true }).includes('S-←'), 'narrow opened: pane, Esc closes (one hint)');
+assert.ok(thin({ paneOpen: true, query: 's' }).includes('esc clear') && thin({ paneOpen: true, query: 's' }).includes('S-← hide details'), 'filter typed: Esc clears, S-← hint shows');
+assert.ok(thin({ settings: { narrowPane: 'always' } }).includes('│ opens in') && !thin({ settings: { narrowPane: 'always' } }).includes('details'), 'Always: pane without the toggle');
 assert.deepEqual(strip(detailLines({ name: 'dev', entries: [{ shortcut: 's', app: 'vscode' }] }, 40).join('|')), 'dev||s:vscode', 'workspace pane lists entries');
 assert.ok(!detailLines({ name: 'x', path: 'P', added: 'garbage' }, 60).join().includes('added'), 'a bad added date is left out, not thrown');
 // Open goals: planned/partial count, by phase then file order; the pane shows up to the setting's count.
@@ -970,7 +978,7 @@ try {
   assert.equal(cfg2.paneSplit, 'horizontal', 'refused request saved nothing, later one did');
   assert.equal(cfg2.defaultOpener, 'vscode', 'default opener stored as its key');
   const st2 = await (await fetch(base + '/api/state', { headers: { 'x-upex-token': token } })).json();
-  assert.deepEqual(st2.settings, { startView: 'apps', sort: 'name', terminalLayout: 'panes', paneSplit: 'horizontal', terminalShell: 'powershell', fullScreen: 'on', theme: 'system', accent: 'default', density: 'comfortable', paths: 'dim', keyHints: 'full', maxRows: 'auto', recentStrip: 'off', views: 'all', enter: 'quit', rowDetails: 'both', pinned: 'top', goals: 'off', git: 'off', defaultOpener: 'vscode' }, 'state reports settings');
+  assert.deepEqual(st2.settings, { startView: 'apps', sort: 'name', terminalLayout: 'panes', paneSplit: 'horizontal', terminalShell: 'powershell', fullScreen: 'on', theme: 'system', accent: 'default', density: 'comfortable', paths: 'dim', keyHints: 'full', maxRows: 'auto', recentStrip: 'off', views: 'all', enter: 'quit', rowDetails: 'both', pinned: 'top', narrowPane: 'toggle', goals: 'off', git: 'off', defaultOpener: 'vscode' }, 'state reports settings');
   assert.deepEqual(Object.keys(cfg2.workspaces), ['work'], 'settings save keeps workspaces');
   const note = path.join(webHome, 'note.txt');
   fs.writeFileSync(note, '');

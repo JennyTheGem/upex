@@ -1317,7 +1317,7 @@
       "title": "Shift+Left toggles the detail pane on narrow terminals",
       "body": "Below the 140-column threshold, Shift+Left opens the detail pane anyway (list gets narrower), Shift+Left/Esc closes it. Check S-arrows are free: Shift+Up/Down already set the terminal window count.",
       "phase": "next",
-      "status": "planned",
+      "status": "done",
       "size": "S",
       "pointers": {
         "files": [
@@ -1325,7 +1325,8 @@
         ]
       },
       "created": "2026-11-07",
-      "updated": "2026-11-07"
+      "updated": "2026-11-07",
+      "note": "Settings > Detail pane > Narrow screens: under 140 cols Shift+Right opens the pane, Shift+Left or Esc closes it (default), Always shows it; never under 60 or inline"
     },
     {
       "id": "open-goals-in-the-detail-pane",
