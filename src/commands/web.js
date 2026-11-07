@@ -9,7 +9,7 @@ import os from 'node:os';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { loadLinks, saveLinks, loadWorkspaces, saveWorkspaces, pruneBroken, targetField, nameError, takenError, checkAliases, aliasesOf, frecency, loadConfig, saveConfig } from '../store.js';
-import { getInteractiveAppChoices, launchUrl, openerKey, isTerminalApp, checkSettings, readSettings, hasWindowsTerminal, configApps } from '../launcher.js';
+import { getInteractiveAppChoices, launchUrl, openerKey, isTerminalApp, checkSettings, readSettings, resetSettings, startTab, SETTING_KEYS, hasWindowsTerminal, configApps } from '../launcher.js';
 import { handleOpen, isFile } from './open.js';
 import { openEntries } from './workspace.js';
 import { parseTags } from './add.js';
@@ -123,6 +123,7 @@ function state() {
         pinned: Boolean(e.pinned),
         opener: e.opener || '',
         lastUsed: e.lastUsed || 0,
+        added: e.added || 0,
         score: frecency(e),
         broken: Boolean(e.path) && !fs.existsSync(e.path),
         // A file opens in its default app, not the default opener.
@@ -132,6 +133,8 @@ function state() {
     workspaces: loadWorkspaces(),
     apps: getInteractiveAppChoices().map(a => ({ ...a, terminal: isTerminalApp(a.key) })),
     settings: readSettings(config),
+    defaults: readSettings({}),
+    startTab: startTab(config),
     openers: Object.entries(configApps(config)).filter(([, c]) => typeof c === 'string').map(([name, command]) => ({ name, command })),
     wt: hasWindowsTerminal(),
     home: os.homedir(),
@@ -186,6 +189,22 @@ const routes = {
     const { next, error } = checkSettings(b);
     if (error) throw new HttpError(400, error);
     saveConfig({ ...loadConfig(), ...next });
+    return {};
+  },
+
+  // Back to defaults: the listed settings, every one when `keys` is missing.
+  'PUT /api/settings/reset': (b) => {
+    const keys = b.keys ?? SETTING_KEYS;
+    if (!Array.isArray(keys) || !keys.every(k => SETTING_KEYS.includes(k))) throw new HttpError(400, `keys must be settings: ${SETTING_KEYS.join(', ')}.`);
+    saveConfig(resetSettings(loadConfig(), keys));
+    return {};
+  },
+
+  // The tab the page was left on, for start view 'last'.
+  'PUT /api/last': (b) => {
+    if (!['shortcuts', 'apps', 'workspaces'].includes(b.view)) throw new HttpError(400, 'view must be shortcuts, apps or workspaces.');
+    const config = loadConfig();
+    if (config.lastView !== b.view) saveConfig({ ...config, lastView: b.view });
     return {};
   },
 

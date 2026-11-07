@@ -1,10 +1,10 @@
 /**
- * config.js -- `upex config [get|set] [key] [value]`: the Settings tab from the command line.
+ * config.js -- `upex config [get|set|reset] [key] [value]`: the Settings tab from the command line.
  */
 
 import chalk from 'chalk';
 import { loadConfig, saveConfig } from '../store.js';
-import { SETTINGS, readSettings, checkSettings, getInteractiveAppChoices } from '../launcher.js';
+import { SETTINGS, readSettings, checkSettings, getInteractiveAppChoices, resetSettings } from '../launcher.js';
 import * as ui from '../ui.js';
 
 const fail = (msg) => {
@@ -15,12 +15,12 @@ const fail = (msg) => {
 // Allowed values per setting; openers are the selector's row minus copy.
 const choices = (key) => (key === 'defaultOpener'
   ? getInteractiveAppChoices().map(c => c.key).filter(k => k !== 'copy')
-  : SETTINGS[key]);
+  : key === 'accent' ? [...SETTINGS.accent, '#rrggbb'] : SETTINGS[key]);
 
 export function registerConfig(program) {
   program
     .command('config [action] [key] [value]')
-    .description('Show all settings, print one (config get sort) or change one (config set terminalLayout tabs)')
+    .description('Show all settings, print one (config get sort), change one (config set terminalLayout tabs) or reset to defaults (config reset [setting])')
     .summary('Show or change settings')
     .action((action, key, value) => {
       const settings = readSettings();
@@ -33,7 +33,7 @@ export function registerConfig(program) {
           ...Object.entries(settings).map(([k, v]) => [k, chalk.bold(v), chalk.dim(choices(k).join(', '))]),
         ], { header: true });
         ui.blank();
-        ui.dim('Change one with: upex config set <setting> <value>');
+        ui.dim('Change one with: upex config set <setting> <value>, back to default: upex config reset [setting]');
         ui.blank();
         return;
       }
@@ -56,6 +56,13 @@ export function registerConfig(program) {
         return;
       }
 
-      fail(`Unknown action "${action}". Use: upex config, config get <setting>, config set <setting> <value>`);
+      if (action === 'reset') {
+        if (key) known(key);
+        saveConfig(resetSettings(loadConfig(), key ? [key] : undefined));
+        ui.success(key ? `${key} = ${readSettings()[key]} (default)` : 'All settings back to their defaults');
+        return;
+      }
+
+      fail(`Unknown action "${action}". Use: upex config, config get <setting>, config set <setting> <value>, config reset [setting]`);
     });
 }

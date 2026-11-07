@@ -708,10 +708,11 @@
       "title": "Script picker in selector",
       "body": "From a highlighted shortcut, open a list of its package.json scripts and run one. upex run already exists, this makes it discoverable.",
       "phase": "now",
-      "status": "planned",
+      "status": "done",
       "size": "M",
       "created": "2026-11-07",
-      "updated": "2026-11-07"
+      "updated": "2026-11-07",
+      "note": "^s on a folder shortcut opens its package.json scripts, Enter runs one like upex run (tab mode keeps the selector open), mouse works"
     },
     {
       "id": "reset-settings-to-defaults",
@@ -719,10 +720,11 @@
       "title": "Reset settings to defaults",
       "body": "upex config reset [setting] plus a Reset button per section in upex ui Settings, so trying appearance options is risk free.",
       "phase": "next",
-      "status": "planned",
+      "status": "done",
       "size": "S",
       "created": "2026-11-07",
-      "updated": "2026-11-07"
+      "updated": "2026-11-07",
+      "note": "upex config reset [setting], PUT /api/settings/reset, Reset button per upex ui Settings section (off while at defaults)"
     },
     {
       "id": "custom-accent-color",
@@ -730,10 +732,11 @@
       "title": "Custom accent color",
       "body": "accent also takes a hex like #ff66aa: exact color in upex ui, truecolor in the selector (nearest ansi256 fallback).",
       "phase": "now",
-      "status": "planned",
+      "status": "done",
       "size": "S",
       "created": "2026-11-07",
-      "updated": "2026-11-07"
+      "updated": "2026-11-07",
+      "note": "accent takes #rrggbb (# optional in CLI); chalk.hex in selector, inline CSS vars with auto ink in upex ui, color picker in Settings"
     },
     {
       "id": "more-sort-options",
@@ -741,10 +744,11 @@
       "title": "More sort options",
       "body": "Add Last opened and Recently added next to Most used and A to Z, in the selector, upex ui and config.",
       "phase": "next",
-      "status": "planned",
+      "status": "done",
       "size": "S",
       "created": "2026-11-07",
-      "updated": "2026-11-07"
+      "updated": "2026-11-07",
+      "note": "sort: opened (last opened), added (recently added) in selector, upex ui, config"
     },
     {
       "id": "start-view-last-used",
@@ -752,10 +756,11 @@
       "title": "Start view: last used",
       "body": "startView option that reopens the tab (and opener) you left the selector or upex ui on.",
       "phase": "next",
-      "status": "planned",
+      "status": "done",
       "size": "S",
       "created": "2026-11-07",
-      "updated": "2026-11-07"
+      "updated": "2026-11-07",
+      "note": "startView last: selector saves lastView/lastOpener on exit, upex ui saves the tab on switch"
     },
     {
       "id": "cd-support-via-wrapper-hidden-resolve-public-go",

@@ -15,13 +15,14 @@ import { fileURLToPath } from 'node:url';
 import { frecency, pruneBroken, mergeLinks, lastUsedName, nameError, takenError, checkAliases, aliasClashes, staleLinks, sweepExpired, diffLinks, keepUsage } from '../src/store.js';
 import { remoteWebUrl } from '../src/git.js';
 import { installCmdWrapper } from '../src/commands/setup.js';
-import { normalizeUrl, caretEscape, wtCommandLine, setting, shellCommand, defaultOpener, checkSettings } from '../src/launcher.js';
+import { normalizeUrl, caretEscape, wtCommandLine, setting, shellCommand, defaultOpener, checkSettings, resetSettings, startTab } from '../src/launcher.js';
 import { parseTags, parseDuration, defaultName } from '../src/commands/add.js';
 import { truncate, span, width, dimParent, stripAnsi } from '../src/ui.js';
 import { applyShortcut, applyOpener, cleanEntries, startServer } from '../src/commands/web.js';
 import { COMMAND_NAMES } from '../src/fast.js';
 import { createProgram } from '../src/index.js';
-import { renderInteractiveView, pathLook, inView, tidyPath, byOrder, optionRow, listRows, readMouse, hitTest, rowClick, undoError, clipName, prefill, editLine, inputLine, missingFlash, staysOpen, expandHome, underlineHits } from '../src/interactive.js';
+import { readScripts, detectPm } from '../src/commands/run.js';
+import { renderInteractiveView, accentOf, pathLook, inView, tidyPath, byOrder, optionRow, listRows, readMouse, hitTest, rowClick, undoError, clipName, prefill, editLine, inputLine, missingFlash, staysOpen, expandHome, underlineHits } from '../src/interactive.js';
 import chalk from 'chalk';
 import { resolveTarget, resolveName, suggestNames } from '../src/fuzzy.js';
 
@@ -148,6 +149,13 @@ assert.equal(upexIn('config', 'set', 'bogus', 'x').status, 1, 'unknown setting r
 assert.equal(upexIn('config', 'get', 'bogus').status, 1, 'unknown setting get refused');
 assert.equal(upexIn('config', 'get', 'terminalLayout').stdout.trim(), 'tabs', 'refused sets saved nothing');
 assert.match(upexIn('config').stdout, /terminalLayout\s+tabs\s+windows, tabs, panes/, 'config lists settings with options');
+assert.equal(upexIn('config', 'set', 'accent', 'FF66AA').status, 0, 'hex accent without # accepted');
+assert.equal(upexIn('config', 'get', 'accent').stdout.trim(), '#ff66aa', 'hex accent stored as #rrggbb');
+assert.equal(upexIn('config', 'reset', 'accent').status, 0, 'config reset one');
+assert.deepEqual([upexIn('config', 'get', 'accent').stdout.trim(), upexIn('config', 'get', 'terminalLayout').stdout.trim()], ['default', 'tabs'], 'reset one leaves the others');
+assert.equal(upexIn('config', 'reset', 'bogus').status, 1, 'reset unknown setting refused');
+assert.equal(upexIn('config', 'reset').status, 0, 'config reset all');
+assert.deepEqual([upexIn('config', 'get', 'terminalLayout').stdout.trim(), upexIn('config', 'get', 'defaultOpener').stdout.trim()], ['windows', 'explorer'], 'reset all = defaults');
 assert.equal(upexIn('stats', '--days', '0').status, 1, 'bad --days rejected');
 
 // -- subpaths: go prints a folder inside the shortcut, missing subfolder fails --
@@ -496,13 +504,33 @@ assert.ok(['General', 'Terminals', 'Opening', 'Appearance'].every(s => tall.incl
 const short = rowsOf({ ...setArgs, height: 14, settingIndex: 9 });
 assert.ok(short.length <= 14 && short.some(l => l.startsWith('  › Web theme')) && short.at(-1).includes('setting'), 'short terminal scrolls settings, keeps the footer');
 assert.equal(at({ ...setArgs, height: 14, settingIndex: 9 }, 3, short.findIndex(l => l.startsWith('  › Web theme')) + 1)?.setting, 9, 'scrolled settings stay clickable');
-assert.equal(checkSettings({ accent: 'red' }).error, 'accent must be one of: default, green, blue, purple, orange.', 'bad accent refused');
+assert.equal(checkSettings({ accent: 'red' }).error, 'accent must be one of: default, green, blue, purple, orange, or a hex color like #ff66aa.', 'bad accent refused');
+assert.deepEqual([checkSettings({ accent: '#FF66aa' }).next.accent, checkSettings({ accent: 'ff66aa' }).next.accent, checkSettings({ sort: '#ff66aa' }).error?.slice(0, 4)], ['#ff66aa', '#ff66aa', 'sort'], 'hex only for accent, normalized');
+assert.deepEqual([setting('accent', { accent: '#ff66aa' }), setting('accent', { accent: '#ff66a' }), setting('accent', { accent: '"><x' })], ['#ff66aa', 'default', 'default'], 'stored hex read back, junk falls back');
+assert.equal(accentOf('#ff66aa')('x'), chalk.hex('#ff66aa')('x'), 'hex accent via chalk.hex (it downsamples by color level)');
+const hexSet = strip(renderInteractiveView({ ...setArgs, height: 40, settings: { ...setArgs.settings, accent: '#ff66aa' } }));
+assert.ok(hexSet.includes('‹ #ff66aa ›'), 'hex accent shows as its own picked option');
+assert.deepEqual(resetSettings({ sort: 'name', accent: 'blue', apps: { x: 'y' }, workspaces: {} }, ['sort']), { accent: 'blue', apps: { x: 'y' }, workspaces: {} }, 'reset one setting');
+assert.deepEqual(resetSettings({ sort: 'name', defaultOpener: 'vscode', accent: '#ff66aa', apps: { x: 'y' } }), { apps: { x: 'y' } }, 'reset all keeps openers and workspaces');
+assert.deepEqual([startTab({ startView: 'last', lastView: 'apps' }), startTab({ startView: 'last' }), startTab({ startView: 'last', lastView: 'last' }), startTab({ startView: 'workspaces', lastView: 'apps' })], ['apps', 'shortcuts', 'shortcuts', 'workspaces'], 'start view last');
 
 // -- esc clears a filter first, success flash is green, ^z undo hint and restore checks --
 const v = (a) => strip(renderInteractiveView({ ...viewArgs, ...a }));
 assert.ok(v({}).includes('esc quit') && v({ query: 's' }).includes('esc clear') && v({ query: 's', mode: 'input', action: 'add' }).includes('esc cancel'), 'esc hint says what esc does');
 assert.ok(v({ view: 'workspaces', query: 'd' }).includes('esc clear'), 'workspaces too');
 assert.ok(v({}).includes('^u web ui') && v({ view: 'workspaces' }).includes('^u web ui'), '^u hint');
+
+// -- script picker: ^s hint, the picker rows, package.json reading --
+const picker = v({ mode: 'scripts', scripts: { pm: 'pnpm', list: [{ name: 'dev', path: 'vite' }, { name: 'build', path: 'vite build' }] }, scriptIndex: 1 });
+assert.ok(v({}).includes('^s scripts'), '^s hint on Shortcuts');
+assert.ok(picker.includes('run a script of s (pnpm)') && /› build\s+vite build/.test(picker) && picker.includes('esc back') && !picker.includes('open with'), 'script picker view');
+{
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'upex-pkg-'));
+  assert.equal(readScripts(dir), null, 'no package.json');
+  fs.writeFileSync(path.join(dir, 'package.json'), JSON.stringify({ scripts: { dev: 'vite' } }));
+  fs.writeFileSync(path.join(dir, 'pnpm-lock.yaml'), '');
+  assert.deepEqual([readScripts(dir), detectPm(dir)], [{ dev: 'vite' }, 'pnpm'], 'scripts and package manager');
+}
 const webAt = 'http://127.0.0.1:4545/?t=x';
 assert.ok(!v({}).includes('upex ui running') && v({ webUrl: webAt }).includes(`● upex ui running  ${webAt}`) && v({ view: 'settings', settings: setArgs.settings, webUrl: webAt }).includes(webAt), 'running web ui shows its link in the selector');
 assert.ok(v({ webUrl: webAt, mode: 'input', action: 'add' }).includes(webAt), 'link stays while typing');
@@ -655,6 +683,8 @@ assert.deepEqual([...ord].sort(byOrder('name')).map(c => c.name), ['a', 'b', 'c'
 const pins = [...ord, { name: 'z', score: 0, pinned: true }];
 assert.deepEqual(pins.sort(byOrder('recent')).map(c => c.name), ['z', 'c', 'a', 'b'], 'pinned first regardless of score');
 assert.equal([...pins].sort(byOrder('name'))[0].name, 'z', 'pinned first in A to Z too');
+const dated = [{ name: 'a', lastUsed: 5, added: 1 }, { name: 'b', lastUsed: 9 }, { name: 'c', added: 7 }];
+assert.deepEqual([[...dated].sort(byOrder('opened')), [...dated].sort(byOrder('added'))].map(l => l.map(c => c.name).join('')), ['bac', 'cab'], 'last opened / recently added, missing dates last');
 assert.deepEqual(diffLinks({ a: { path: 'A' }, b: { path: 'B' } }, { b: { path: 'X' }, c: { path: 'C' } }), { added: ['c'], removed: ['a'], changed: ['b'] }, 'diffLinks');
 assert.deepEqual(keepUsage({ a: { path: 'A', uses: 1 }, b: { path: 'B' } }, { a: { path: 'Z', uses: 3, lastUsed: 9 } }), { a: { path: 'A', uses: 3, lastUsed: 9 }, b: { path: 'B' } }, 'keepUsage takes current stats');
 assert.equal(defaultName('/x/My Cool  App/'), 'My-Cool-App', 'defaultName: basename, spaces to dashes');
@@ -739,6 +769,15 @@ try {
   assert.equal((await putSet({ defaultOpener: 'nope' })).status, 400, 'unknown opener refused');
   assert.equal((await putSet({ defaultOpener: 'copy' })).status, 400, 'copy refused as default opener');
   assert.equal((await putSet({ sort: 'used' })).status, 400, 'bad sort refused');
+  const put = (route, body) => fetch(base + '/api/' + route, { method: 'PUT', headers: { 'content-type': 'application/json', 'x-upex-token': token }, body: JSON.stringify(body) });
+  assert.equal((await putSet({ accent: '#00aaff', density: 'compact' })).status, 200, 'hex accent saved over the api');
+  assert.equal((await put('settings/reset', { keys: ['bogus'] })).status, 400, 'reset refuses unknown keys');
+  assert.equal((await put('settings/reset', { keys: ['accent'] })).status, 200, 'reset a section');
+  const rs = JSON.parse(fs.readFileSync(path.join(webHome, '.upex', 'config.json'), 'utf-8'));
+  assert.deepEqual([rs.accent, rs.density], [undefined, 'compact'], 'reset only the given keys');
+  assert.deepEqual([(await put('last', { view: 'settings' })).status, (await put('last', { view: 'workspaces' })).status], [400, 200], 'last tab: settings refused, workspaces saved');
+  assert.equal((await (await fetch(base + '/api/state', { headers: { 'x-upex-token': token } })).json()).startTab, 'shortcuts', 'last tab only used for start view last');
+  assert.equal((await put('settings/reset', { keys: ['density'] })).status, 200, 'density back to default');
   assert.equal((await putSet({ terminalLayout: 'panes', paneSplit: 'horizontal', terminalShell: 'powershell', defaultOpener: 'code', startView: 'apps', sort: 'name' })).status, 200, 'settings saved');
   const cfg2 = JSON.parse(fs.readFileSync(path.join(webHome, '.upex', 'config.json'), 'utf-8'));
   assert.equal(cfg2.terminalLayout, 'panes', 'layout written to config');

@@ -14,14 +14,14 @@ import { handleOpen } from './open.js';
 import * as ui from '../ui.js';
 
 // Pick a package manager from the lockfile present in the folder (npm default).
-function detectPm(dir) {
+export function detectPm(dir) {
   if (fs.existsSync(path.join(dir, 'pnpm-lock.yaml'))) return 'pnpm';
   if (fs.existsSync(path.join(dir, 'yarn.lock'))) return 'yarn';
   if (fs.existsSync(path.join(dir, 'bun.lockb')) || fs.existsSync(path.join(dir, 'bun.lock'))) return 'bun';
   return 'npm';
 }
 
-function readScripts(dir) {
+export function readScripts(dir) {
   try {
     const pkg = JSON.parse(fs.readFileSync(path.join(dir, 'package.json'), 'utf-8'));
     return pkg.scripts && typeof pkg.scripts === 'object' ? pkg.scripts : {};

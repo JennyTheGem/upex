@@ -166,6 +166,15 @@ h1 { font-size: 20px; letter-spacing: -.015em; margin: 8px 0 4px; }
 :root[data-paths="hidden"] .item > .target { display: none; }
 :root[data-paths="hidden"] .item:not(.editing) { grid-template-columns: 18px minmax(120px, 1fr) 64px auto; }
 .swatch { width: 10px; height: 10px; border-radius: 3px; background: var(--accent); }
+.set-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.set-head h2 { font-size: 15px; margin: 0; }
+.custom-accent {
+  display: inline-flex; align-items: center; gap: 6px; height: var(--h); padding: 0 10px 0 4px; cursor: pointer;
+  color: var(--muted); border: 1px solid var(--line-strong); border-radius: var(--r); font-family: var(--mono); font-size: 12.5px;
+}
+.custom-accent:hover { color: var(--text); }
+.custom-accent.on { color: var(--text); border-color: var(--accent); background: var(--accent-soft); }
+.custom-accent input { width: 22px; height: 22px; padding: 0; border: 0; background: none; cursor: pointer; }
 .when { color: var(--muted); font-size: 12px; text-align: right; font-variant-numeric: tabular-nums; }
 .actions { display: flex; gap: 4px; align-items: center; justify-content: flex-end; }
 .actions select { height: var(--h); width: 122px; }
@@ -275,8 +284,8 @@ const KINDS = { folder: 'Folder', app: 'App', cmd: 'Command', url: 'URL' };
 const TAB_KINDS = { links: ['folder'], apps: ['app', 'cmd', 'url'] };
 const TITLES = { links: 'Shortcuts', apps: 'Apps', ws: 'Workspaces', settings: 'Settings' };
 const SETTING_OPTS = {
-  startView: { shortcuts: 'Shortcuts', apps: 'Apps', workspaces: 'Workspaces' },
-  sort: { recent: 'Most used', name: 'A to Z' },
+  startView: { shortcuts: 'Shortcuts', apps: 'Apps', workspaces: 'Workspaces', last: 'Last used' },
+  sort: { recent: 'Most used', name: 'A to Z', opened: 'Last opened', added: 'Recently added' },
   terminalLayout: { windows: 'Separate windows', tabs: 'Tabs', panes: 'Split panes' },
   paneSplit: { auto: 'Auto', vertical: 'Side by side', horizontal: 'Stacked' },
   terminalShell: { cmd: 'cmd', powershell: 'PowerShell', pwsh: 'PowerShell 7', profile: 'WT default profile' },
@@ -292,9 +301,12 @@ const tabLinks = (archived = S.archived) => S.links.filter(l => l.tab === S.view
 const COPY_WORD = { folder: 'path', app: 'path', cmd: 'command', url: 'URL' };
 // config startView -> page tab
 const START_TAB = { shortcuts: 'links', apps: 'apps', workspaces: 'ws' };
+// Sort setting -> field, highest first; A to Z has none.
+const SORT_FIELD = { recent: 'score', opened: 'lastUsed', added: 'added' };
+const isHex = v => /^#[0-9a-f]{6}$/i.test(v || '');
 
 const S = {
-  links: [], workspaces: {}, apps: [], openers: [], settings: {}, wt: null, home: '', sep: '/',
+  links: [], workspaces: {}, apps: [], openers: [], settings: {}, defaults: {}, startTab: '', wt: null, home: '', sep: '/',
   view: null, q: '', tag: null, archived: false,
   adding: false, addKind: 'folder', addErr: '', add: { name: '', target: '', tags: '', opener: '' },
   editing: null, draft: null, editErr: '',
@@ -374,7 +386,7 @@ async function load(skip) {
     if (skip) return;
   }
   if (!S.view) {
-    S.view = START_TAB[S.settings.startView] || 'links';
+    S.view = START_TAB[S.startTab] || 'links';
     if (TAB_KINDS[S.view]) S.addKind = TAB_KINDS[S.view][0];
   }
   render();
@@ -429,7 +441,7 @@ function visibleLinks() {
   return tabLinks()
     .filter(l => !S.tag || l.tags.includes(S.tag))
     .filter(l => !q || [l.name, l.target, ...l.tags, ...l.aliases].some(s => s.toLowerCase().includes(q)))
-    .sort((a, b) => b.pinned - a.pinned || (S.settings.sort === 'name' ? 0 : b.score - a.score) || a.name.localeCompare(b.name));
+    .sort((a, b) => { const f = SORT_FIELD[S.settings.sort]; return b.pinned - a.pinned || (f ? b[f] - a[f] : 0) || a.name.localeCompare(b.name); });
 }
 
 function addForm() {
@@ -773,8 +785,8 @@ function wsView() {
 function settingsView() {
   const s = S.settings;
   // One labelled radio group per setting; saves on change and keeps focus on the picked option.
-  // `deco(k)` adds something before an option's label (the accent swatches).
-  const seg = (key, title, msg, deco) => h('div', { class: 'row' },
+  // `deco(k)` adds something before an option's label (the accent swatches), `extra` goes after the group.
+  const seg = (key, title, msg, deco, extra) => h('div', { class: 'row' },
     h('span', { class: 'set-label', id: 'lbl-' + key }, title),
     h('div', { class: 'seg', role: 'radiogroup', 'aria-labelledby': 'lbl-' + key },
       Object.entries(SETTING_OPTS[key]).map(([k, label]) => [
@@ -782,30 +794,42 @@ function settingsView() {
           act(() => api('PUT', 'settings', { [key]: k }), msg(label))
             .then(() => document.getElementById(`${key}-${S.settings[key]}`)?.focus()) }),
         h('label', { for: `${key}-${k}` }, deco?.(k), label),
-      ])));
+      ])), extra);
   const notes = [
     S.wt === null && 'Windows only. Other systems use their own terminal.',
     S.wt === false && s.terminalLayout !== 'windows' && 'Windows Terminal (wt) was not found, so terminals open as separate windows.',
     S.wt === false && s.terminalShell === 'profile' && 'Without Windows Terminal, the default profile falls back to cmd.',
     S.wt && s.terminalShell === 'profile' && 'A start command (like claude) runs in cmd, since upex cannot know which shell your default profile uses.',
   ].filter(Boolean);
+  // Section heading with a Reset button, off while the section is already at its defaults.
+  const head = (id, title, keys) => h('div', { class: 'set-head' },
+    h('h2', { id }, title),
+    btn('Reset', 'ghost', () => act(() => api('PUT', 'settings/reset', { keys }), `${title} back to defaults`),
+      null, { disabled: keys.every(k => s[k] === S.defaults[k]), title: `Reset ${title} settings to their defaults` }));
+  const hex = isHex(s.accent) ? s.accent : '';
+  // Any color: saved when the picker closes, not on every drag.
+  const customAccent = h('label', { class: 'custom-accent' + (hex ? ' on' : ''), title: 'Pick any accent color' },
+    h('input', { type: 'color', id: 'accent-custom', value: hex || '#ff66aa', 'aria-label': 'Custom accent color',
+      onchange: e => act(() => api('PUT', 'settings', { accent: e.target.value }), `Accent: ${e.target.value}`)
+        .then(() => document.getElementById('accent-custom')?.focus()) }),
+    hex || 'Custom');
   const pickOpener = e => act(() => api('PUT', 'settings', { defaultOpener: e.target.value }), `Folders open in ${appLabel(e.target.value)}`)
     .then(() => document.getElementById('set-opener')?.focus());
   return [
     h('section', { class: 'form', 'aria-labelledby': 'set-gen' },
-      h('h2', { id: 'set-gen', style: 'font-size:15px;margin:0' }, 'General'),
+      head('set-gen', 'General', ['startView', 'sort']),
       h('p', { class: 'lede', style: 'margin:0' }, 'Shared with the upex selector in the terminal.'),
       seg('startView', 'Start view', l => `upex opens on ${l}`),
       seg('sort', 'Sort', l => `Sorted: ${l}`)),
     h('section', { class: 'form', 'aria-labelledby': 'set-term' },
-      h('h2', { id: 'set-term', style: 'font-size:15px;margin:0' }, 'Terminals'),
+      head('set-term', 'Terminals', ['terminalLayout', 'paneSplit', 'terminalShell']),
       h('p', { class: 'lede', style: 'margin:0' }, 'The shell terminal openers start, and whether several of them go into your current Windows Terminal window as tabs or split panes.'),
       seg('terminalLayout', 'Layout', l => `Terminals open as ${l.toLowerCase()}`),
       s.terminalLayout === 'panes' && seg('paneSplit', 'Pane split', l => `Panes split: ${l.toLowerCase()}`),
       seg('terminalShell', 'Shell', l => `Terminals start ${l}`),
       notes.map(n => h('p', { class: 'tag', style: 'margin:0' }, n))),
     h('section', { class: 'form', 'aria-labelledby': 'set-open' },
-      h('h2', { id: 'set-open', style: 'font-size:15px;margin:0' }, 'Opening'),
+      head('set-open', 'Opening', ['defaultOpener']),
       h('p', { class: 'lede', style: 'margin:0' }, 'Folder shortcuts without their own opener open in this app. Files still open in their default app.'),
       h('div', { class: 'row' },
         h('label', { class: 'set-label', for: 'set-opener' }, 'Default opener'),
@@ -813,10 +837,10 @@ function settingsView() {
           S.apps.filter(a => a.key !== 'copy').map(a => h('option', { value: a.key, selected: s.defaultOpener === a.key }, a.label)),
           !S.apps.some(a => a.key === s.defaultOpener) && h('option', { value: s.defaultOpener, selected: true }, s.defaultOpener)))),
     h('section', { class: 'form', 'aria-labelledby': 'set-look' },
-      h('h2', { id: 'set-look', style: 'font-size:15px;margin:0' }, 'Appearance'),
+      head('set-look', 'Appearance', ['theme', 'accent', 'density', 'paths']),
       h('p', { class: 'lede', style: 'margin:0' }, 'Accent, density and paths also apply to the upex selector. Theme is this page only, the terminal keeps its own colors.'),
       seg('theme', 'Theme', l => `Theme: ${l}`),
-      seg('accent', 'Accent', l => `Accent: ${l}`, k => h('span', { class: 'swatch ac-' + k, 'aria-hidden': 'true' })),
+      seg('accent', 'Accent', l => `Accent: ${l}`, k => h('span', { class: 'swatch ac-' + k, 'aria-hidden': 'true' }), customAccent),
       seg('density', 'Density', l => `Density: ${l}`),
       seg('paths', 'Paths', l => `Paths: ${l}`)),
     h('section', { class: 'form', 'aria-labelledby': 'set-apps' },
@@ -883,8 +907,19 @@ function openerAdd() {
 
 // ---------- Shell ----------
 
+// Appearance onto <html>. A hex accent goes on as inline vars, with black or white ink, whichever reads on it.
+function applyLook() {
+  const root = document.documentElement;
+  for (const k of LOOK) if (S.settings[k]) root.dataset[k] = S.settings[k];
+  const hex = isHex(root.dataset.accent) && root.dataset.accent;
+  if (!hex) { root.style.removeProperty('--accent'); root.style.removeProperty('--accent-ink'); return; }
+  const [r, g, b] = [1, 3, 5].map(i => parseInt(hex.slice(i, i + 2), 16));
+  root.style.setProperty('--accent', hex);
+  root.style.setProperty('--accent-ink', 0.299 * r + 0.587 * g + 0.114 * b > 150 ? '#111111' : '#ffffff');
+}
+
 function render() {
-  for (const k of LOOK) if (S.settings[k]) document.documentElement.dataset[k] = S.settings[k];
+  applyLook();
   document.getElementById('n-links').textContent = S.links.filter(l => l.tab === 'links' && !l.archived).length;
   document.getElementById('n-apps').textContent = S.links.filter(l => l.tab === 'apps' && !l.archived).length;
   document.getElementById('n-ws').textContent = Object.keys(S.workspaces).length;
@@ -903,6 +938,9 @@ function render() {
 document.querySelectorAll('.tab').forEach(t => t.addEventListener('click', () => {
   if (S.view === t.dataset.view) return;
   S.view = t.dataset.view;
+  // Remembered for start view 'last'; Settings is not a place to start.
+  const last = { links: 'shortcuts', apps: 'apps', ws: 'workspaces' }[S.view];
+  if (last) api('PUT', 'last', { view: last }).catch(() => {});
   // Per-tab state: an open add form or tag filter belongs to the tab it was opened on.
   S.adding = false; S.addErr = ''; S.tag = null; S.editing = null; S.confirming = null; S.archived = false;
   S.editWs = null; S.renamingWs = null; S.confirmWs = null; S.editOp = null; S.confirmOp = null;
@@ -922,6 +960,7 @@ document.addEventListener('keydown', e => {
   else if (e.key === 'Escape' && document.activeElement?.id === 'q') { e.target.value = S.q = ''; e.target.blur(); render(); }
 });
 
+applyLook();
 load();
 </script>
 </body>

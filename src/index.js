@@ -119,7 +119,7 @@ export function createProgram() {
       if (!name) {
         const result = await runInteractiveMode({ preferredApp: program.opts().app });
         if (result.status === 'selected') {
-          await handleOpen(result.name, result.app, result.count || 1);
+          await handleOpen(result.name, result.app, result.count || 1, result.start);
           return;
         }
         if (result.status === 'workspace') {

@@ -56,7 +56,7 @@ npm link
 | `upex doctor` | Check the store, openers, shell wrapper and completion |
 | `upex stats [--days N] [--all]` | Most used shortcuts and openers (default last 30 days) and opens per week |
 | `upex ui [--port <n>] [--no-open]` | Manage shortcuts and workspaces in the browser |
-| `upex config` / `config get <setting>` / `config set <setting> <value>` | Show, print or change a setting (see Settings below) |
+| `upex config` / `config get <setting>` / `config set <setting> <value>` / `config reset [setting]` | Show, print, change or reset a setting (see Settings below) |
 | `upex completion [shell]` | Print a shell completion script (bash/zsh/fish/powershell) |
 | `upex setup [cmd]` | Shell integration; `setup cmd` installs the cmd.exe wrapper |
 | `upex help` | Show all available commands |
@@ -200,7 +200,7 @@ upex import backup.json --replace  # replace everything
 
 ## Interactive Mode
 
-Run `upex` with no arguments to open the interactive selector. Pinned shortcuts (`upex pin`) come first, then the rest by frecency (most-used and most-recent first), or A to Z with the `sort` setting. It opens on the `startView` tab (Shortcuts with `--app`).
+Run `upex` with no arguments to open the interactive selector. Pinned shortcuts (`upex pin`) come first, then the rest by frecency (most-used and most-recent first), or A to Z, last opened or recently added with the `sort` setting. It opens on the `startView` tab (Shortcuts with `--app`).
 
 - `Up` / `Down` -- move through shortcuts
 - `Left` / `Right` -- change the selected app (starts on the shortcut's default opener)
@@ -212,6 +212,7 @@ Run `upex` with no arguments to open the interactive selector. Pinned shortcuts 
 - `Ctrl+A` -- add a shortcut for the current directory
 - `Ctrl+E` -- edit the selected shortcut's path (starts filled in, `Ctrl+U` clears it)
 - `Ctrl+R` -- rename the selected shortcut (starts filled in)
+- `Ctrl+S` -- list the selected folder's package.json scripts; Enter runs one in a terminal (like `upex run`), Esc goes back
 - While typing a path or name: `Left` / `Right` move the cursor, `Ctrl+Left` / `Ctrl+Right` jump a word, `Home` / `End`, `Ctrl+Backspace` (or `Ctrl+W`) deletes a word, `Del` deletes forward. `Ctrl+Backspace` also works in the filter
 - `Ctrl+D` -- delete the selected shortcut (confirm with `y`), `Ctrl+Z` undoes the last delete
 - `Ctrl+U` -- start `upex ui` and open it in the browser; the selector stays open and shows the link. `Ctrl+U` again stops it, so does closing the selector
@@ -220,7 +221,7 @@ Run `upex` with no arguments to open the interactive selector. Pinned shortcuts 
 
 ## Web UI
 
-Run `upex ui` to open a local page (default `http://127.0.0.1:4545`, a free port if that one is busy) where you can add, edit, rename, tag, delete, copy and open shortcuts, set a default opener, add or edit custom openers (Settings tab), open terminals with a window count and start command, build, reorder and rename workspaces, and remove missing paths. Lists sort by most used (or A to Z), pinned shortcuts first (pin icon on each row) and re-check paths when you come back to the page. Folders, apps (app, command and URL shortcuts) and workspaces each get their own tab. Press `/` to search, `n` for a new shortcut or app. Stop it with `Ctrl+C`.
+Run `upex ui` to open a local page (default `http://127.0.0.1:4545`, a free port if that one is busy) where you can add, edit, rename, tag, delete, copy and open shortcuts, set a default opener, add or edit custom openers (Settings tab), open terminals with a window count and start command, build, reorder and rename workspaces, and remove missing paths. Lists sort by most used (or A to Z, last opened, recently added), pinned shortcuts first (pin icon on each row) and re-check paths when you come back to the page. Folders, apps (app, command and URL shortcuts) and workspaces each get their own tab. Press `/` to search, `n` for a new shortcut or app. Stop it with `Ctrl+C`.
 
 It only listens on 127.0.0.1 and every request needs a token that is new each run, so other sites can't use it. With `--no-open`, open the link it prints (it carries the token).
 
@@ -316,10 +317,10 @@ Config is stored in `~/.upex/config.json`, including custom openers under `apps`
 }
 ```
 
-Settings, also on the Settings tab of `upex ui` and the selector (`Shift+Tab`), and from the command line with `upex config set terminalLayout tabs` (`upex config` lists them all, `upex config get sort` prints one value):
+Settings, also on the Settings tab of `upex ui` and the selector (`Shift+Tab`), and from the command line with `upex config set terminalLayout tabs` (`upex config` lists them all, `upex config get sort` prints one value, `upex config reset [setting]` puts one or all back to the default, like the Reset button on each `upex ui` Settings section):
 
-- `"startView"`: the tab the selector and `upex ui` open on. `"shortcuts"` (default), `"apps"` or `"workspaces"`.
-- `"sort"`: shortcut order in the selector and `upex ui`. `"recent"` (default, most used first) or `"name"` (A to Z).
+- `"startView"`: the tab the selector and `upex ui` open on. `"shortcuts"` (default), `"apps"`, `"workspaces"` or `"last"` (the tab you left the selector or `upex ui` on, plus the opener you picked in the selector).
+- `"sort"`: shortcut order in the selector and `upex ui`. `"recent"` (default, most used first), `"name"` (A to Z), `"opened"` (last opened first) or `"added"` (recently added first).
 - `"terminalLayout"` (Windows): how several terminals open. `"windows"` (default, separate windows), `"tabs"` or `"panes"` (added to your current Windows Terminal window). Falls back to windows when `wt` is missing. With tabs, a terminal opened from the selector leaves the selector open.
 - `"paneSplit"` (Windows, panes layout): `"auto"` (default), `"vertical"` (side by side) or `"horizontal"` (stacked).
 - `"terminalShell"` (Windows): the shell terminal openers start. `"cmd"` (default), `"powershell"`, `"pwsh"`, or `"profile"` (your Windows Terminal default profile; a start command like `claude` then runs in cmd, and without `wt` it falls back to cmd).
@@ -329,7 +330,7 @@ Settings, also on the Settings tab of `upex ui` and the selector (`Shift+Tab`), 
 Appearance:
 
 - `"theme"` (`upex ui` only): `"system"` (default, follows the OS), `"dark"` or `"light"`.
-- `"accent"`: `"default"` (green in `upex ui`, uncolored in the selector), `"green"`, `"blue"`, `"purple"` or `"orange"`. The `upex ui` accent and the selector's `›` pointer and picked option.
+- `"accent"`: `"default"` (green in `upex ui`, uncolored in the selector), `"green"`, `"blue"`, `"purple"`, `"orange"`, or any hex color like `"#ff66aa"` (`upex config set accent ff66aa`, the `#` is optional; truecolor in the selector, nearest color on terminals with fewer colors). The `upex ui` accent and the selector's `›` pointer and picked option.
 - `"density"`: `"comfortable"` (default) or `"compact"` (no spacer lines in the selector, tighter rows in `upex ui`).
 - `"paths"`: `"dim"` (default, parent folders dimmed), `"full"` or `"hidden"` (no paths, commands or URLs) in the selector, `upex ls`, `upex stale` and `upex ui`. Piped output always shows paths.
 

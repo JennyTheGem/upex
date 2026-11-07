@@ -96,8 +96,10 @@ export const isTerminalApp = key => key === 'cmd' || key === 'claude';
 // Settings in config.json; the first value is the default. Start view and sort are shared by the selector and upex ui; fullScreen is selector only.
 // Layout: separate windows, or tabs/panes in one Windows Terminal window. Shell 'profile' = wt default profile.
 export const SETTINGS = {
-  startView: ['shortcuts', 'apps', 'workspaces'],
-  sort: ['recent', 'name'],
+  // last = the tab (and opener) the selector or upex ui was left on.
+  startView: ['shortcuts', 'apps', 'workspaces', 'last'],
+  // recent = most used, opened = last opened, added = recently added.
+  sort: ['recent', 'name', 'opened', 'added'],
   terminalLayout: ['windows', 'tabs', 'panes'],
   paneSplit: ['auto', 'vertical', 'horizontal'],
   terminalShell: ['cmd', 'powershell', 'pwsh', 'profile'],
@@ -108,7 +110,24 @@ export const SETTINGS = {
   density: ['comfortable', 'compact'],
   paths: ['dim', 'full', 'hidden'],
 };
-export const setting = (key, config = loadConfig()) => (SETTINGS[key].includes(config[key]) ? config[key] : SETTINGS[key][0]);
+// Accent also takes a hex color, stored as #rrggbb.
+export const isHex = v => typeof v === 'string' && /^#[0-9a-f]{6}$/i.test(v);
+const valid = (key, v) => SETTINGS[key].includes(v) || (key === 'accent' && isHex(v));
+export const setting = (key, config = loadConfig()) => (valid(key, config[key]) ? config[key] : SETTINGS[key][0]);
+// Every setting name, defaultOpener included.
+export const SETTING_KEYS = [...Object.keys(SETTINGS), 'defaultOpener'];
+// Config without these settings (all when none given), so they fall back to their defaults.
+export function resetSettings(config, keys = SETTING_KEYS) {
+  const out = { ...config };
+  for (const k of keys) delete out[k];
+  return out;
+}
+// Tab to open on: startView, or for 'last' the one saved in lastView (Shortcuts when none).
+export function startTab(config = loadConfig()) {
+  const v = setting('startView', config);
+  if (v !== 'last') return v;
+  return config.lastView !== 'last' && SETTINGS.startView.includes(config.lastView) ? config.lastView : 'shortcuts';
+}
 // Is wt on PATH? null off Windows, where these settings don't apply.
 export const hasWindowsTerminal = () => (platform === 'win32' ? commandExists('wt') : null);
 
@@ -375,9 +394,11 @@ export function checkSettings(values) {
       next[k] = typeof v === 'string' && openerKey(v);
       if (!next[k] || next[k] === 'copy') return { error: `Unknown opener "${v}".` };
     } else if (Object.hasOwn(SETTINGS, k)) {
-      if (!SETTINGS[k].includes(v)) return { error: `${k} must be one of: ${SETTINGS[k].join(', ')}.` };
-      next[k] = v;
-    } else return { error: `Unknown setting "${k}". Settings: ${[...Object.keys(SETTINGS), 'defaultOpener'].join(', ')}.` };
+      // A hex accent may skip the #, which shells read as a comment.
+      const hex = k === 'accent' && typeof v === 'string' && /^#?[0-9a-f]{6}$/i.test(v) && `#${v.replace('#', '').toLowerCase()}`;
+      if (!hex && !SETTINGS[k].includes(v)) return { error: `${k} must be one of: ${SETTINGS[k].join(', ')}${k === 'accent' ? ', or a hex color like #ff66aa' : ''}.` };
+      next[k] = hex || v;
+    } else return { error: `Unknown setting "${k}". Settings: ${SETTING_KEYS.join(', ')}.` };
   }
   return { next };
 }
