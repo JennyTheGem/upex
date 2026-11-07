@@ -409,7 +409,7 @@ function settingNote(key, s, wt) {
   if (key === 'rowDetails') return 'Right side of a row: #tags, badges (pinned, app, missing), both or none. Here, in upex ls and upex ui.';
   if (key === 'pinned') return 'Pinned shortcuts first, or first under their own Pinned heading. Here and in upex ui. ^p pins, Alt+↑↓ moves one.';
   if (key === 'narrowPane') return 'Under 140 columns (full screen): Shift+→ opens the pane, Shift+← or Esc closes it, or it always shows. Not under 60.';
-  if (key === 'goals') return 'Pane right of the list (full screen): open upgo goals of a folder, up to this many. S-→ picks one to copy.';
+  if (key === 'goals') return 'Pane right of the list (full screen): open upgo goals of a folder, up to this many. S-→ picks one to copy, a click copies it.';
   if (key === 'git') return 'Pane right of the list (full screen): branch, ahead/behind, changes and last commit of a folder in git. ^g opens its web page.';
   if (key === 'keyHints') return 'Key rows under the list. Short: one row of the main keys. Off: more room for the list. Settings keeps its keys.';
   if (key === 'glyphs') return 'Selector only. ASCII swaps arrows, pointers, lines and the ellipsis for plain characters, for fonts that show boxes.';
@@ -485,7 +485,8 @@ export function gitLines(g, pw, now = Date.now()) {
   return out;
 }
 
-// Detail pane lines for the selected row, each at most `pw` wide. `goals` from goalSummary, `sel` the picked one.
+// Detail pane lines for the selected row, each at most `pw` wide; clickable ones are { text, web | copy, msg }.
+// `goals` from goalSummary, `sel` the picked one.
 export function detailLines(c, pw, appChoices = [], now = Date.now(), { goals = null, sel = -1, pick = chalk.bold, git = null } = {}) {
   if (!c) return [];
   const row = (k, v) => (v ? `${chalk.dim(k.padEnd(10))}${String(v)}` : null);
@@ -494,9 +495,10 @@ export function detailLines(c, pw, appChoices = [], now = Date.now(), { goals = 
   const out = [chalk.bold(head) + (badge ? ' '.repeat(pw - vis(head) - vis(badge)) + badge : '')];
   if (c.entries) return [...out, '', ...c.entries.map(describeEntry)].map(l => ui.truncate(l, pw));
   // The full target, wrapped instead of clipped (4 lines at most).
+  // A click on it copies it, like ^y.
   for (let p = c.path || '', n = 0; p && n < 4; n++) {
     const part = ui.fit(p, pw) || p[0];
-    out.push(c.isUrl || c.isApp ? part : ui.dimParent(part));
+    out.push({ text: c.isUrl || c.isApp ? part : ui.dimParent(part), copy: c.path, msg: `copied ${c.path}` });
     p = p.slice(part.length);
   }
   const opener = c.opener && (appChoices.find(a => a.key === c.opener)?.label || c.opener);
@@ -511,15 +513,16 @@ export function detailLines(c, pw, appChoices = [], now = Date.now(), { goals = 
     row('added', !isNaN(added) && added.toLocaleDateString('sv-SE')),
     row('expires', c.expires && `in ${ui.span(c.expires - now, Math.ceil)}`));
   if (git) out.push(...gitLines(git, pw, now));
-  // Title clipped, so its phase stays in view.
+  // Title clipped, so its phase stays in view. A click copies it, like Enter in the picker.
   if (goals) {
     out.push('', row('goals', `${goals.open} open`), ...goals.next.map((g, i) => {
       const phase = chalk.dim(` ${oneLine(g.phase)}`);
       const title = ui.truncate(oneLine(g.title ?? g.id), Math.max(1, pw - 10 - vis(phase)));
-      return (i === sel ? `${' '.repeat(8)}${pick('›')} ${chalk.bold(title)}` : ' '.repeat(10) + title) + phase;
+      const text = (i === sel ? `${' '.repeat(8)}${pick('›')} ${chalk.bold(title)}` : ' '.repeat(10) + title) + phase;
+      return { text, copy: goalText(g), msg: `copied "${oneLine(g.id ?? g.title)}"` };
     }));
   }
-  return out.filter(l => l !== null).map(l => (l.web ? l : ui.truncate(l, pw)));
+  return out.filter(l => l !== null).map(l => (l.text != null ? { ...l, text: ui.truncate(l.text, pw) } : ui.truncate(l, pw)));
 }
 
 // Script picker in the pane, `rows` tall: a heading, then the scripts around `sel` as { text, i }.
@@ -569,7 +572,7 @@ export function renderInteractiveView({
   maxList = Infinity,
   full = false, // full screen: footer at the bottom, detail pane when wide
   paneOpen = false, // detail pane opened with Shift+Right on a narrow screen
-  targets = null, // optional out: clickable { line, from, to, tab | row | opener | setting [+ option] }
+  targets = null, // optional out: clickable { line, from, to, tab | row | opener | web | copy + msg | setting [+ option] }
 }) {
   asciiHints = settings.glyphs === 'ascii';
   const isWs = view === 'workspaces';
@@ -788,6 +791,7 @@ export function renderInteractiveView({
       // A script row { text, i } is clickable right of the │.
       if (d?.i != null) hit(i, lw + 3, w, { row: d.i });
       if (d?.web) hit(i, lw + 3, w, { web: true });
+      if (d?.copy) hit(i, lw + 3, w, { copy: d.copy, msg: d.msg });
       const l = ui.truncate(lines[i], lw);
       lines[i] = `${l}${' '.repeat(Math.max(0, lw - vis(l)))}${chalk.dim(' │ ')}${d?.text ?? d ?? ''}`;
     }
@@ -1215,10 +1219,12 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
     // Presses are skipped: the second press of a double-click must not wipe the first one's flash.
     const handleMouse = ({ x, y, wheel, click }) => {
       const picking = mode === 'scripts';
-      if (!alt || (mode !== 'browse' && !picking) || !(wheel || click)) return;
+      const goalPick = mode === 'goals';
+      if (!alt || (mode !== 'browse' && !picking && !goalPick) || !(wheel || click)) return;
       if (wheel) {
         flash = '';
         if (picking) scriptIndex = clamp(scriptIndex + wheel, scripts.list.length);
+        else if (goalPick) goalIndex = clamp(goalIndex + wheel, paneGoals()?.next.length || 1);
         else if (view === 'settings') settingIndex = clamp(settingIndex + wheel, visibleRows(settings).length);
         else if (view === 'workspaces') wsIndex = clamp(wsIndex + wheel, filteredWs.length);
         else selectedIndex = clamp(selectedIndex + wheel, filteredChoices.length);
@@ -1227,17 +1233,20 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
       }
       const t = hitTest(targets, x, y);
       const ws = view === 'workspaces';
-      // The web line opens on any click, so a double-click must not open it twice.
-      const act = (t?.row != null || t?.web) && rowClick(lastClick, y, Date.now(), !!t.web || t.row === (picking ? scriptIndex : ws ? wsIndex : selectedIndex));
+      // The web and copy lines act on any click, so a double-click must not act twice.
+      const once = !!(t?.web || t?.copy);
+      const act = (t?.row != null || once) && rowClick(lastClick, y, Date.now(), once || t.row === (picking ? scriptIndex : ws ? wsIndex : selectedIndex));
       // Second half of a double-click that already opened: keep its flash.
       if (act === 'skip') return;
-      // Any click dismisses the flash, an empty spot included.
+      // Any click dismisses the flash, an empty spot included, and leaves the goal picker.
       flash = '';
+      if (goalPick) mode = 'browse';
       if (t?.tab) {
         mode = 'browse';
         if (t.tab !== view) switchTo(t.tab);
-      } else if (t?.web) {
-        openWeb();
+      } else if (once) {
+        if (t.web) openWeb();
+        else copy(t.copy, t.msg);
         lastClick = { y, at: Date.now(), opened: true };
       } else if (act) {
         if (act === 'open') handleKey(undefined, { name: 'return' });

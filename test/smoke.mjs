@@ -835,6 +835,12 @@ assert.ok(goalPane('3').includes('│ goals     4 open') && goalPane('3').includ
 assert.ok(goalPane('3').includes('S-→ goals') && goalPane('3', { mode: 'goals', goalIndex: 1 }).includes('│         › two now') && goalPane('3', { mode: 'goals' }).includes('↵ copy'), 'S-→ goal picker marks the picked goal');
 const shortPane = goalPane('5', { mode: 'goals', goalIndex: 3, height: 14 }).split('\n');
 assert.ok(shortPane.some(l => l.includes('› four')) && shortPane.length === 14, 'short pane scrolls to the picked goal');
+{
+  const targets = [];
+  const lines = goalPane('3', { targets }).split('\n');
+  const tOf = s => targets.find(t => t.line === lines.findIndex(l => l.includes(s)) && t.copy);
+  assert.deepEqual([tOf('│           two')?.copy, tOf('│           two')?.msg, tOf(`│ ${gdir.slice(0, 5)}`)?.copy], ['g1: two', 'copied "g1"', gdir], 'pane goal and path lines click to copy');
+}
 assert.equal(oneLine('a\x1b[2J\u009b1m\n b'), 'a [2J 1m b', 'goals.json text: no escapes, one line');
 fs.rmSync(gdir, { recursive: true, force: true });
 // Git status: parsed from porcelain v2, shown when the setting is on, web line clickable.

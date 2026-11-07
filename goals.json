@@ -1352,6 +1352,16 @@
       "created": "2026-11-07",
       "updated": "2026-11-07",
       "note": "Settings > Detail pane > Git status (off by default): branch, ahead/behind, changed files, last commit; async cached lookup in src/git.js; ^g or click opens the origin web page"
+    },
+    {
+      "id": "detail-pane-mouse-click-a-goal-or-the-path-to",
+      "section": 9,
+      "title": "Detail pane mouse: click a goal or the path to copy, wheel moves the goal picker",
+      "phase": "later",
+      "status": "done",
+      "created": "2026-11-07",
+      "updated": "2026-11-07",
+      "note": "pane lines carry { copy, msg } targets; handleMouse copies, goal picker accepts wheel and leaves on other clicks"
     }
   ]
 }
