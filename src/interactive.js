@@ -81,26 +81,31 @@ export function tidyPath(p) {
   return same && /^([/\\]|$)/.test(p.slice(HOME.length)) ? `~${p.slice(HOME.length)}` : p;
 }
 
-const vis = s => ui.stripAnsi(s).length;
+// ~ or ~/x -> home dir.
+export const expandHome = p => p.replace(/^~(?=$|[/\\])/, () => HOME);
+
+const vis = ui.width;
 // Selection highlight: dark gray bar (bright black on 16-color terminals).
 const highlight = s => (chalk.level >= 2 ? chalk.bgAnsi256(238) : chalk.bgBlackBright)(s);
 const keyHint = pairs => '  ' + pairs.filter(Boolean).map(([k, label]) => `${k} ${chalk.dim(label)}`).join('  ');
-const underlineHits = (s, hits = []) => [...s].map((ch, i) => (hits.some(([a, b]) => i >= a && i <= b) ? chalk.underline(ch) : ch)).join('');
+// Fuse hit ranges are UTF-16 offsets, inclusive.
+export const underlineHits = (s, hits = []) => ui.graphemes(s)
+  .map(({ segment: g, index: i }) => (hits.some(([a, b]) => a < i + g.length && b >= i) ? chalk.underline(g) : g)).join('');
 
 // Keeps the end of a too-long string, where the folder name is.
-const clipStart = (s, n) => (s.length <= n ? s : n <= 1 ? '…'.slice(0, n) : `…${s.slice(-(n - 1))}`);
+const clipStart = (s, n) => (vis(s) <= n ? s : n <= 1 ? '…'.slice(0, n) : `…${ui.fit(s, n - 1, true)}`);
 
-// Name clipped to the column with …; highlight ranges past the cut are dropped.
+// Name clipped to `width` columns with …; highlight ranges past the cut are dropped.
 export function clipName(name, width, hits = []) {
-  if (name.length <= width) return { text: name, hits };
-  const cut = Math.max(0, width - 1);
+  if (vis(name) <= width) return { text: name, hits };
+  const cut = ui.fit(name, Math.max(0, width - 1)).length;
   return { text: `${name.slice(0, cut)}…`, hits: hits.map(([a, b]) => [a, Math.min(b, cut - 1)]).filter(([a, b]) => a <= b) };
 }
 
 // One list row: "› name  path ..... #tags  badge". `style` = path | dim | plain.
 function renderRow({ sel, name, nameWidth, hits, text = '', style = 'path', right = '', cw }) {
   const n = clipName(name, nameWidth, hits);
-  const nm = chalk.bold(underlineHits(n.text, n.hits)) + ' '.repeat(Math.max(0, nameWidth - n.text.length));
+  const nm = chalk.bold(underlineHits(n.text, n.hits)) + ' '.repeat(Math.max(0, nameWidth - vis(n.text)));
   const room = cw - 2 - nameWidth - 2 - (right ? vis(right) + 2 : 0);
   const t = clipStart(text, Math.max(0, room));
   const cut = style === 'path' ? Math.max(t.lastIndexOf('/'), t.lastIndexOf('\\')) + 1 : 0;
@@ -112,10 +117,12 @@ function renderRow({ sel, name, nameWidth, hits, text = '', style = 'path', righ
 
 // "‹ sel ›" bold, others dim; scrolls around the selection with ‹… / …› edges when the row is wider than `width`.
 // `spans` (optional) gets { from, to, index } per visible part; an edge marker points at the hidden neighbour.
-export function optionRow(labels, sel, width, spans) {
+export function optionRow(all, sel, width, spans) {
+  // Clipped so even the selected one fits with its ‹ › and both edge markers.
+  const labels = all.map(l => clipName(l, Math.max(1, width - 12)).text);
   const n = labels.length;
   const at = Math.max(0, sel);
-  const size = (lo, hi) => labels.slice(lo, hi + 1).reduce((t, l, i) => t + l.length + (lo + i === sel ? 4 : 0), 0)
+  const size = (lo, hi) => labels.slice(lo, hi + 1).reduce((t, l, i) => t + vis(l) + (lo + i === sel ? 4 : 0), 0)
     + 2 * (hi - lo) + (lo > 0 ? 4 : 0) + (hi < n - 1 ? 4 : 0);
   let lo = at;
   let hi = at;
@@ -320,9 +327,12 @@ export function renderInteractiveView({
   if (mode === 'input') {
     const label = PROMPT_LABEL[action](clipName(currentChoice?.name || '', 24).text);
     // Keep the end of a long value in view, where the cursor is.
-    lines.push(`  ${chalk.bold('›')} ${label} ${clipStart(inputBuffer, Math.max(1, cw - label.length - 4))}${chalk.dim('▏')}`);
+    lines.push(`  ${chalk.bold('›')} ${label} ${clipStart(inputBuffer, Math.max(1, cw - vis(label) - 4))}${chalk.dim('▏')}`);
   } else if (mode === 'confirm') {
-    lines.push(chalk.yellow(`  ? delete ${isWs ? 'workspace ' : ''}"${currentChoice?.name}"?`) + chalk.dim('  y / n'));
+    const what = `  ? delete ${isWs ? 'workspace ' : ''}`;
+    // Clip the name, not the line, so "y / n" stays visible.
+    const name = clipName(currentChoice?.name || '', Math.max(1, w - vis(what) - 10)).text;
+    lines.push(chalk.yellow(`${what}"${name}"?`) + chalk.dim('  y / n'));
   } else if (!isSettings) {
     lines.push(`  ${chalk.bold('›')} ${query ? `${query}${chalk.dim('▏')}` : chalk.dim('▏type to filter')}`);
   }
@@ -379,7 +389,7 @@ export function renderInteractiveView({
     };
     lines.push(query ? chalk.yellow('    no matches') : chalk.dim(`    ${empty[view]}`));
   } else {
-    const nameWidth = Math.min(24, Math.max(12, ...list.map(c => c.name.length)));
+    const nameWidth = Math.min(24, Math.max(12, ...list.map(c => vis(c.name))));
     // Rows left after the header and the footer (its rule included).
     const room = height - lines.length - foot.length - 1;
     const { start, end } = getVisibleWindow(list, index, Math.min(maxList, listRows(list.length, room)));
@@ -656,7 +666,7 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
       }
 
       if (action === 'edit') {
-        const resolved = buf ? path.resolve(buf) : process.cwd();
+        const resolved = buf ? path.resolve(expandHome(buf)) : process.cwd();
         if (!fs.existsSync(resolved)) { flash = 'path not found'; return false; }
         const links = loadLinks();
         if (links[target]?.path === resolved) return true;
@@ -709,23 +719,25 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
     const clamp = (i, n) => Math.max(0, Math.min(i, n - 1));
 
     // Mouse is only on in full screen; ignored while typing or confirming.
+    // Presses are skipped: the second press of a double-click must not wipe the first one's flash.
     const handleMouse = ({ x, y, wheel, click }) => {
-      if (!alt || mode !== 'browse') return;
+      if (!alt || mode !== 'browse' || !(wheel || click)) return;
       if (wheel) {
+        flash = '';
         if (view === 'settings') settingIndex = clamp(settingIndex + wheel, visibleRows(settings).length);
         else if (view === 'workspaces') wsIndex = clamp(wsIndex + wheel, filteredWs.length);
         else selectedIndex = clamp(selectedIndex + wheel, filteredChoices.length);
         redraw();
         return;
       }
-      const t = click && hitTest(targets, x, y);
-      if (!t) return;
+      const t = hitTest(targets, x, y);
       const ws = view === 'workspaces';
-      const act = t.row != null && rowClick(lastClick, y, Date.now(), t.row === (ws ? wsIndex : selectedIndex));
+      const act = t?.row != null && rowClick(lastClick, y, Date.now(), t.row === (ws ? wsIndex : selectedIndex));
       // Second half of a double-click that already opened: keep its flash.
       if (act === 'skip') return;
+      // Any click dismisses the flash, an empty spot included.
       flash = '';
-      if (t.tab) {
+      if (t?.tab) {
         if (t.tab !== view) switchTo(t.tab);
       } else if (act) {
         if (act === 'open') handleKey(undefined, { name: 'return' });
@@ -734,10 +746,10 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
         // Stamped after opening: a tab launch blocks and the second click queues behind it.
         lastClick = { y, at: Date.now(), opened: act === 'open' };
         if (act === 'open') return;
-      } else if (t.opener != null) {
+      } else if (t?.opener != null) {
         appPicked = true;
         selectedAppIndex = t.opener;
-      } else if (t.setting != null) {
+      } else if (t?.setting != null) {
         settingIndex = t.setting;
         const row = visibleRows(settings)[t.setting];
         if (t.option != null) chooseSetting(row, rowOptions(row, appChoices)[t.option][0]);

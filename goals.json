@@ -667,7 +667,7 @@
       "title": "TUI rough spots after the critique fixes",
       "body": "^e does not expand ~ (~/x resolves to cwd/~/x). Emoji/CJK names: underlineHits splits by code point but Fuse indices are UTF-16, and widths use .length. handleMouse clears flash only on a hit, not on wheel/empty click. Missing badge set on a filtered copy can vanish after clearing the filter. Confirm-delete line and Settings rows hard-cut long names instead of clipping.",
       "phase": "next",
-      "status": "planned",
+      "status": "done",
       "size": "S",
       "pointers": {
         "files": [
@@ -675,7 +675,8 @@
         ]
       },
       "created": "2026-11-07",
-      "updated": "2026-11-07"
+      "updated": "2026-11-07",
+      "note": "^e expands ~; ui.width/fit/graphemes make layout, clipping, hit underlines and truncate column-aware for emoji/CJK; wheel and any click clear the flash (presses ignored); confirm line and option labels clip instead of losing y/n or the closing ›. Missing badge already survived via rebuild() reloading from disk."
     },
     {
       "id": "open-upex-ui-from-the-tui",

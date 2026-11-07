@@ -95,25 +95,51 @@ export function stripAnsi(str) {
   return str.replace(/\x1B\[[0-9;]*m/g, '');
 }
 
+// Built on first use: it costs ~12ms, and every command imports this file.
+let segmenter;
+// Emoji and CJK take two terminal columns.
+const WIDE = /\p{Emoji_Presentation}|\uFE0F|[\u1100-\u115F\u2E80-\u303E\u3041-\u33FF\u3400-\u4DBF\u4E00-\u9FFF\uA000-\uA4CF\uAC00-\uD7A3\uF900-\uFAFF\uFE30-\uFE4F\uFF00-\uFF60\uFFE0-\uFFE6\u{20000}-\u{3FFFD}]/u;
+// One column each, never joined: ASCII, Latin, punctuation, arrows, box drawing and shapes the UI uses.
+const NARROW = /^[\x20-\x7e\u00a0-\u02ff\u2010-\u2027\u2030-\u205e\u2190-\u21ff\u2500-\u25fc]*$/;
+
+/** Characters as { segment, index (UTF-16), w (columns) }. */
+export const graphemes = s => (NARROW.test(s)
+  ? Array.from(s, (segment, index) => ({ segment, index, w: 1 }))
+  : Array.from((segmenter ??= new Intl.Segmenter()).segment(s), g => ({ ...g, w: WIDE.test(g.segment) ? 2 : 1 })));
+
+/** Visible terminal columns of a styled string. */
+export const width = s => {
+  const t = stripAnsi(s);
+  return NARROW.test(t) ? t.length : graphemes(t).reduce((n, g) => n + g.w, 0);
+};
+
+/** Longest start (or end) of a plain string that fits in `n` columns, never splitting a character. */
+export function fit(s, n, fromEnd = false) {
+  const gs = graphemes(s);
+  if (fromEnd) gs.reverse();
+  let used = 0;
+  let k = 0;
+  while (k < gs.length && used + gs[k].w <= n) used += gs[k++].w;
+  const kept = gs.slice(0, k).map(g => g.segment);
+  return (fromEnd ? kept.reverse() : kept).join('');
+}
+
 /**
- * Clip a styled string to `width` visible columns, keeping ANSI codes intact.
+ * Clip a styled string to `cols` visible columns, keeping ANSI codes intact.
  */
-export function truncate(str, width) {
-  if (width <= 0) return '';
-  if (stripAnsi(str).length <= width) return str;
+export function truncate(str, cols) {
+  if (cols <= 0) return '';
+  if (width(str) <= cols) return str;
 
   let out = '';
-  let budget = width - 1; // one column reserved for the ellipsis
+  let budget = cols - 1; // one column reserved for the ellipsis
   // eslint-disable-next-line no-control-regex
   for (const part of str.split(/(\x1B\[[0-9;]*m)/)) {
     if (part.startsWith('\x1B')) { out += part; continue; }
-    if (part.length <= budget) {
-      out += part;
-      budget -= part.length;
-      continue;
-    }
-    out += part.slice(0, budget);
-    break;
+    const kept = fit(part, budget);
+    out += kept;
+    budget -= width(kept);
+    if (kept.length < part.length) break;
   }
   return out + '…\x1B[0m';
 }

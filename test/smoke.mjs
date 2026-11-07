@@ -17,11 +17,11 @@ import { remoteWebUrl } from '../src/git.js';
 import { installCmdWrapper } from '../src/commands/setup.js';
 import { normalizeUrl, caretEscape, wtCommandLine, setting, shellCommand, defaultOpener } from '../src/launcher.js';
 import { parseTags, parseDuration, defaultName } from '../src/commands/add.js';
-import { truncate, span } from '../src/ui.js';
+import { truncate, span, width } from '../src/ui.js';
 import { applyShortcut, applyOpener, cleanEntries, startServer } from '../src/commands/web.js';
 import { COMMAND_NAMES } from '../src/fast.js';
 import { createProgram } from '../src/index.js';
-import { renderInteractiveView, inView, tidyPath, byOrder, optionRow, listRows, readMouse, hitTest, rowClick, undoError, clipName, prefill, missingFlash, staysOpen } from '../src/interactive.js';
+import { renderInteractiveView, inView, tidyPath, byOrder, optionRow, listRows, readMouse, hitTest, rowClick, undoError, clipName, prefill, missingFlash, staysOpen, expandHome, underlineHits } from '../src/interactive.js';
 import chalk from 'chalk';
 import { resolveTarget, resolveName, suggestNames } from '../src/fuzzy.js';
 
@@ -520,6 +520,28 @@ assert.equal(missingFlash({ path: os.tmpdir() }), null, 'existing folder opens (
 assert.equal(staysOpen('cmd', 'tabs', () => true), true, 'terminal tabs keep the selector open');
 assert.equal(staysOpen('cmd', 'tabs', () => null) || staysOpen('cmd', 'windows', () => true) || staysOpen('vscode', 'tabs', () => true), false, 'no wt, windows layout or a non-terminal opener still exits');
 assert.equal(missingFlash({ path: 'x.exe', isApp: true }, () => false), null, 'apps are not folder checks');
+
+// -- wide chars, ~ in ^e, long names keep their frame --
+assert.deepEqual([width('ab'), width('日本'), width('a😀b'), width(chalk.red('日'))], [2, 4, 4, 2], 'CJK/emoji count two columns');
+assert.equal(truncate('日本語です', 5), '日本…\x1B[0m', 'truncate never splits a wide char');
+assert.deepEqual(clipName('日本語です', 6, [[0, 4]]), { text: '日本…', hits: [[0, 1]] }, 'wide name clipped by columns, hits in UTF-16');
+const lvl2 = chalk.level;
+chalk.level = 1;
+assert.equal(underlineHits('😀ab', [[0, 0]]), `${chalk.underline('😀')}ab`, 'a hit inside an emoji underlines it whole');
+assert.equal(underlineHits('😀ab', [[2, 2]]), `😀${chalk.underline('a')}b`, 'UTF-16 hit offsets land after the emoji');
+chalk.level = lvl2;
+assert.equal(expandHome('~/x'), `${os.homedir()}/x`, '~/ expands');
+assert.deepEqual([expandHome('~'), expandHome('~x'), expandHome('a/~')], [os.homedir(), '~x', 'a/~'], 'only a leading ~ segment expands');
+const confirm = v({ mode: 'confirm', choices: [{ name: 'q'.repeat(200), path: 'P', exists: true }], width: 60 }).split('\n').find(l => l.includes('delete'));
+assert.ok(confirm.endsWith('y / n') && width(confirm) === 60, 'confirm line clips the name to fill the width, keeps y / n');
+const Seg = Intl.Segmenter;
+let segs = 0;
+Intl.Segmenter = class extends Seg { constructor(...a) { super(...a); segs++; } };
+const freshUi = await import('../src/ui.js?lazy');
+assert.deepEqual([freshUi.width('› … ─ ▏ ↵ ● × ←'), freshUi.truncate('‹ abc › ──', 6), freshUi.graphemes('a›').length, segs], [15, '‹ abc…\x1B[0m', 2, 0], 'no Segmenter at import or for UI glyphs');
+Intl.Segmenter = Seg;
+const wideOpt = strip(optionRow(['Explorer', 'x'.repeat(80)], 1, 40));
+assert.ok(wideOpt.endsWith('›') && width(wideOpt) <= 40, 'a long option label clips inside its ‹ ›');
 const ukey = await new Promise(r => { zs.once('keypress', (_, k) => r(k)); zs.write('\x15'); });
 assert.ok(ukey.ctrl && ukey.name === 'u', 'Ctrl+U arrives as a ctrl u keypress');
 
