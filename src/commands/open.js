@@ -9,7 +9,8 @@ import path from 'node:path';
 import os from 'node:os';
 import { spawnSync } from 'node:child_process';
 import chalk from 'chalk';
-import { loadLinks, recordUse, sweepExpired } from '../store.js';
+import { loadLinks, recordUse } from '../store.js';
+import { findFolder, withSub } from '../fast.js';
 import { resolveTarget, didYouMean } from '../fuzzy.js';
 import { launchApp, launchExecutable, launchUrl, defaultOpener, openerKey } from '../launcher.js';
 import * as ui from '../ui.js';
@@ -18,31 +19,15 @@ export function isFile(p) {
   try { return fs.statSync(p).isFile(); } catch { return false; }
 }
 
-// Folder path of a shortcut plus an optional subpath ("web/src").
-const withSub = (entry, sub) => (entry.path && sub ? path.join(entry.path, sub) : entry.path);
-
-// Resolve a name to a usable folder path and record the use.
-// On failure prints nothing (or `loud` message) and exits 1.
+// Folder path for a name and record the use. On failure prints nothing (or the reason with `loud`) and exits 1.
 function resolveFolder(name, { loud = false } = {}) {
-  // go/__resolve skip the sweep, so treat expired as archived here (not saved).
-  const { links } = sweepExpired(loadLinks());
-  const resolved = resolveTarget(name, links);
-
-  if (!resolved) {
-    if (loud) ui.error(`Shortcut not found: ${name}`);
+  const r = findFolder(name);
+  if (r.error) {
+    if (loud) ui.error(r.error);
     process.exit(1);
   }
-
-  const entry = links[resolved.name];
-  const targetPath = withSub(entry, resolved.sub);
-
-  if (!targetPath || !fs.existsSync(targetPath)) {
-    if (loud) ui.error(targetPath ? `Path does not exist: ${targetPath}` : `No folder path for "${resolved.name}".`);
-    process.exit(1);
-  }
-
-  recordUse(resolved.name, 'cd');
-  return targetPath;
+  recordUse(r.name, 'cd');
+  return r.path;
 }
 
 // Raw path to stdout (no formatting) -- consumed by `cd $(upex go <name>)`.

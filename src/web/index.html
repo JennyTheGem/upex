@@ -195,6 +195,8 @@ h1 { font-size: 20px; letter-spacing: -.015em; margin: 8px 0 4px; }
 .ws-add input.count { flex: 0 0 72px; }
 .ws-add input.start { flex: 2 1 200px; }
 .ws-add.editing { background: var(--raise); border-bottom: 1px solid var(--line); }
+.ws-entry.op { grid-template-columns: minmax(100px, 1fr) minmax(0, 3fr) auto; }
+.ws-entry.op .confirm { grid-column: span 2; justify-content: flex-end; flex-wrap: wrap; }
 
 /* Status line */
 #status {
@@ -287,7 +289,7 @@ const COPY_WORD = { folder: 'path', app: 'path', cmd: 'command', url: 'URL' };
 const START_TAB = { shortcuts: 'links', apps: 'apps', workspaces: 'ws' };
 
 const S = {
-  links: [], workspaces: {}, apps: [], settings: {}, wt: null, home: '', sep: '/',
+  links: [], workspaces: {}, apps: [], openers: [], settings: {}, wt: null, home: '', sep: '/',
   view: null, q: '', tag: null, archived: false,
   adding: false, addKind: 'folder', addErr: '', add: { name: '', target: '', tags: '', opener: '' },
   editing: null, draft: null, editErr: '',
@@ -295,6 +297,7 @@ const S = {
   // Keyed by user names, so no prototype ("constructor" etc.).
   openWith: Object.create(null), openCount: Object.create(null), openStart: Object.create(null),
   wsDraft: Object.create(null), newWs: false, newWsName: '',
+  opDraft: { name: '', command: '' }, editOp: null, editOpCmd: '', confirmOp: null,
 };
 
 // DOM builder; text always goes in as text nodes, never HTML.
@@ -796,7 +799,66 @@ function settingsView() {
         h('select', { id: 'set-opener', onchange: pickOpener },
           S.apps.filter(a => a.key !== 'copy').map(a => h('option', { value: a.key, selected: s.defaultOpener === a.key }, a.label)),
           !S.apps.some(a => a.key === s.defaultOpener) && h('option', { value: s.defaultOpener, selected: true }, s.defaultOpener)))),
+    h('section', { class: 'form', 'aria-labelledby': 'set-apps' },
+      h('h2', { id: 'set-apps', style: 'font-size:15px;margin:0' }, 'Custom openers'),
+      h('p', { class: 'lede', style: 'margin:0' }, 'More apps to open folders in, like Cursor or Sublime. upex runs the command with the folder path after it. Same list as upex app in the terminal.'),
+      h('div', { class: 'list' }, S.openers.map(openerRow), openerAdd())),
   ];
+}
+
+// Custom openers (config.json apps): add, change the command, delete. No rename, shortcuts point at the name.
+function openerRow(o) {
+  const name = h('span', { class: 'name' }, o.name);
+  if (S.editOp === o.name) {
+    const cancel = () => { S.editOp = null; render(); };
+    return h('form', { class: 'ws-add editing', onkeydown: e => e.key === 'Escape' && cancel(), onsubmit: async e => {
+        e.preventDefault();
+        if (await act(() => api('PUT', 'opener', { name: o.name, command: S.editOpCmd }), `Saved ${o.name}`)) { S.editOp = null; render(); }
+      } },
+      name,
+      h('input', { type: 'text', id: 'op-edit', class: 'start mono', value: S.editOpCmd, spellcheck: 'false', autocomplete: 'off',
+        'aria-label': `Command for ${o.name}`, oninput: e => (S.editOpCmd = e.target.value) }),
+      h('button', { type: 'submit', class: 'btn primary' }, icon('check'), 'Save'),
+      btn('Cancel', 'ghost', cancel));
+  }
+  if (S.confirmOp === o.name) {
+    const key = o.name.toLowerCase();
+    const n = S.links.filter(l => l.opener === key).length;
+    const users = [n && `${n} shortcut${n > 1 ? 's' : ''}`, S.settings.defaultOpener === key && 'the default opener'].filter(Boolean);
+    return h('div', { class: 'ws-entry op' }, name,
+      h('div', { class: 'confirm' },
+        h('span', null, `Delete ${o.name}?` + (users.length ? ` Used by ${users.join(' and ')}.` : '')),
+        btn('Delete', 'danger solid', () => { S.confirmOp = null; act(() => api('DELETE', 'opener', { name: o.name }), `Deleted ${o.name}`); }),
+        btn('Keep', 'ghost', () => { S.confirmOp = null; render(); })));
+  }
+  return h('div', { class: 'ws-entry op' }, name,
+    h('span', { class: 'muted mono start', title: o.command }, o.command),
+    h('div', { class: 'actions' },
+      iconBtn('edit', `Edit ${o.name}`, '', () => {
+        S.editOp = o.name; S.editOpCmd = o.command;
+        render();
+        document.getElementById('op-edit')?.focus();
+      }),
+      iconBtn('trash', `Delete ${o.name}`, 'danger', () => { S.confirmOp = o.name; render(); })));
+}
+
+function openerAdd() {
+  const d = S.opDraft;
+  const set = k => e => (d[k] = e.target.value);
+  return h('form', { class: 'ws-add', onsubmit: async e => {
+      e.preventDefault();
+      const name = d.name.trim();
+      if (await act(() => api('POST', 'opener', d), `Added ${name}. Pick it in any opener menu.`)) {
+        S.opDraft = { name: '', command: '' };
+        render();
+        document.getElementById('op-name')?.focus();
+      }
+    } },
+    h('input', { type: 'text', id: 'op-name', placeholder: 'name, e.g. cursor', value: d.name, spellcheck: 'false', autocomplete: 'off',
+      'aria-label': 'Opener name', oninput: set('name') }),
+    h('input', { type: 'text', class: 'start mono', value: d.command, spellcheck: 'false', autocomplete: 'off', 'aria-label': 'Command',
+      placeholder: S.sep === '\\' ? 'command, e.g. cursor or C:\\Tools\\subl.exe' :'command, e.g. cursor or /usr/bin/subl', oninput: set('command') }),
+    h('button', { type: 'submit', class: 'btn' }, icon('plus'), 'Add opener'));
 }
 
 // ---------- Shell ----------
@@ -822,13 +884,13 @@ document.querySelectorAll('.tab').forEach(t => t.addEventListener('click', () =>
   S.view = t.dataset.view;
   // Per-tab state: an open add form or tag filter belongs to the tab it was opened on.
   S.adding = false; S.addErr = ''; S.tag = null; S.editing = null; S.confirming = null; S.archived = false;
-  S.editWs = null; S.renamingWs = null; S.confirmWs = null;
+  S.editWs = null; S.renamingWs = null; S.confirmWs = null; S.editOp = null; S.confirmOp = null;
   if (TAB_KINDS[S.view]) S.addKind = TAB_KINDS[S.view][0];
   render();
 }));
 // Coming back to the page re-checks paths and picks up CLI changes, unless something is being edited.
 // Re-renders only on a real change: replacing the DOM mid-click would swallow the click that focused the window.
-const busy = () => Boolean(S.adding || S.editing || S.newWs || S.editWs || S.renamingWs || S.confirming || S.confirmWs ||
+const busy = () => Boolean(S.adding || S.editing || S.newWs || S.editWs || S.renamingWs || S.confirming || S.confirmWs || S.editOp || S.confirmOp ||
   document.querySelector('main :is(input, select):focus'));
 window.addEventListener('focus', () => { if (!busy()) load(busy); });
 document.getElementById('q').addEventListener('input', e => { S.q = e.target.value; render(); });

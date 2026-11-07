@@ -18,7 +18,9 @@ import { installCmdWrapper } from '../src/commands/setup.js';
 import { normalizeUrl, caretEscape, wtCommandLine, setting, shellCommand, defaultOpener } from '../src/launcher.js';
 import { parseTags, parseDuration, defaultName } from '../src/commands/add.js';
 import { truncate, span } from '../src/ui.js';
-import { applyShortcut, cleanEntries, startServer } from '../src/commands/web.js';
+import { applyShortcut, applyOpener, cleanEntries, startServer } from '../src/commands/web.js';
+import { COMMAND_NAMES } from '../src/fast.js';
+import { createProgram } from '../src/index.js';
 import { renderInteractiveView, inView, tidyPath, byOrder, optionRow, listRows, readMouse, hitTest, rowClick, undoError, clipName, prefill, missingFlash, staysOpen } from '../src/interactive.js';
 import chalk from 'chalk';
 import { resolveTarget, resolveName, suggestNames } from '../src/fuzzy.js';
@@ -112,6 +114,7 @@ assert.equal(r.stdout, '', 'no path printed for subcommand names');
 // a lone `upex --help` through a wrapper must fall through, not cd into help text
 const h = spawnSync(process.execPath, [cli, '__resolve', '--help'], { encoding: 'utf-8' });
 assert.equal(h.status, 1, '__resolve refuses --help');
+assert.deepEqual([...COMMAND_NAMES].sort(), createProgram().commands.flatMap(c => [c.name(), ...c.aliases()]).sort(), 'fast path knows every command name');
 assert.equal(h.stdout, '', 'no help text printed for the wrapper to cd into');
 
 // Run the CLI against a throwaway home holding the given links.json content.
@@ -562,6 +565,15 @@ assert.equal(cleanEntries([{ shortcut: 's', count: 0 }]), null, 'count 0 rejecte
 assert.equal(cleanEntries('x'), null, 'non-array rejected');
 assert.equal(cleanEntries([null]), null, 'null entry rejected, not thrown');
 
+// -- applyOpener: add, change command, clashes --
+assert.deepEqual(applyOpener({}, { name: ' cursor ', command: ' cursor ' }, true).apps, { cursor: 'cursor' }, 'opener added, trimmed');
+assert.match(applyOpener({ Cursor: 'c' }, { name: 'cursor', command: 'x' }, true).error, /exists/, 'case-only clash rejected');
+assert.match(applyOpener({}, { name: 'a b', command: 'x' }, true).error, /spaces/, 'spaced opener name rejected');
+assert.match(applyOpener({}, { name: '__PROTO__', command: 'x' }, true).error, /reserved/, 'opener lowercasing to __proto__ rejected');
+assert.match(applyOpener({}, { name: 'sub', command: ' ' }, true).error, /required/, 'empty command rejected');
+assert.deepEqual(applyOpener({ sub: 'subl', z: 'z' }, { name: 'sub', command: 'subl -n' }).apps, { sub: 'subl -n', z: 'z' }, 'command changed in place');
+assert.match(applyOpener({}, { name: 'nope', command: 'x' }).error, /No custom opener/, 'edit of unknown opener rejected');
+
 // -- wt: N shells in one wt call; trailing backslash, user `;` and quotes survive wt's parser --
 assert.equal(wtCommandLine('C:\\a b\\', '', 2, 'tabs'), String.raw`-w 0 new-tab -d "C:\a b\\" cmd ; new-tab -d "C:\a b\\" cmd`, 'tabs, quoted dir');
 assert.equal(wtCommandLine(String.raw`C:\x`, 'a; b', 2, 'panes'), String.raw`-w 0 new-tab -d C:\x cmd /s /k "a\; b" ; split-pane -d C:\x cmd /s /k "a\; b"`, 'panes, escaped ;');
@@ -690,6 +702,16 @@ try {
   assert.equal((await send('POST', 'open', { name: 'gh' })).status, 404, 'archived shortcut cannot be opened');
   assert.equal((await send('PUT', 'archive', { name: 'gh', archived: false })).status, 200, 'restore via api');
   assert.equal(JSON.parse(fs.readFileSync(path.join(webHome, '.upex', 'links.json'), 'utf-8')).gh.archived, undefined, 'restore clears the flag');
+  assert.equal((await send('POST', 'opener', { name: 'subl', command: 'subl' })).status, 200, 'opener added via api');
+  assert.equal((await send('POST', 'opener', { name: 'SUBL', command: 'x' })).status, 400, 'duplicate opener refused');
+  assert.equal((await send('PUT', 'opener', { name: 'subl', command: 'subl -n' })).status, 200, 'opener command changed via api');
+  const st4 = await (await fetch(base + '/api/state', { headers: { 'x-upex-token': token } })).json();
+  assert.deepEqual(st4.openers, [{ name: 'subl', command: 'subl -n' }], 'state lists custom openers');
+  assert.ok(st4.apps.some(a => a.key === 'subl'), 'custom opener in opener menus');
+  assert.equal((await send('DELETE', 'opener', { name: 'subl' })).status, 200, 'opener deleted via api');
+  assert.equal((await send('DELETE', 'opener', { name: 'subl' })).status, 404, 'deleting a missing opener 404s');
+  const cfg3 = JSON.parse(fs.readFileSync(path.join(webHome, '.upex', 'config.json'), 'utf-8'));
+  assert.deepEqual([cfg3.apps, Object.keys(cfg3.workspaces)], [{}, ['work']], 'opener edits keep the rest of config');
 } finally {
   // Already exited (e.g. crashed on start): waiting for 'exit' again would never settle.
   if (srv.exitCode === null && srv.signalCode === null) {
@@ -699,4 +721,4 @@ try {
   fs.rmSync(webHome, { recursive: true, force: true });
 }
 
-console.log('ok - frecency + prune + cmd wrapper + resolve guard + go args + safe store + edit url + merge + lastUsed + url + tags + truncate + web ui + subpaths + opener + doctor + apps tab + names + ws rename + cmd quoting + wt layout + settings + shells + default opener + auto-backup + aliases + archive + remote url + add cwd + pins + undo');
+console.log('ok - frecency + prune + cmd wrapper + resolve guard + go args + safe store + edit url + merge + lastUsed + url + tags + truncate + web ui + subpaths + opener + doctor + apps tab + names + ws rename + cmd quoting + wt layout + settings + shells + default opener + auto-backup + aliases + archive + remote url + add cwd + pins + undo + fast cd + custom openers');

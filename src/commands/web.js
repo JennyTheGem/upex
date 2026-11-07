@@ -9,7 +9,7 @@ import os from 'node:os';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { loadLinks, saveLinks, loadWorkspaces, saveWorkspaces, pruneBroken, targetField, nameError, takenError, checkAliases, aliasesOf, frecency, loadConfig, saveConfig } from '../store.js';
-import { getInteractiveAppChoices, launchUrl, openerKey, isTerminalApp, checkSettings, readSettings, hasWindowsTerminal } from '../launcher.js';
+import { getInteractiveAppChoices, launchUrl, openerKey, isTerminalApp, checkSettings, readSettings, hasWindowsTerminal, configApps } from '../launcher.js';
 import { handleOpen, isFile } from './open.js';
 import { openEntries } from './workspace.js';
 import { parseTags } from './add.js';
@@ -69,6 +69,24 @@ export function applyShortcut(links, old, { kind, name, target, tags, aliases, o
 }
 
 /**
+ * Add (isNew) or change the command of one custom opener in config.json `apps`.
+ * No rename: shortcuts and defaultOpener point at the name. Pure: { apps } or { error }.
+ */
+export function applyOpener(apps, { name, command } = {}, isNew = false) {
+  name = String(name ?? '').trim();
+  command = String(command ?? '').trim();
+  if (isNew) {
+    // Opener keys are lowercased: "__PROTO__" is __proto__, "Cursor" and "cursor" the same one.
+    const bad = nameError(name.toLowerCase());
+    if (bad) return { error: bad };
+    const clash = Object.keys(apps).find(k => k.toLowerCase() === name.toLowerCase());
+    if (clash) return { error: `"${clash}" already exists.` };
+  } else if (!Object.hasOwn(apps, name)) return { error: `No custom opener named "${name}".` };
+  if (!command) return { error: 'Command is required.' };
+  return { apps: { ...apps, [name]: command } };
+}
+
+/**
  * Validate workspace entries from the page. Returns the cleaned list or null.
  */
 export function cleanEntries(list) {
@@ -89,6 +107,7 @@ export function cleanEntries(list) {
 
 function state() {
   const links = loadLinks();
+  const config = loadConfig();
   return {
     links: Object.entries(links).map(([name, e]) => {
       const field = targetField(e);
@@ -112,7 +131,8 @@ function state() {
     }),
     workspaces: loadWorkspaces(),
     apps: getInteractiveAppChoices().map(a => ({ ...a, terminal: isTerminalApp(a.key) })),
-    settings: readSettings(),
+    settings: readSettings(config),
+    openers: Object.entries(configApps(config)).filter(([, c]) => typeof c === 'string').map(([name, command]) => ({ name, command })),
     wt: hasWindowsTerminal(),
     home: os.homedir(),
     sep: path.sep,
@@ -169,6 +189,18 @@ const routes = {
     return {};
   },
 
+  'POST /api/opener': (b) => saveOpener(b, true),
+  'PUT /api/opener': (b) => saveOpener(b, false),
+
+  'DELETE /api/opener': (b) => {
+    const config = loadConfig();
+    const apps = { ...configApps(config) };
+    if (!Object.hasOwn(apps, String(b.name))) throw new HttpError(404, `No custom opener named "${b.name}".`);
+    delete apps[b.name];
+    saveConfig({ ...config, apps });
+    return {};
+  },
+
   'POST /api/prune': () => {
     const { kept, removed } = pruneBroken(loadLinks());
     saveLinks(kept);
@@ -215,6 +247,14 @@ function saveShortcut(old, body) {
   const { links, error } = applyShortcut(loadLinks(), old, body);
   if (error) throw new HttpError(400, error);
   saveLinks(links);
+  return {};
+}
+
+function saveOpener(body, isNew) {
+  const config = loadConfig();
+  const { apps, error } = applyOpener(configApps(config), body, isNew);
+  if (error) throw new HttpError(400, error);
+  saveConfig({ ...config, apps });
   return {};
 }
 

@@ -7,6 +7,7 @@
 
 import chalk from 'chalk';
 import { loadConfig, saveConfig } from '../store.js';
+import { configApps } from '../launcher.js';
 import * as ui from '../ui.js';
 
 export function registerApp(program) {
@@ -16,7 +17,7 @@ export function registerApp(program) {
     .option('--remove', 'Remove the named custom app')
     .action((alias, command, options) => {
       const config = loadConfig();
-      const apps = config.apps && typeof config.apps === 'object' ? config.apps : {};
+      const apps = { ...configApps(config) };
 
       // No alias: list what's defined.
       if (!alias) {

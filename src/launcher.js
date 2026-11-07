@@ -139,19 +139,20 @@ export function wtCommandLine(cwd, runCmd, n, layout, shell = 'cmd', split = 'au
   return `-w ${layout === 'windows' ? 'new' : '0'} ${parts.join(' ; ')}`;
 }
 
-// User-defined openers from ~/.upex/config.json { "apps": { "cursor": "cursor" } }.
+// config.json `apps` ({ "cursor": "cursor" }) as an object, {} when missing or malformed.
+export const configApps = (config = loadConfig()) =>
+  (config.apps && typeof config.apps === 'object' && !Array.isArray(config.apps) ? config.apps : {});
+
+// User-defined openers from ~/.upex/config.json.
 function customApps() {
-  const { apps } = loadConfig();
   const out = {};
-  if (apps && typeof apps === 'object') {
-    for (const [name, command] of Object.entries(apps)) {
-      if (typeof command === 'string' && command.trim()) {
-        out[name.toLowerCase()] = {
-          cmd: () => command,
-          displayName: name,
-          installHint: `Custom app "${name}" from ~/.upex/config.json (command: ${command}).`,
-        };
-      }
+  for (const [name, command] of Object.entries(configApps())) {
+    if (typeof command === 'string' && command.trim()) {
+      out[name.toLowerCase()] = {
+        cmd: () => command,
+        displayName: name,
+        installHint: `Custom app "${name}" from ~/.upex/config.json (command: ${command}).`,
+      };
     }
   }
   return out;

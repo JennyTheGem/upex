@@ -38,7 +38,7 @@ Jenny's CLI for named shortcuts to folders, apps, command lines and URLs. Data: 
 | `upex run <name> [script]` | Run a package.json script in a terminal |
 | `upex web <name>` | Open the project's git remote page (GitHub etc.) |
 | `upex ws ...` | Workspaces (`ws add`, `ws rm`, `ws <name>`) |
-| `upex app [alias] [command] [--remove]` | Custom openers |
+| `upex app [alias] [command] [--remove]` | Custom openers (also on the `upex ui` Settings tab: add, change command, delete) |
 | `upex stats [--days N] [--all]` | Most used shortcuts and openers (default last 30 days) plus opens per week, from `~/.upex/history.jsonl` |
 | `upex config` / `config get <setting>` / `config set <setting> <value>` | List settings with their options, print one, or change one (same as the Settings tabs) |
 | `upex stale [days] [--yes]` | Shortcuts not opened in N days (default 60), never-opened first; offers to archive each |

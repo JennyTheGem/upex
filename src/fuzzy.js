@@ -2,8 +2,12 @@
  * fuzzy.js -- Fuzzy matching utility for shortcut names
  */
 
-import Fuse from 'fuse.js';
+import { createRequire } from 'node:module';
 import { activeLinks, aliasesOf, nameOwner } from './store.js';
+
+// Loaded on first fuzzy search: exact hits (the cd hot path) never pay for it.
+const require = createRequire(import.meta.url);
+const Fuse = (...args) => new (require('fuse.js'))(...args);
 
 /**
  * Find the best fuzzy match for `query` in a list of shortcut names.
@@ -12,7 +16,7 @@ import { activeLinks, aliasesOf, nameOwner } from './store.js';
 export function fuzzyMatch(query, names) {
   if (!names.length) return null;
 
-  const fuse = new Fuse(names.map(n => ({ name: n })), {
+  const fuse = Fuse(names.map(n => ({ name: n })), {
     keys: ['name'],
     threshold: 0.4,
     includeScore: true,
@@ -29,7 +33,7 @@ export function fuzzyMatch(query, names) {
 
 // Up to `n` close names for a "did you mean" hint; looser than resolving.
 export function suggestNames(query, names, n = 3) {
-  return new Fuse(names, { threshold: 0.6 }).search(query, { limit: n }).map(r => r.item);
+  return Fuse(names, { threshold: 0.6 }).search(query, { limit: n }).map(r => r.item);
 }
 
 // One-line hint for a name that didn't resolve, or null.

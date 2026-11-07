@@ -834,11 +834,11 @@
       "title": "Faster startup for go",
       "body": "Lazy-load commander/fuse.js on the hot path of go and __resolve so cd via the wrapper feels instant. Measure first.",
       "phase": "maybe",
-      "status": "planned",
+      "status": "done",
       "size": "S",
       "created": "2026-11-07",
       "updated": "2026-11-07",
-      "note": "Measured 2026-11-07 on Windows: bare node ~80ms, upex __resolve ~183ms, so ~100ms is upex's own imports."
+      "note": "src/fast.js answers go/__resolve before commander and the commands load; fuse.js lazy. __resolve 200ms -> ~95ms (bare node 80ms)."
     },
     {
       "id": "upex-ui-local-web-page-to-add-edit-rename-tag",
@@ -917,9 +917,10 @@
       "title": "Custom openers in Settings",
       "body": "Manage config.json apps (cursor, sublime, ...) from the web Settings tab instead of upex app or hand-editing.",
       "phase": "now",
-      "status": "planned",
+      "status": "done",
       "created": "2026-11-06",
-      "updated": "2026-11-06"
+      "updated": "2026-11-07",
+      "note": "Settings tab: Custom openers section, add / change command / delete (no rename). API POST/PUT/DELETE /api/opener, applyOpener."
     },
     {
       "id": "publish-to-npm",

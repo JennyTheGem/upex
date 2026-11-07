@@ -219,7 +219,7 @@ Run `upex` with no arguments to open the interactive selector. Pinned shortcuts 
 
 ## Web UI
 
-Run `upex ui` to open a local page (default `http://127.0.0.1:4545`, a free port if that one is busy) where you can add, edit, rename, tag, delete, copy and open shortcuts, set a default opener, open terminals with a window count and start command, build, reorder and rename workspaces, and remove missing paths. Lists sort by most used (or A to Z), pinned shortcuts first (pin icon on each row) and re-check paths when you come back to the page. Folders, apps (app, command and URL shortcuts) and workspaces each get their own tab. Press `/` to search, `n` for a new shortcut or app. Stop it with `Ctrl+C`.
+Run `upex ui` to open a local page (default `http://127.0.0.1:4545`, a free port if that one is busy) where you can add, edit, rename, tag, delete, copy and open shortcuts, set a default opener, add or edit custom openers (Settings tab), open terminals with a window count and start command, build, reorder and rename workspaces, and remove missing paths. Lists sort by most used (or A to Z), pinned shortcuts first (pin icon on each row) and re-check paths when you come back to the page. Folders, apps (app, command and URL shortcuts) and workspaces each get their own tab. Press `/` to search, `n` for a new shortcut or app. Stop it with `Ctrl+C`.
 
 It only listens on 127.0.0.1 and every request needs a token that is new each run, so other sites can't use it. With `--no-open`, open the link it prints (it carries the token).
 
