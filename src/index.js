@@ -31,6 +31,8 @@ import { registerDoctor } from './commands/doctor.js';
 import { registerStale } from './commands/stale.js';
 import { registerStats } from './commands/stats.js';
 import { registerConfig } from './commands/config.js';
+import { registerPin } from './commands/pin.js';
+import { registerUndo } from './commands/undo.js';
 import { runInteractiveMode } from './interactive.js';
 
 const { version } = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf-8'));
@@ -85,10 +87,13 @@ export function createProgram() {
   registerStale(program);
   registerStats(program);
   registerConfig(program);
+  registerPin(program);
+  registerUndo(program);
 
   // Archive expired temporary shortcuts. Skipped where stdout feeds a shell wrapper.
   program.hook('preAction', (_root, cmd) => {
-    if (cmd.name().startsWith('__') || cmd.name() === 'go') return;
+    // undo: a sweep's own save would be what gets undone.
+    if (cmd.name().startsWith('__') || ['go', 'undo'].includes(cmd.name())) return;
     try {
       const { links, archived } = sweepExpired(loadLinks());
       if (!archived.length) return;

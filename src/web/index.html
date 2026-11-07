@@ -110,6 +110,7 @@ input[aria-invalid="true"] { border-color: var(--danger); }
 .btn.ghost { background: none; border-color: transparent; color: var(--muted); }
 .btn.ghost:hover { color: var(--text); background: var(--raise); }
 .btn.icon { width: 32px; padding: 0; }
+.btn.icon[aria-pressed="true"] { color: var(--accent); }
 .btn.ghost.danger:hover { color: var(--danger); background: var(--danger-soft); }
 
 main { max-width: 1080px; margin: 0 auto; padding: 20px 24px 96px; }
@@ -240,6 +241,7 @@ h1 { font-size: 20px; letter-spacing: -.015em; margin: 8px 0 4px; }
   <symbol id="i-up" viewBox="0 0 24 24"><path d="m6 14 6-6 6 6"/></symbol>
   <symbol id="i-down" viewBox="0 0 24 24"><path d="m6 10 6 6 6-6"/></symbol>
   <symbol id="i-archive" viewBox="0 0 24 24"><rect x="3.5" y="4.5" width="17" height="4" rx="1"/><path d="M5 8.5v10a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-10M10 12.5h4"/></symbol>
+  <symbol id="i-pin" viewBox="0 0 24 24"><path d="M9 4h6l-1 6 3.5 3.5h-11L10 10zM12 13.5V20"/></symbol>
   <symbol id="i-x" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></symbol>
 </svg>
 
@@ -419,7 +421,7 @@ function visibleLinks() {
   return tabLinks()
     .filter(l => !S.tag || l.tags.includes(S.tag))
     .filter(l => !q || [l.name, l.target, ...l.tags, ...l.aliases].some(s => s.toLowerCase().includes(q)))
-    .sort((a, b) => (S.settings.sort === 'name' ? 0 : b.score - a.score) || a.name.localeCompare(b.name));
+    .sort((a, b) => b.pinned - a.pinned || (S.settings.sort === 'name' ? 0 : b.score - a.score) || a.name.localeCompare(b.name));
 }
 
 function addForm() {
@@ -533,6 +535,9 @@ function row(l) {
     actions = h('div', { class: 'actions' },
       openWith, count, start,
       btn('Open', '', open, 'open', { disabled: l.broken, title: l.broken ? 'Path is missing. Edit it first.' : null }),
+      iconBtn('pin', l.pinned ? `Unpin ${l.name}` : `Pin ${l.name} to the top`, '',
+        () => act(() => api('PUT', 'pin', { name: l.name, pinned: !l.pinned }), `${l.pinned ? 'Unpinned' : 'Pinned'} ${l.name}`),
+        { 'aria-pressed': String(l.pinned) }),
       iconBtn('copy', `Copy ${COPY_WORD[l.kind]} of ${l.name}`, '', copy),
       iconBtn('edit', `Edit ${l.name}`, '', () => {
         S.editing = l.name; S.editErr = '';

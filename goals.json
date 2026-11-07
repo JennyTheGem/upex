@@ -316,9 +316,10 @@
       "title": "add with no name uses cwd",
       "body": "upex add (or upex add .) registers the current folder named after its basename. Most common add case, zero typing.",
       "phase": "next",
-      "status": "planned",
+      "status": "done",
       "created": "2026-11-06",
-      "updated": "2026-11-06"
+      "updated": "2026-11-07",
+      "note": "upex add / upex add . [path] names it after the folder, spaces as dashes"
     },
     {
       "id": "pinned-favorites",
@@ -326,9 +327,10 @@
       "title": "Pinned favorites",
       "body": "Pin shortcuts to the top of the selector and web UI regardless of frecency. Some projects matter even when used rarely.",
       "phase": "next",
-      "status": "planned",
+      "status": "done",
       "created": "2026-11-06",
-      "updated": "2026-11-06"
+      "updated": "2026-11-07",
+      "note": "upex pin/unpin, pinned:true sorts first in selector + web (pin toggle per row)"
     },
     {
       "id": "temporary-shortcuts",
@@ -348,10 +350,11 @@
       "title": "upex undo",
       "body": "Keep the last N store versions and roll back the last add/edit/rm/prune. Cheap safety net next to auto-backup.",
       "phase": "next",
-      "status": "planned",
+      "status": "done",
       "size": "S",
       "created": "2026-11-07",
-      "updated": "2026-11-07"
+      "updated": "2026-11-07",
+      "note": "upex undo restores newest backup (10 kept), steps back on repeat, keeps usage stats"
     },
     {
       "id": "open-in-explorer-default-app-vs-code-webstorm",

@@ -12,11 +12,11 @@ import readline from 'node:readline';
 import { PassThrough } from 'node:stream';
 import { spawn, spawnSync, execSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { frecency, pruneBroken, mergeLinks, lastUsedName, nameError, takenError, checkAliases, aliasClashes, staleLinks, sweepExpired } from '../src/store.js';
+import { frecency, pruneBroken, mergeLinks, lastUsedName, nameError, takenError, checkAliases, aliasClashes, staleLinks, sweepExpired, diffLinks, keepUsage } from '../src/store.js';
 import { remoteWebUrl } from '../src/git.js';
 import { installCmdWrapper } from '../src/commands/setup.js';
 import { normalizeUrl, caretEscape, wtCommandLine, setting, shellCommand, defaultOpener } from '../src/launcher.js';
-import { parseTags, parseDuration } from '../src/commands/add.js';
+import { parseTags, parseDuration, defaultName } from '../src/commands/add.js';
 import { truncate, span } from '../src/ui.js';
 import { applyShortcut, cleanEntries, startServer } from '../src/commands/web.js';
 import { renderInteractiveView, inView, tidyPath, byOrder, optionRow, listRows, readMouse, hitTest, rowClick, undoError, clipName, prefill, missingFlash, staysOpen } from '../src/interactive.js';
@@ -254,6 +254,40 @@ assert.doesNotMatch(swept.stdout, /^\s+\d+\s+tmp\s/m, 'expired shortcut hidden f
 assert.equal(upexIn('restore', 'tmp').status, 0, 'restore expired');
 assert.equal(upexIn('ls').stderr, '', 'restored shortcut is not re-archived');
 assert.equal(stored().tmp.expires, undefined, 'restore drops expires');
+
+// -- add with no name / ".", pin, undo --
+fs.writeFileSync(linksFile, '{}');
+fs.rmSync(path.join(home, '.upex', 'backups'), { recursive: true, force: true });
+fs.mkdirSync(path.join(home, 'my proj'));
+// macOS reports the cwd as /private/var/..., so compare against the real path.
+const proj = fs.realpathSync(path.join(home, 'my proj'));
+const addHere = (...args) => spawnSync(process.execPath, [cli, 'add', ...args], { encoding: 'utf-8', cwd: proj, env: { ...process.env, USERPROFILE: home, HOME: home } });
+assert.equal(addHere().status, 0, 'add with no name');
+assert.equal(stored()['my-proj'].path, proj, 'no name = cwd under its folder name, spaces as dashes');
+assert.equal(addHere('.', home).status, 0, 'add . <path>');
+assert.equal(stored()[path.basename(home)].path, home, '". <path>" names it after that folder');
+assert.equal(addHere('.').status, 0, 'add . again only warns');
+assert.equal(Object.keys(stored()).length, 2, 'taken default name is not overwritten');
+assert.equal(addHere('.', 'notepad', '--app').status, 1, '"." is no name for an app shortcut');
+assert.equal(stored()['.'], undefined, 'no shortcut named "."');
+assert.equal(upexIn('pin', 'my-proj').status, 0, 'pin');
+assert.equal(stored()['my-proj'].pinned, true, 'pin stored');
+assert.match(upexIn('pin').stdout, /Pinned: my-proj/, 'pin lists pinned');
+assert.equal(upexIn('pin', 'nope').status, 1, 'pin unknown fails');
+assert.equal(upexIn('unpin', 'my-proj').status, 0, 'unpin');
+assert.equal(stored()['my-proj'].pinned, undefined, 'unpin drops the flag');
+fs.writeFileSync(linksFile, JSON.stringify({ ...stored(), 'my-proj': { ...stored()['my-proj'], uses: 7, lastUsed: 5 } }));
+assert.equal(upexIn('rm', 'my-proj').status, 0, 'rm');
+let u = upexIn('undo');
+assert.match(u.stdout, /brought back: my-proj/, 'undo reports what came back');
+assert.equal(stored()['my-proj'].path, proj, 'undo restores the removed shortcut');
+u = upexIn('undo');
+assert.match(u.stdout, /reverted: my-proj/, 'second undo steps further back (the unpin)');
+assert.equal(stored()['my-proj'].pinned, true, 'undo of unpin re-pins');
+assert.equal(stored()['my-proj'].uses, 7, 'undo keeps usage stats');
+upexIn('undo'); upexIn('undo'); upexIn('undo');
+assert.deepEqual(stored(), {}, 'undo all the way back to empty');
+assert.match(upexIn('undo').stdout, /Nothing to undo/, 'nothing left to undo');
 
 fs.rmSync(home, { recursive: true, force: true });
 
@@ -546,6 +580,12 @@ assert.equal(setting('startView', { startView: 'nope' }), 'shortcuts', 'start vi
 const ord = [{ name: 'b', score: 1 }, { name: 'c', score: 5 }, { name: 'a', score: 1 }];
 assert.deepEqual([...ord].sort(byOrder('recent')).map(c => c.name), ['c', 'a', 'b'], 'most used first, ties A to Z');
 assert.deepEqual([...ord].sort(byOrder('name')).map(c => c.name), ['a', 'b', 'c'], 'A to Z ignores score');
+const pins = [...ord, { name: 'z', score: 0, pinned: true }];
+assert.deepEqual(pins.sort(byOrder('recent')).map(c => c.name), ['z', 'c', 'a', 'b'], 'pinned first regardless of score');
+assert.equal([...pins].sort(byOrder('name'))[0].name, 'z', 'pinned first in A to Z too');
+assert.deepEqual(diffLinks({ a: { path: 'A' }, b: { path: 'B' } }, { b: { path: 'X' }, c: { path: 'C' } }), { added: ['c'], removed: ['a'], changed: ['b'] }, 'diffLinks');
+assert.deepEqual(keepUsage({ a: { path: 'A', uses: 1 }, b: { path: 'B' } }, { a: { path: 'Z', uses: 3, lastUsed: 9 } }), { a: { path: 'A', uses: 3, lastUsed: 9 }, b: { path: 'B' } }, 'keepUsage takes current stats');
+assert.equal(defaultName('/x/My Cool  App/'), 'My-Cool-App', 'defaultName: basename, spaces to dashes');
 assert.equal(defaultOpener({ defaultOpener: 'Code' }), 'vscode', 'default opener alias normalized');
 assert.equal(defaultOpener({ defaultOpener: 'nope' }), 'explorer', 'unknown default opener falls back to explorer');
 assert.equal(defaultOpener({ defaultOpener: 'copy' }), 'explorer', 'copy is no default opener');
@@ -640,6 +680,12 @@ try {
   const send = (method, route, body) => fetch(base + '/api/' + route, {
     method, headers: { 'content-type': 'application/json', 'x-upex-token': token }, body: JSON.stringify(body),
   });
+  const webLinks = () => JSON.parse(fs.readFileSync(path.join(webHome, '.upex', 'links.json'), 'utf-8'));
+  assert.equal((await send('PUT', 'pin', { name: 'gh', pinned: true })).status, 200, 'pin via api');
+  assert.equal(webLinks().gh.pinned, true, 'pin stored via api');
+  assert.equal((await send('PUT', 'pin', { name: 'gh', pinned: false })).status, 200, 'unpin via api');
+  assert.equal(webLinks().gh.pinned, undefined, 'unpin clears the flag');
+  assert.equal((await send('PUT', 'pin', { name: 'nope', pinned: true })).status, 404, 'pin unknown 404s');
   assert.equal((await send('PUT', 'archive', { name: 'gh', archived: true })).status, 200, 'archive via api');
   assert.equal((await send('POST', 'open', { name: 'gh' })).status, 404, 'archived shortcut cannot be opened');
   assert.equal((await send('PUT', 'archive', { name: 'gh', archived: false })).status, 200, 'restore via api');
@@ -653,4 +699,4 @@ try {
   fs.rmSync(webHome, { recursive: true, force: true });
 }
 
-console.log('ok - frecency + prune + cmd wrapper + resolve guard + go args + safe store + edit url + merge + lastUsed + url + tags + truncate + web ui + subpaths + opener + doctor + apps tab + names + ws rename + cmd quoting + wt layout + settings + shells + default opener + auto-backup + aliases + archive + remote url');
+console.log('ok - frecency + prune + cmd wrapper + resolve guard + go args + safe store + edit url + merge + lastUsed + url + tags + truncate + web ui + subpaths + opener + doctor + apps tab + names + ws rename + cmd quoting + wt layout + settings + shells + default opener + auto-backup + aliases + archive + remote url + add cwd + pins + undo');

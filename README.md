@@ -22,6 +22,7 @@ npm link
 | Command | Description |
 |---|---|
 | `upex add <name> [path]` | Register a folder shortcut (defaults to current directory) |
+| `upex add` / `upex add . [path]` | Register the current folder (or `path`) under its own folder name |
 | `upex add <name> <app> --app` | Register an app shortcut (the path is the executable) |
 | `upex add <name> "<command>" --cmd` | Register a command line (runs in a terminal window) |
 | `upex add <name> <url> --url` | Register a URL shortcut (opens in the browser) |
@@ -43,6 +44,8 @@ npm link
 | `upex import <file> [--replace]` | Import a bundle (merge by default) |
 | `upex list [tag] [--git]` | Show all saved shortcuts (filter by tag; `--git` adds a branch column) |
 | `upex remove <name>` | Delete a saved shortcut |
+| `upex undo` | Undo the last change to your shortcuts (run again to step further back, up to 10; no redo) |
+| `upex pin <name>` / `upex unpin <name>` | Pin a shortcut to the top of the selector and web UI (`upex pin` lists pinned) |
 | `upex rename <old> <new>` | Rename a shortcut |
 | `upex edit <name> [path]` | Update a shortcut's path (defaults to cwd) |
 | `upex edit <name> --opener <app>` | Open this shortcut in `<app>` by default (`--no-opener` clears; also on `add`) |
@@ -197,7 +200,7 @@ upex import backup.json --replace  # replace everything
 
 ## Interactive Mode
 
-Run `upex` with no arguments to open the interactive selector. Shortcuts are ordered by frecency (most-used and most-recent first), or A to Z with the `sort` setting. It opens on the `startView` tab (Shortcuts with `--app`).
+Run `upex` with no arguments to open the interactive selector. Pinned shortcuts (`upex pin`) come first, then the rest by frecency (most-used and most-recent first), or A to Z with the `sort` setting. It opens on the `startView` tab (Shortcuts with `--app`).
 
 - `Up` / `Down` -- move through shortcuts
 - `Left` / `Right` -- change the selected app (starts on the shortcut's default opener)
@@ -216,7 +219,7 @@ Run `upex` with no arguments to open the interactive selector. Shortcuts are ord
 
 ## Web UI
 
-Run `upex ui` to open a local page (default `http://127.0.0.1:4545`, a free port if that one is busy) where you can add, edit, rename, tag, delete, copy and open shortcuts, set a default opener, open terminals with a window count and start command, build, reorder and rename workspaces, and remove missing paths. Lists sort by most used (or A to Z) and re-check paths when you come back to the page. Folders, apps (app, command and URL shortcuts) and workspaces each get their own tab. Press `/` to search, `n` for a new shortcut or app. Stop it with `Ctrl+C`.
+Run `upex ui` to open a local page (default `http://127.0.0.1:4545`, a free port if that one is busy) where you can add, edit, rename, tag, delete, copy and open shortcuts, set a default opener, open terminals with a window count and start command, build, reorder and rename workspaces, and remove missing paths. Lists sort by most used (or A to Z), pinned shortcuts first (pin icon on each row) and re-check paths when you come back to the page. Folders, apps (app, command and URL shortcuts) and workspaces each get their own tab. Press `/` to search, `n` for a new shortcut or app. Stop it with `Ctrl+C`.
 
 It only listens on 127.0.0.1 and every request needs a token that is new each run, so other sites can't use it. With `--no-open`, open the link it prints (it carries the token).
 
@@ -289,7 +292,7 @@ function upex {
 
 ## Storage
 
-Shortcuts are stored in `~/.upex/links.json` and created automatically on first use. Every edit (not the usage stats an open records) first copies the old file to `~/.upex/backups/` (newest 10 kept). To restore, copy a backup over `links.json`.
+Shortcuts are stored in `~/.upex/links.json` and created automatically on first use. Every edit (not the usage stats an open records) first copies the old file to `~/.upex/backups/` (newest 10 kept). `upex undo` restores the newest one (again to step further back), keeping usage stats; or copy a backup over `links.json` yourself.
 
 Each entry is an object with optional fields:
 
@@ -300,7 +303,7 @@ Each entry is an object with optional fields:
 }
 ```
 
-`opener` is the default opener for `upex <name>` (set with `--opener`). `uses` / `lastUsed` are written automatically and drive the interactive selector's frecency ordering. Each open is also appended to `~/.upex/history.jsonl` (`{ ts, name, opener }` per line), which `upex stats` reads. `added` (set on add, drives `upex stale` for never-opened shortcuts) and `expires` (from `--ttl`) are timestamps too.
+`opener` is the default opener for `upex <name>` (set with `--opener`). `uses` / `lastUsed` are written automatically and drive the interactive selector's frecency ordering. Each open is also appended to `~/.upex/history.jsonl` (`{ ts, name, opener }` per line), which `upex stats` reads. `added` (set on add, drives `upex stale` for never-opened shortcuts) and `expires` (from `--ttl`) are timestamps too. `pinned: true` (from `upex pin`) keeps a shortcut at the top.
 
 Legacy string entries (`"name": "/path"`) are auto-migrated on read.
 

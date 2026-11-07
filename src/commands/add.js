@@ -1,6 +1,6 @@
 /**
  * add.js -- Register a new shortcut
- * Usage: upex add <name> [path]        folder shortcut (defaults to cwd)
+ * Usage: upex add [name] [path]        folder shortcut (defaults to cwd; no name or "." = folder's name)
  *        upex add <name> <app> --app   app shortcut (the path IS the executable)
  *        upex add <name> "<line>" --cmd  command line, run in a terminal window
  */
@@ -26,9 +26,12 @@ export function parseDuration(value) {
   return m && Number(m[1]) > 0 ? Number(m[1]) * UNIT[m[2].toLowerCase()] : null;
 }
 
+// Name for `upex add` / `upex add .`: the folder's basename, spaces as dashes.
+export const defaultName = (dir) => path.basename(path.resolve(dir)).trim().replace(/\s+/g, '-');
+
 export function registerAdd(program) {
   program
-    .command('add <name> [target]')
+    .command('add [name] [target]')
     .description('Register a shortcut (folder, or an app with --app, a command line with --cmd, or a URL with --url)')
     .summary('Register a folder, app (--app), command (--cmd) or URL (--url)')
     .option('--app', 'Treat <target> as an application to launch')
@@ -50,6 +53,8 @@ export function registerAdd(program) {
         process.exit(1);
       }
 
+      // No name, or ".", names a folder shortcut after its folder (cwd by default). Others need a real name.
+      if (!name || name === '.') name = options.app || options.url || options.cmd ? undefined : defaultName(targetPath || '.');
       const bad = nameError(name);
       if (bad) {
         ui.error(bad);

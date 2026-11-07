@@ -27,9 +27,11 @@ Jenny's CLI for named shortcuts to folders, apps, command lines and URLs. Data: 
 | `upex <name> [app] [count]` | Open a shortcut. app: `explorer` (default, or the shortcut's own opener), `vscode`, `cmd`, `claude`, `webstorm`, or a custom opener |
 | `upex go <name>` | Print path |
 | `upex ls [tag] [--git] [--archived]` | List shortcuts |
-| `upex add <name> [target] [--app\|--cmd\|--url] [--tag a,b] [--opener <app>] [--alias a,b] [--ttl 7d]` | Register a folder (default cwd), app, command line or URL; `--ttl` (`30m`/`12h`/`7d`/`2w`) makes it temporary |
+| `upex add [name] [target] [--app\|--cmd\|--url] [--tag a,b] [--opener <app>] [--alias a,b] [--ttl 7d]` | Register a folder (default cwd), app, command line or URL; no name or `.` names a folder after itself (spaces as dashes); `--ttl` (`30m`/`12h`/`7d`/`2w`) makes it temporary |
 | `upex edit <name> [target] [--opener <app>\|--no-opener]` / `rename <old> <new>` | Change, rename |
 | `upex rm <name> [--archive]` / `restore <name>` | Delete, or archive (hidden, restorable) |
+| `upex pin [name]` / `unpin <name>` | Pin to the top of the selector and `upex ui` (no name: list pinned) |
+| `upex undo` | Roll shortcuts back to before the last change (from `~/.upex/backups`, up to 10 steps; keeps usage stats; not workspaces/config; no redo, so only when asked) |
 | `upex tag [name] [tags...] [--remove] [--clear]` | Manage tags; `upex open <tag>` opens all tagged |
 | `upex alias [name] [aliases...] [--remove] [--clear]` | Extra names for a shortcut |
 | `upex cmd <name> [count] [start...]` | Open N terminals there, optionally running a command |

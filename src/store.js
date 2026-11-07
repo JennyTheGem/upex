@@ -81,14 +81,20 @@ function normalizeEntry(value) {
 // Field holding a shortcut's target. An app shortcut that also has a path edits the path.
 export const targetField = (e) => (e.url ? 'url' : e.app && !e.path ? 'app' : 'path');
 
-export function loadLinks() {
+function normalizeLinks(raw) {
   const normalized = {};
-  for (const [name, value] of Object.entries(readJson(LINKS_FILE))) {
+  for (const [name, value] of Object.entries(raw)) {
     const entry = normalizeEntry(value);
     if (entry) normalized[name] = entry;
   }
   return normalized;
 }
+
+export const loadLinks = () => normalizeLinks(readJson(LINKS_FILE));
+
+// Only our own names, so a hand-saved file in backups/ is never touched.
+const BACKUP_RE = /^links-[\dTZ-]+\.json$/;
+const backupFiles = () => (fs.existsSync(BACKUP_DIR) ? fs.readdirSync(BACKUP_DIR).filter(f => BACKUP_RE.test(f)).sort() : []);
 
 // Copy the current links.json to backups/ and keep only the newest KEEP_BACKUPS.
 function backupLinks(next) {
@@ -107,8 +113,7 @@ function backupLinks(next) {
       if (err.code !== 'EEXIST') throw err;
     }
   }
-  // Only our own names, so a hand-saved file in backups/ is never deleted.
-  const old = fs.readdirSync(BACKUP_DIR).filter(f => /^links-[\dTZ-]+\.json$/.test(f)).sort().slice(0, -KEEP_BACKUPS);
+  const old = backupFiles().slice(0, -KEEP_BACKUPS);
   for (const f of old) {
     // A locked old backup must not block the save.
     try { fs.rmSync(path.join(BACKUP_DIR, f), { force: true }); } catch {}
@@ -119,6 +124,44 @@ function backupLinks(next) {
 export function saveLinks(links, { backup = true } = {}) {
   if (backup) backupLinks(links);
   writeJson(LINKS_FILE, links);
+}
+
+// Names added, removed and changed going from `before` to `after`.
+export function diffLinks(before, after) {
+  const added = Object.keys(after).filter(n => !Object.hasOwn(before, n));
+  const removed = Object.keys(before).filter(n => !Object.hasOwn(after, n));
+  const changed = Object.keys(after).filter(n => Object.hasOwn(before, n) && JSON.stringify(before[n]) !== JSON.stringify(after[n]));
+  return { added, removed, changed };
+}
+
+// `restored` with usage stats taken from `current`: opens make no backup, so undo must not reset them.
+export function keepUsage(restored, current) {
+  const out = {};
+  for (const [name, e] of Object.entries(restored)) {
+    const c = current[name];
+    out[name] = c && (c.uses || c.lastUsed) ? { ...e, uses: c.uses, lastUsed: c.lastUsed } : e;
+  }
+  return out;
+}
+
+/**
+ * Roll links.json back to the newest backup that changes something, deleting the backups used,
+ * so the next undo steps further back. Returns { added, removed, changed, at, left } or null.
+ */
+export function undoLast() {
+  const current = loadLinks();
+  for (const f of backupFiles().reverse()) {
+    const file = path.join(BACKUP_DIR, f);
+    const at = fs.statSync(file).mtimeMs;
+    const restored = keepUsage(normalizeLinks(readJson(file)), current);
+    const diff = diffLinks(current, restored);
+    const changes = diff.added.length || diff.removed.length || diff.changed.length;
+    if (changes) writeJson(LINKS_FILE, restored);
+    // A locked backup must not fail an undo already written; the next undo skips it as a no-op.
+    try { fs.rmSync(file, { force: true }); } catch {}
+    if (changes) return { ...diff, at, left: backupFiles().length };
+  }
+  return null;
 }
 
 export function getLink(name) {

@@ -10,9 +10,6 @@ Closed sections: §5 Platform support · §8 Distribution
 
 ## 1. Shortcut management
 
-- `add-with-no-name-uses-cwd` add with no name uses cwd (next)
-- `pinned-favorites` Pinned favorites (next)
-- `upex-undo` upex undo (next)
 - Plus 3 maybe: `upgo list --section 1 --phase maybe`
 
 ## 2. Opening

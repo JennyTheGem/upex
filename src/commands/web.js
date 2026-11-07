@@ -101,6 +101,7 @@ function state() {
         tags: e.tags || [],
         aliases: aliasesOf(e),
         archived: Boolean(e.archived),
+        pinned: Boolean(e.pinned),
         opener: e.opener || '',
         lastUsed: e.lastUsed || 0,
         score: frecency(e),
@@ -136,6 +137,14 @@ const routes = {
     const links = loadLinks();
     if (!Object.hasOwn(links, String(b.name))) throw new HttpError(404, `Shortcut not found: ${b.name}`);
     if (b.archived) links[b.name].archived = true; else { delete links[b.name].archived; delete links[b.name].expires; }
+    saveLinks(links);
+    return {};
+  },
+
+  'PUT /api/pin': (b) => {
+    const links = loadLinks();
+    if (!Object.hasOwn(links, String(b.name))) throw new HttpError(404, `Shortcut not found: ${b.name}`);
+    if (b.pinned) links[b.name].pinned = true; else delete links[b.name].pinned;
     saveLinks(links);
     return {};
   },

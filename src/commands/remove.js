@@ -9,7 +9,7 @@ import { resolveName } from '../fuzzy.js';
 import * as ui from '../ui.js';
 
 // Exact shortcut for `name` (archived ones too, so they can be deleted), or null after printing why.
-function exactShortcut(name, links, verb) {
+export function exactShortcut(name, links, verb) {
   const owner = nameOwner(links, name);
   if (owner) return owner;
   const resolved = resolveName(name, links);

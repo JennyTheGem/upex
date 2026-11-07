@@ -34,6 +34,7 @@ function buildChoices() {
       isCmd: !!(entry.app && entry.terminal),
       isUrl: !!entry.url,
       tags: entry.tags || [],
+      pinned: !!entry.pinned,
       opener: entry.opener ? String(entry.opener).toLowerCase() : null,
       exists: entry.path ? fs.existsSync(entry.path) : !!(entry.app || entry.url),
       searchText: `${name} ${aliasesOf(entry).join(' ')} ${entry.path || ''} ${entry.app || ''} ${entry.url || ''} ${(entry.tags || []).join(' ')}`,
@@ -42,8 +43,9 @@ function buildChoices() {
     .sort(byOrder(setting('sort')));
 }
 
-// 'recent' = most used first, ties alphabetical; 'name' = A to Z.
-export const byOrder = (sort) => (a, b) => (sort === 'name' ? 0 : b.score - a.score) || a.name.localeCompare(b.name);
+// Pinned first; then 'recent' = most used first, ties alphabetical; 'name' = A to Z.
+export const byOrder = (sort) => (a, b) =>
+  (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0) || (sort === 'name' ? 0 : b.score - a.score) || a.name.localeCompare(b.name);
 
 // Folder shortcuts on the Shortcuts tab, app + URL shortcuts on the Apps tab.
 export const inView = (view) => (c) => (view === 'apps') === !!(c.isApp || c.isUrl);
@@ -385,7 +387,7 @@ export function renderInteractiveView({
       const c = list[i];
       const tags = c.tags?.length ? chalk.dim(`#${c.tags.join(' #')}`) : '';
       const kind = c.isCmd ? 'cmd' : c.isApp ? 'app' : c.isUrl ? 'url' : '';
-      const badge = isWs ? '' : !c.exists ? chalk.red('missing') : chalk.dim(kind);
+      const badge = isWs ? '' : !c.exists ? chalk.red('missing') : chalk.dim([c.pinned && 'pinned', kind].filter(Boolean).join(' '));
       hit(lines.length, 0, w, { row: i });
       lines.push(renderRow({
         sel: i === index,
