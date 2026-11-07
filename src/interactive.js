@@ -542,6 +542,26 @@ export function scriptLines({ list }, sel, pw, rows, pick = chalk.bold) {
   return more ? [...out, ui.truncate(more, pw)] : out;
 }
 
+// Pane with marks, `rows` tall: each marked row and what Enter opens it in, then what ^d does.
+// `marked` [{ c, app, count }] as Enter would open them.
+export function markLines(marked, pw, rows, appChoices = [], pick = chalk.bold) {
+  const n = marked.length;
+  const nw = Math.min(nameCol(marked.map(m => m.c)), Math.floor(pw / 2));
+  // Head, blank, Enter line, blank and ^d line take 5; a cut list ends in "↓ n more".
+  const room = Math.max(1, rows - 5);
+  const shown = n <= room ? marked : marked.slice(0, Math.max(1, room - 1));
+  const how = ({ c, app, count }) => (c.exists === false ? chalk.red('missing') : c.isUrl ? 'browser' : c.isApp ? 'launches'
+    : `${appChoices.find(a => a.key === app)?.label || app}${count > 1 ? ` ×${count}` : ''}`);
+  const out = [`${pick('●')} ${chalk.bold(`${n} marked`)}`, '', `${hintKey('↵')} ${chalk.dim('opens')}`,
+    ...shown.map((m) => {
+      const name = clipName(m.c.name, nw).text;
+      return `  ${name}${' '.repeat(nw - vis(name) + 2)}${how(m)}`;
+    })];
+  if (shown.length < n) out.push(chalk.dim(`  ↓ ${n - shown.length} more`));
+  out.push('', `${hintKey('^d')} ${chalk.dim(`deletes ${n > 1 ? `all ${n}` : 'it'}, ^z undo`)}`);
+  return out.map(l => ui.truncate(l, pw));
+}
+
 export function renderInteractiveView({
   query,
   choices,
@@ -566,6 +586,7 @@ export function renderInteractiveView({
   scripts = null, // script picker (mode 'scripts'): { pm, list: [{ name, path: command }] }
   scriptIndex = 0,
   marks = new Set(), // marked shortcut names (Space)
+  marked = [], // the marked rows as Enter opens them: [{ c, app, count }]
   goalIndex = 0, // goal picker (mode 'goals', S-→ into the pane)
   gitFor = gitOf, // dir -> cached git status or null, never blocks
   width = 80,
@@ -589,9 +610,11 @@ export function renderInteractiveView({
   const index = listScripts ? scriptIndex : isWs ? wsIndex : selectedIndex;
   // Workspace and script rows: plain text, no badges.
   const plain = isWs || listScripts;
-  const goals = pane && !isWs ? folderGoals(currentChoice, settings.goals) : null;
+  // With marks, the pane lists them instead of the selected row.
+  const marking = pane && !isWs && !isScripts && marked.length > 0;
+  const goals = pane && !isWs && !marking ? folderGoals(currentChoice, settings.goals) : null;
   const isGoals = mode === 'goals' && !!goals?.next.length;
-  const git = pane && !isWs && !isScripts ? folderGit(currentChoice, settings.git, gitFor) : null;
+  const git = pane && !isWs && !isScripts && !marking ? folderGit(currentChoice, settings.git, gitFor) : null;
   const w = Math.max(width, 20);
   const pw = pane ? Math.min(72, Math.floor(w * 0.38)) : 0; // pane width
   const lw = pane ? w - pw - 3 : w; // list width, " │ " between
@@ -784,6 +807,7 @@ export function renderInteractiveView({
   if (pane) {
     const sel = isGoals ? Math.min(goalIndex, goals.next.length - 1) : -1;
     const detail = isScripts ? scriptLines(scripts, scriptIndex, pw, lines.length - bodyStart, pick)
+      : marking ? markLines(marked, pw, lines.length - bodyStart, appChoices, pick)
       : detailLines(currentChoice, pw, appChoices, Date.now(), { goals, sel, pick, git });
     // Picking and taller than the pane: scroll to its end (the goals), the picked one in view.
     const skip = isGoals ? Math.max(0, Math.min(detail.length - (lines.length - bodyStart), detail.length - goals.next.length + sel)) : 0;
@@ -863,6 +887,14 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
     let selectedAppIndex = Math.max(0, appIndex(preferredApp || lastOpener || fallback));
     // Until Left/Right (or --app) picks one, the opener follows the shortcut's default opener.
     let appPicked = !!(preferredApp || lastOpener);
+    // Marked rows as Enter opens them: folders in the picked opener, else their own; apps and URLs launch directly.
+    const markedPlan = () => {
+      const picked = appPicked && (appChoices[selectedAppIndex]?.key || fallback);
+      return allChoices.filter(c => marks.has(c.name)).map((c) => {
+        const app = c.isApp || c.isUrl ? null : picked || ownOpener(c);
+        return { c, app, count: isTerminalApp(app) ? cmdCount : 1 };
+      });
+    };
     let targets = [];   // clickable areas of the last frame
     let mouse = null;   // readMouse state
     let lastClick = {}; // { y, at } for double-click
@@ -920,6 +952,7 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
         scripts,
         scriptIndex,
         marks,
+        marked: marks.size ? markedPlan() : [],
         goalIndex,
         gitFor,
         counts: { shortcuts: allChoices.filter(inView('shortcuts')).length, apps: allChoices.filter(inView('apps')).length, workspaces: wsChoices.length },
@@ -1118,7 +1151,7 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
     // Goals the pane shows now (same checks as the render), else null.
     const paneOn = () => view === 'shortcuts' && paneShown(stdout.columns || 80, alt, paneOpen || settings.narrowPane === 'always');
     const toggles = () => view !== 'settings' && paneToggles(stdout.columns || 80, alt, settings);
-    const paneGoals = () => (paneOn() ? folderGoals(filteredChoices[selectedIndex], settings.goals) : null);
+    const paneGoals = () => (paneOn() && !marks.size ? folderGoals(filteredChoices[selectedIndex], settings.goals) : null);
     // A git lookup landing redraws, which shows it (and looks up the row selected meanwhile).
     let closed = false;
     const gitFor = dir => gitOf(dir, guard(() => { if (!closed) redraw(); }));
@@ -1523,12 +1556,7 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
       }
 
       if (key.name === 'return' && marks.size) {
-        // Folders in the picked opener, else their own; apps and URLs launch directly.
-        const picked = appPicked && (appChoices[selectedAppIndex]?.key || fallback);
-        const entries = allChoices.filter(c => marks.has(c.name)).map((c) => {
-          const app = c.isApp || c.isUrl ? null : picked || ownOpener(c);
-          return { shortcut: c.name, app, count: isTerminalApp(app) ? cmdCount : 1 };
-        });
+        const entries = markedPlan().map(({ c, app, count }) => ({ shortcut: c.name, app, count }));
         marks.clear();
         if (settings.enter === 'stay') { openHere(entries, `opened ${howMany(entries.map(e => e.shortcut))}`, [filteredChoices[selectedIndex]?.name]); return; }
         finish({ status: 'marked', entries });

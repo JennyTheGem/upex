@@ -1354,6 +1354,18 @@
       "note": "Settings > Detail pane > Git status (off by default): branch, ahead/behind, changed files, last commit; async cached lookup in src/git.js; ^g or click opens the origin web page"
     },
     {
+      "id": "project-type-detection",
+      "section": 9,
+      "title": "Project type detection",
+      "body": "Spot package.json, .sln, Cargo.toml, pyproject and suggest the matching opener or run scripts. Better defaults with no config.",
+      "phase": "later",
+      "status": "dropped",
+      "size": "M",
+      "created": "2026-11-07",
+      "updated": "2026-11-07",
+      "note": "Out of scope"
+    },
+    {
       "id": "detail-pane-mouse-click-a-goal-or-the-path-to",
       "section": 9,
       "title": "Detail pane mouse: click a goal or the path to copy, wheel moves the goal picker",
@@ -1362,6 +1374,113 @@
       "created": "2026-11-07",
       "updated": "2026-11-07",
       "note": "pane lines carry { copy, msg } targets; handleMouse copies, goal picker accepts wheel and leaves on other clicks"
+    },
+    {
+      "id": "package-info-in-the-detail-pane",
+      "section": 9,
+      "title": "Package info in the detail pane",
+      "body": "name, version and package manager from package.json in the folder.",
+      "phase": "later",
+      "status": "dropped",
+      "size": "S",
+      "created": "2026-11-07",
+      "updated": "2026-11-07",
+      "note": "Not worth it"
+    },
+    {
+      "id": "folder-preview-in-the-detail-pane",
+      "section": 9,
+      "title": "Folder preview in the detail pane",
+      "body": "Top-level files and folders, or the 5 most recently changed files, of the selected folder.",
+      "phase": "maybe",
+      "status": "planned",
+      "size": "M",
+      "created": "2026-11-07",
+      "updated": "2026-11-07"
+    },
+    {
+      "id": "readme-excerpt-in-the-detail-pane",
+      "section": 9,
+      "title": "README excerpt in the detail pane",
+      "body": "First few non-empty lines of the folder's README.",
+      "phase": "later",
+      "status": "dropped",
+      "size": "S",
+      "created": "2026-11-07",
+      "updated": "2026-11-07",
+      "note": "Out of scope"
+    },
+    {
+      "id": "openers-used-in-the-detail-pane",
+      "section": 9,
+      "title": "Openers used in the detail pane",
+      "body": "How often each opener was used for this shortcut (VS Code 30x, Explorer 12x), from the open history.",
+      "phase": "later",
+      "status": "dropped",
+      "size": "S",
+      "created": "2026-11-07",
+      "updated": "2026-11-07",
+      "note": "Out of scope"
+    },
+    {
+      "id": "app-and-url-details-in-the-detail-pane",
+      "section": 9,
+      "title": "App and URL details in the detail pane",
+      "body": "Apps: whether the exe exists, its folder and kind (.bat/.exe/command). URLs: domain and protocol, big.",
+      "phase": "later",
+      "status": "dropped",
+      "size": "S",
+      "created": "2026-11-07",
+      "updated": "2026-11-07",
+      "note": "Out of scope"
+    },
+    {
+      "id": "usage-sparkline-in-the-detail-pane",
+      "section": 9,
+      "title": "Usage sparkline in the detail pane",
+      "body": "Opens per week over the last 8 weeks for the selected shortcut, from the history statsFrom already reads.",
+      "phase": "later",
+      "status": "dropped",
+      "size": "S",
+      "created": "2026-11-07",
+      "updated": "2026-11-07",
+      "note": "Not worth it"
+    },
+    {
+      "id": "key-hints-in-the-detail-pane",
+      "section": 9,
+      "title": "Key hints in the detail pane",
+      "body": "On wide terminals move the key hint rows into the pane, freeing the bottom rows for the list.",
+      "phase": "later",
+      "status": "dropped",
+      "size": "S",
+      "created": "2026-11-07",
+      "updated": "2026-11-07",
+      "note": "Not worth it"
+    },
+    {
+      "id": "recently-opened-timeline-in-the-detail-pane",
+      "section": 9,
+      "title": "Recently opened timeline in the detail pane",
+      "body": "With an empty filter and nothing else to show, a timeline of the last opens across all shortcuts.",
+      "phase": "later",
+      "status": "dropped",
+      "size": "S",
+      "created": "2026-11-07",
+      "updated": "2026-11-07",
+      "note": "Tried it in the detail pane, not wanted"
+    },
+    {
+      "id": "marked-rows-in-the-detail-pane",
+      "section": 9,
+      "title": "Marked rows in the detail pane",
+      "body": "With marks, the pane lists every marked row and what Enter / ^d will do to them.",
+      "phase": "later",
+      "status": "done",
+      "size": "S",
+      "created": "2026-11-07",
+      "updated": "2026-11-07",
+      "note": "With marks the pane lists them (opener per row, missing in red, cut with N more) and the ^d line; goals and git hidden then"
     }
   ]
 }

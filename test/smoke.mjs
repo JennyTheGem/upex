@@ -22,7 +22,7 @@ import { applyShortcut, applyOpener, cleanEntries, startServer } from '../src/co
 import { COMMAND_NAMES } from '../src/fast.js';
 import { createProgram } from '../src/index.js';
 import { readScripts, detectPm } from '../src/commands/run.js';
-import { renderInteractiveView, nextView, backTo, accentOf, pathLook, inView, tidyPath, byOrder, optionRow, listRows, readMouse, hitTest, rowClick, undoError, clipName, prefill, editLine, inputLine, missingFlash, staysOpen, expandHome, underlineHits, movePinned, withRecent, maxListOf, isAlt, detailLines, rowOptions, pickedOf, goalSummary, goalsOf, goalText, oneLine, scriptLines, paneShown, paneToggles } from '../src/interactive.js';
+import { renderInteractiveView, nextView, backTo, accentOf, pathLook, inView, tidyPath, byOrder, optionRow, listRows, readMouse, hitTest, rowClick, undoError, clipName, prefill, editLine, inputLine, missingFlash, staysOpen, expandHome, underlineHits, movePinned, withRecent, maxListOf, isAlt, detailLines, rowOptions, pickedOf, goalSummary, goalsOf, goalText, oneLine, scriptLines, markLines, paneShown, paneToggles } from '../src/interactive.js';
 import { parseStatus, parseDiff, parseLog, gitOf, stopGit } from '../src/git.js';
 import chalk from 'chalk';
 import { resolveTarget, resolveName, suggestNames } from '../src/fuzzy.js';
@@ -887,6 +887,12 @@ assert.deepEqual([parseLog('1700000000 fix it'), parseLog(''), parseLog(null)], 
   assert.ok(tall.some(l => l.i === 15) && tall.length <= 8 && strip(tall.at(-1)).includes('more'), 'pane scripts scroll to the picked one');
   const short = scriptLines({ list: Array.from({ length: 10 }, (_, i) => ({ name: `s${i}`, path: 'x' })) }, 9, 40, 4);
   assert.ok(short.length === 4 && short.some(l => l.i === 9), 'short pane: the picked script still fits');
+  // Marks: the pane lists them and what Enter / ^d do, instead of the selected row.
+  const mk = [{ c: { name: 'web', path: 'P' }, app: 'cmd', count: 2 }, { c: { name: 'u', isUrl: true } }, { c: { name: 'gone', exists: false } }];
+  const mp = strip(renderInteractiveView({ ...viewArgs, choices: [det], full: true, width: 150, height: 30, marks: new Set(['web']), marked: mk }));
+  assert.ok(/│ ● 3 marked$/m.test(mp) && /│ {3}web +cmd ×2$/m.test(mp) && /│ {3}u +browser$/m.test(mp) && /│ {3}gone +missing$/m.test(mp) && mp.includes('^d deletes all 3') && !mp.includes('opens in'), 'pane lists the marks');
+  const cut = markLines(Array.from({ length: 10 }, (_, i) => ({ c: { name: `m${i}` }, app: 'x' })), 40, 8).map(strip);
+  assert.ok(cut.length === 8 && cut.includes('  ↓ 8 more') && cut.at(-1).startsWith('^d'), 'many marks: list cut, ^d line kept');
 }
 // Full screen without the pane: the opener row is still clickable after the footer moves down.
 const fullA = { ...viewArgs, full: true, height: 30 };
