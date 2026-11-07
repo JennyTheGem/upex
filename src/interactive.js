@@ -8,8 +8,8 @@ import path from 'node:path';
 import readline from 'node:readline';
 import chalk from 'chalk';
 import Fuse from 'fuse.js';
-import { getInteractiveAppChoices, getAppMap, isTerminalApp, hasWindowsTerminal, defaultOpener, readSettings, setting, startTab, isHex, launchApp } from './launcher.js';
-import { loadLinks, activeLinks, aliasesOf, takenError, checkAliases, frecency, recordUse, removeLink, setLink, renameLink, loadWorkspaces, saveWorkspaces, removeWorkspace, nameError, loadConfig, saveConfig, withPinned } from './store.js';
+import { getInteractiveAppChoices, getAppMap, isTerminalApp, hasWindowsTerminal, defaultOpener, readSettings, setting, startTab, isHex, launchApp, copyToClipboard } from './launcher.js';
+import { loadLinks, activeLinks, aliasesOf, takenError, checkAliases, frecency, recordUse, removeLink, setLink, renameLink, loadWorkspaces, saveWorkspaces, removeWorkspace, nameError, loadConfig, saveConfig, withPinned, setPinOrder } from './store.js';
 import { describeEntry } from './commands/workspace.js';
 import { startServer } from './commands/web.js';
 import { readScripts, detectPm } from './commands/run.js';
@@ -36,6 +36,7 @@ function buildChoices() {
       isUrl: !!entry.url,
       tags: entry.tags || [],
       pinned: !!entry.pinned,
+      pinOrder: entry.pinned && Number.isFinite(entry.pinOrder) ? entry.pinOrder : undefined,
       opener: entry.opener ? String(entry.opener).toLowerCase() : null,
       exists: entry.path ? fs.existsSync(entry.path) : !!(entry.app || entry.url),
       searchText: `${name} ${aliasesOf(entry).join(' ')} ${entry.path || ''} ${entry.app || ''} ${entry.url || ''} ${(entry.tags || []).join(' ')}`,
@@ -46,12 +47,34 @@ function buildChoices() {
     .sort(byOrder(setting('sort')));
 }
 
-// Pinned first; then highest first by the sort's field (most used, last opened, recently added), ties and 'name' A to Z.
+// Pinned first, in their pin order (unordered ones after); then highest first by the sort's field
+// (most used, last opened, recently added), ties and 'name' A to Z.
 const SORT_FIELD = { recent: 'score', opened: 'lastUsed', added: 'added' };
+const pinRank = c => c.pinOrder ?? Infinity;
 export const byOrder = (sort) => (a, b) => {
   const f = SORT_FIELD[sort];
-  return (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0) || (f ? (b[f] || 0) - (a[f] || 0) : 0) || a.name.localeCompare(b.name);
+  return (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0) || Math.sign(pinRank(a) - pinRank(b)) || (f ? (b[f] || 0) - (a[f] || 0) : 0) || a.name.localeCompare(b.name);
 };
+
+// Pin order (names) after moving `name` one step (dir -1 / 1) past the next pin `same` accepts; null at an end.
+export function movePinned(pins, name, dir, same = () => true) {
+  const i = pins.findIndex(p => p.name === name);
+  let j = i + dir;
+  while (j >= 0 && j < pins.length && !same(pins[j])) j += dir;
+  if (i < 0 || j < 0 || j >= pins.length) return null;
+  const names = pins.map(p => p.name);
+  [names[i], names[j]] = [names[j], names[i]];
+  return names;
+}
+
+// Recent strip: the last `n` opened again on top, marked `recent`. Not for a list that short.
+export function withRecent(list, n = 3) {
+  const recent = list.filter(c => c.lastUsed).sort((a, b) => b.lastUsed - a.lastUsed).slice(0, n);
+  return list.length > n && recent.length ? [...recent.map(c => ({ ...c, recent: true })), ...list] : list;
+}
+
+// Max rows setting -> list rows.
+export const maxListOf = v => (v === 'fill' ? Infinity : Number(v) || MAX_VISIBLE_CHOICES);
 
 // Folder shortcuts on the Shortcuts tab, app + URL shortcuts on the Apps tab.
 export const inView = (view) => (c) => (view === 'apps') === !!(c.isApp || c.isUrl);
@@ -138,6 +161,8 @@ const [nodeMajor, nodeMinor] = process.versions.node.split('.').map(Number);
 const swapped = os.platform() === 'win32' && (nodeMajor < 22 || nodeMajor === 23 || (nodeMajor === 22 && nodeMinor < 17) || (nodeMajor === 24 && nodeMinor < 2));
 const CTRL_BACKSPACE = swapped ? '\x7f' : '\b';
 const isWordBackspace = key => (key.ctrl && key.name === 'w') || (key.name === 'backspace' && (key.ctrl || key.meta || key.sequence === CTRL_BACKSPACE));
+// Alt: a modifier code (\x1b[1;3A), or an Esc prefix (\x1b\x1b[A, older Windows Node and some terminals) readline leaves unflagged.
+export const isAlt = key => !!key.meta || (key.sequence || '').startsWith('\x1b\x1b');
 
 // Line editing for a text field at cursor `cur`: returns the new { text, cur }, or null when `key` isn't an edit key.
 export function editLine({ text, cur }, str, key = {}) {
@@ -317,12 +342,14 @@ const nextView = (view) => CYCLE[(CYCLE.indexOf(view) + 1) % CYCLE.length];
 const SETTING_ROWS = [
   { section: 'General', key: 'startView', label: 'Start view', names: { shortcuts: 'Shortcuts', apps: 'Apps', workspaces: 'Workspaces', last: 'Last used' } },
   { section: 'General', key: 'sort', label: 'Sort', names: { recent: 'Most used', name: 'A to Z', opened: 'Last opened', added: 'Recently added' } },
+  { section: 'General', key: 'recentStrip', label: 'Recent on top', names: { off: 'Off', on: 'On' } },
   { section: 'Terminals', key: 'terminalLayout', label: 'Layout', names: { windows: 'Separate windows', tabs: 'Tabs', panes: 'Split panes' } },
   { section: 'Terminals', key: 'paneSplit', label: 'Pane split', names: { auto: 'Auto', vertical: 'Side by side', horizontal: 'Stacked' } },
   { section: 'Terminals', key: 'terminalShell', label: 'Shell', names: { cmd: 'cmd', powershell: 'PowerShell', pwsh: 'PowerShell 7', profile: 'WT profile' } },
   { section: 'Opening', key: 'defaultOpener', label: 'Default opener' },
   { section: 'Appearance', key: 'fullScreen', label: 'Full screen', names: { on: 'On', off: 'Off' } },
   { section: 'Appearance', key: 'keyHints', label: 'Key hints', names: { full: 'Full', short: 'Short', off: 'Off' } },
+  { section: 'Appearance', key: 'maxRows', label: 'Max rows', names: { 8: '8', 12: '12', 16: '16', fill: 'Fill screen' } },
   { section: 'Appearance', key: 'accent', label: 'Accent', names: { default: 'Default', green: 'Green', blue: 'Blue', purple: 'Purple', orange: 'Orange' } },
   { section: 'Appearance', key: 'density', label: 'Density', names: { comfortable: 'Comfortable', compact: 'Compact' } },
   { section: 'Appearance', key: 'paths', label: 'Paths', names: { dim: 'Dim folders', full: 'Full', hidden: 'Hidden' } },
@@ -340,13 +367,15 @@ const rowOptions = (row, appChoices, s = {}) => (row.names
 function settingNote(key, s, wt) {
   if (key === 'startView') return 'The tab upex and upex ui open on. Last used: where you left off, opener included.';
   if (key === 'sort') return 'Shortcut order here and in upex ui.';
+  if (key === 'recentStrip') return 'The last 3 opened again above the list, under a Recent heading, whatever the sort.';
+  if (key === 'maxRows') return 'List rows here. Fill screen: as many as the terminal fits.';
   if (key === 'defaultOpener') return 'Opens folder shortcuts that have no opener of their own.';
   if (key === 'fullScreen') return 'Whole terminal plus mouse, restored on exit. Off: inline, no mouse.';
   if (key === 'accent') return 'Color of the › pointer and the picked option, here and in upex ui. Any color: upex config set accent ff66aa';
   if (key === 'density') return 'Compact drops the spacer lines, here and in upex ui.';
   if (key === 'paths') return 'Paths in the lists here, in upex ls / stale and in upex ui.';
   if (key === 'rowDetails') return 'Right side of a row: #tags, badges (pinned, app, missing), both or none. Here, in upex ls and upex ui.';
-  if (key === 'pinned') return 'Pinned shortcuts first, or first under their own Pinned heading. Here and in upex ui. ^p pins.';
+  if (key === 'pinned') return 'Pinned shortcuts first, or first under their own Pinned heading. Here and in upex ui. ^p pins, Alt+↑↓ moves one.';
   if (key === 'keyHints') return 'Key rows under the list. Short: one row of the main keys. Off: more room for the list. Settings keeps its keys.';
   if (key === 'theme') return 'upex ui only. The terminal keeps its own colors.';
   if (wt === null) return 'Windows only. Other systems use their own terminal.';
@@ -499,15 +528,18 @@ export function renderInteractiveView({
   const opener = isShortcuts && ['←→', 'opener'];
   const windows = isShortcuts && terminal && ['S-↑↓', 'windows'];
   const scriptsKey = isShortcuts && ['^s', 'scripts'];
-  const navRow = [openKey, scriptsKey, ['↑↓', 'move'], opener, windows, tabKey, escKey];
+  const movePin = !isWs && !query?.trim() && currentChoice?.pinned && ['A-↑↓', 'move pin'];
+  const navRow = [openKey, scriptsKey, ['↑↓', 'move'], opener, windows, tabKey, escKey, movePin];
   const actRow = [isShortcuts && ['^a', 'add'], isShortcuts && ['^e', 'edit path'], !isWs && ['^r', 'rename'],
     !isWs && list.length > 0 && ['^p', currentChoice?.pinned ? 'unpin' : 'pin'], ['^d', 'delete'], undoKey];
+  // Last in their rows, so a narrow terminal drops them first.
+  const copyKey = !isWs && list.length > 0 && ['^y', 'copy'];
   const inputRow = keyHint([['↵', 'save'], ['←→', 'cursor'], ['^⌫', 'word'], ['^u', 'clear'], ['esc', 'cancel']]);
   // Key hints setting. Full: two rows (typing: input keys, same height so the list stays put). Short: one row
   // without the keys you learn first (↑↓, tab, esc), cut to the width. Off: none.
   const hints = settings.keyHints === 'off' ? []
-    : settings.keyHints === 'short' ? [mode === 'input' ? inputRow : fitHint([openKey, opener, windows, ...actRow, scriptsKey, uiKey], w)]
-      : mode === 'input' ? [inputRow, ''] : [fitHint(navRow, w), fitHint([...actRow, uiKey], w)];
+    : settings.keyHints === 'short' ? [mode === 'input' ? inputRow : fitHint([openKey, opener, windows, ...actRow, scriptsKey, uiKey, copyKey, movePin], w)]
+      : mode === 'input' ? [inputRow, ''] : [fitHint(navRow, w), fitHint([...actRow, uiKey, copyKey], w)];
   const foot = isScripts ? (hints.length ? [keyHint([['↵', 'run in a terminal'], ['↑↓', 'move'], escKey])] : [])
     : [...(isShortcuts ? [`  ${chalk.dim('open with')}  ${openers}`, ...(hints.length ? gap : [])] : []), ...hints];
   // No footer rows above it: no blank row under the rule.
@@ -525,9 +557,11 @@ export function renderInteractiveView({
     // Rows left after the header and the footer (its rule included).
     const room = height - lines.length - (foot.length && foot.length + 1);
     // Pinned setting 'section': Pinned / All headings, unless a search reorders the list.
-    const heads = settings.pinned === 'section' && !plain && !query?.trim() && list[0]?.pinned;
+    // Recent strip rows (withRecent) go under their own Recent heading.
+    const heads = settings.pinned === 'section' && !plain && !query?.trim() && list.find(c => !c.recent)?.pinned;
+    const group = c => (c.recent ? 'Recent' : heads && c.pinned ? 'Pinned' : 'All');
     const items = list.flatMap((c, i) => [
-      ...(heads && (i === 0 || c.pinned !== list[i - 1].pinned) ? [{ head: c.pinned ? 'Pinned' : 'All' }] : []),
+      ...((heads || list[0]?.recent) && (i === 0 || group(c) !== group(list[i - 1])) ? [{ head: group(c) }] : []),
       { i },
     ]);
     const { start, end } = getVisibleWindow(items, items.findIndex(x => x.i === index), Math.min(maxList, listRows(items.length, room)));
@@ -538,7 +572,7 @@ export function renderInteractiveView({
       const c = list[i];
       const tags = tagsOn && c.tags?.length ? chalk.dim(`#${c.tags.join(' #')}`) : '';
       const kind = c.isCmd ? 'cmd' : c.isApp ? 'app' : c.isUrl ? 'url' : '';
-      const badge = !badgesOn ? '' : !c.exists ? chalk.red('missing') : chalk.dim(badgeText([c.pinned && !heads && PIN, kind]));
+      const badge = !badgesOn ? '' : !c.exists ? chalk.red('missing') : chalk.dim(badgeText([c.pinned && group(c) !== 'Pinned' && PIN, kind]));
       hit(lines.length, 0, w, { row: i });
       lines.push(renderRow(pathLook({
         sel: i === index,
@@ -571,7 +605,8 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
   let fallback = defaultOpener();
   const config = loadConfig();
   // Start view 'last' also brings back the opener picked last time.
-  const lastOpener = !preferredApp && setting('startView', config) === 'last' && Object.hasOwn(appMap, String(config.lastOpener)) ? config.lastOpener : null;
+  // Copy left the opener row (^y now): a remembered copy is dropped.
+  const lastOpener = !preferredApp && setting('startView', config) === 'last' && config.lastOpener !== 'copy' && Object.hasOwn(appMap, String(config.lastOpener)) ? config.lastOpener : null;
   for (const key of new Set([fallback, lastOpener, ...allChoices.map(c => c.opener)])) {
     if (key && Object.hasOwn(appMap, key) && !appChoices.some(c => c.key === key)) {
       appChoices.push({ key, label: appMap[key].displayName });
@@ -676,7 +711,7 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
         counts: { shortcuts: allChoices.filter(inView('shortcuts')).length, apps: allChoices.filter(inView('apps')).length, workspaces: wsChoices.length },
         width,
         height,
-        maxList: MAX_VISIBLE_CHOICES,
+        maxList: maxListOf(settings.maxRows),
         targets,
       });
       // Never taller than the screen, or the top scrolls away and frames stack up.
@@ -695,6 +730,7 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
       filteredWs = filterChoices(wsChoices, query);
       wsIndex = Math.max(0, Math.min(wsIndex, filteredWs.length - 1));
       filteredChoices = filterChoices(choices, query);
+      if (!query.trim() && settings.recentStrip === 'on') filteredChoices = withRecent(filteredChoices);
       if (filteredChoices.length === 0) {
         selectedIndex = 0;
         return;
@@ -704,9 +740,10 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
       }
     };
 
-    // Select these again when they're still in the filtered lists.
-    const reselect = (name, wsName) => {
-      const i = filteredChoices.findIndex(c => c.name === name);
+    // Select these again when they're still in the filtered lists; `recent` prefers the Recent strip copy.
+    const reselect = (name, wsName, recent = false) => {
+      const same = filteredChoices.findIndex(c => c.name === name && !!c.recent === recent);
+      const i = same >= 0 ? same : filteredChoices.findIndex(c => c.name === name);
       if (i >= 0) selectedIndex = i;
       const j = filteredWs.findIndex(c => c.name === wsName);
       if (j >= 0) wsIndex = j;
@@ -714,11 +751,12 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
 
     // Reload from disk after a mutation and try to keep `name` / `wsName` selected.
     const rebuild = (name, wsName) => {
+      const recent = !!filteredChoices[selectedIndex]?.recent;
       allChoices = buildChoices();
       choices = allChoices.filter(inView(view));
       wsChoices = buildWorkspaceChoices();
       updateFilter();
-      reselect(name, wsName);
+      reselect(name, wsName, recent);
     };
 
     const clearQuery = () => {
@@ -1141,6 +1179,32 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
         redraw();
         return;
       }
+      if (key.ctrl && key.name === 'y') {
+        const c = filteredChoices[selectedIndex];
+        if (!c?.path) return;
+        try {
+          copyToClipboard(c.path);
+          done(`copied ${c.path}`);
+        } catch (err) {
+          flash = `can't copy: ${err.message.split('\n')[0]}`;
+        }
+        redraw();
+        return;
+      }
+      // Alt+Up/Down moves a pinned shortcut among the pinned ones of this tab.
+      if (isAlt(key) && (key.name === 'up' || key.name === 'down')) {
+        const c = filteredChoices[selectedIndex];
+        if (!c) return;
+        if (!c.pinned) flash = 'only pinned shortcuts move, ^p pins';
+        // A search sorts by match, so the move wouldn't show.
+        else if (query.trim()) flash = 'clear the search to move a pin';
+        else {
+          const order = movePinned(allChoices.filter(x => x.pinned), c.name, key.name === 'up' ? -1 : 1, inView(view));
+          if (order) { setPinOrder(order); rebuild(c.name); }
+        }
+        redraw();
+        return;
+      }
 
       if (key.name === 'return') {
         if (filteredChoices.length === 0) {
@@ -1257,6 +1321,7 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
     guard(() => {
       setFullScreen(setting('fullScreen') === 'on');
       stdout.write(HIDE_CURSOR);
+      updateFilter(); // recent strip
       redraw();
     })();
   });

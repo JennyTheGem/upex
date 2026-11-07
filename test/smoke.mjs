@@ -22,7 +22,7 @@ import { applyShortcut, applyOpener, cleanEntries, startServer } from '../src/co
 import { COMMAND_NAMES } from '../src/fast.js';
 import { createProgram } from '../src/index.js';
 import { readScripts, detectPm } from '../src/commands/run.js';
-import { renderInteractiveView, accentOf, pathLook, inView, tidyPath, byOrder, optionRow, listRows, readMouse, hitTest, rowClick, undoError, clipName, prefill, editLine, inputLine, missingFlash, staysOpen, expandHome, underlineHits } from '../src/interactive.js';
+import { renderInteractiveView, accentOf, pathLook, inView, tidyPath, byOrder, optionRow, listRows, readMouse, hitTest, rowClick, undoError, clipName, prefill, editLine, inputLine, missingFlash, staysOpen, expandHome, underlineHits, movePinned, withRecent, maxListOf, isAlt } from '../src/interactive.js';
 import chalk from 'chalk';
 import { resolveTarget, resolveName, suggestNames } from '../src/fuzzy.js';
 
@@ -411,13 +411,13 @@ assert.ok(!wsView.includes('Explorer'), 'no opener row in workspace view');
 assert.ok(strip(renderInteractiveView(viewArgs)).includes('tab apps'), 'shortcut view is the default');
 const appsView = strip(renderInteractiveView({ ...viewArgs, view: 'apps', choices: [{ name: 'g', path: 'x.dev', isUrl: true, exists: true }] }));
 assert.ok(appsView.includes('tab workspaces') && appsView.includes('open in browser') && !appsView.includes('Explorer'), 'apps view: no opener row');
-const setArgs = { ...viewArgs, view: 'settings', settings: { startView: 'apps', sort: 'name', terminalLayout: 'tabs', paneSplit: 'auto', terminalShell: 'pwsh', defaultOpener: 'explorer' }, settingIndex: 2, wt: false };
+const setArgs = { ...viewArgs, view: 'settings', settings: { startView: 'apps', sort: 'name', terminalLayout: 'tabs', paneSplit: 'auto', terminalShell: 'pwsh', defaultOpener: 'explorer' }, settingIndex: 3, wt: false };
 const setView = strip(renderInteractiveView(setArgs));
 assert.ok(setView.includes('‹ Tabs ›') && setView.includes('‹ PowerShell 7 ›') && setView.includes('‹ Explorer ›') && setView.includes('not found'), 'settings view: all rows + missing-wt note');
 assert.ok(!setView.includes('Pane split'), 'pane split hidden unless split panes');
 assert.ok(strip(renderInteractiveView({ ...setArgs, settings: { ...setArgs.settings, terminalLayout: 'panes' } })).includes('Pane split'), 'pane split shown for split panes');
 assert.ok(setView.includes('‹ A to Z ›'), 'sort row shows the saved sort');
-assert.ok(strip(renderInteractiveView({ ...setArgs, settingIndex: 4 })).includes('no opener of their own'), 'note follows the picked row');
+assert.ok(strip(renderInteractiveView({ ...setArgs, settingIndex: 5 })).includes('no opener of their own'), 'note follows the picked row');
 assert.ok(setView.indexOf('Workspaces') < setView.indexOf('Settings'), 'settings tab is last');
 
 // rows stay inside the given width, the missing badge survives a long path
@@ -545,9 +545,9 @@ assert.ok(renderInteractiveView({ ...setArgs, settings: { ...setArgs.settings, a
 const tall = strip(renderInteractiveView({ ...setArgs, height: 40, settings: { ...setArgs.settings, theme: 'light' } }));
 assert.ok(tall.includes('Web theme       System  Dark  ‹ Light ›'), 'web theme row');
 assert.ok(['General', 'Terminals', 'Opening', 'Appearance'].every(s => tall.includes(`\n  ${s}\n`)), 'settings grouped in sections');
-const short = rowsOf({ ...setArgs, height: 14, settingIndex: 12 });
+const short = rowsOf({ ...setArgs, height: 14, settingIndex: 14 });
 assert.ok(short.length <= 14 && short.some(l => l.startsWith('  › Web theme')) && short.at(-1).includes('setting'), 'short terminal scrolls settings, keeps the footer');
-assert.equal(at({ ...setArgs, height: 14, settingIndex: 12 }, 3, short.findIndex(l => l.startsWith('  › Web theme')) + 1)?.setting, 12, 'scrolled settings stay clickable');
+assert.equal(at({ ...setArgs, height: 14, settingIndex: 14 }, 3, short.findIndex(l => l.startsWith('  › Web theme')) + 1)?.setting, 14, 'scrolled settings stay clickable');
 assert.equal(checkSettings({ accent: 'red' }).error, 'accent must be one of: default, green, blue, purple, orange, or a hex color like #ff66aa.', 'bad accent refused');
 assert.deepEqual([checkSettings({ accent: '#FF66aa' }).next.accent, checkSettings({ accent: 'ff66aa' }).next.accent, checkSettings({ sort: '#ff66aa' }).error?.slice(0, 4)], ['#ff66aa', '#ff66aa', 'sort'], 'hex only for accent, normalized');
 assert.deepEqual([setting('accent', { accent: '#ff66aa' }), setting('accent', { accent: '#ff66a' }), setting('accent', { accent: '"><x' })], ['#ff66aa', 'default', 'default'], 'stored hex read back, junk falls back');
@@ -729,6 +729,21 @@ assert.deepEqual(pins.sort(byOrder('recent')).map(c => c.name), ['z', 'c', 'a', 
 assert.equal([...pins].sort(byOrder('name'))[0].name, 'z', 'pinned first in A to Z too');
 const dated = [{ name: 'a', lastUsed: 5, added: 1 }, { name: 'b', lastUsed: 9 }, { name: 'c', added: 7 }];
 assert.deepEqual([[...dated].sort(byOrder('opened')), [...dated].sort(byOrder('added'))].map(l => l.map(c => c.name).join('')), ['bac', 'cab'], 'last opened / recently added, missing dates last');
+const ordered = [{ name: 'p', pinned: true }, { name: 'q', pinned: true, pinOrder: 1 }, { name: 'r', pinned: true, pinOrder: 0 }, { name: 'a', score: 9 }];
+assert.equal([...ordered].sort(byOrder('recent')).map(c => c.name).join(''), 'rqpa', 'pin order first, unordered pins after');
+const pinList = [{ name: 'a' }, { name: 'x', isApp: true }, { name: 'b' }];
+assert.deepEqual(movePinned(pinList, 'b', -1, inView('shortcuts')), ['b', 'x', 'a'], 'move pin skips other tabs');
+assert.equal(movePinned(pinList, 'a', -1), null, 'move pin: the top one stays');
+assert.deepEqual(movePinned(pinList, 'a', 1), ['x', 'a', 'b'], 'move pin down');
+assert.deepEqual(withPinned({ path: 'x', pinned: true, pinOrder: 2 }, false), { path: 'x' }, 'unpin drops the pin order');
+const rec = withRecent([{ name: 'a', lastUsed: 1, path: 'A', exists: true }, { name: 'b', path: 'B', exists: true }, { name: 'c', lastUsed: 5, path: 'C', exists: true }, { name: 'd', lastUsed: 3, path: 'D', exists: true }, { name: 'e', lastUsed: 4, path: 'E', exists: true }]);
+assert.equal(rec.map(c => c.name + (c.recent ? '*' : '')).join(' '), 'c* e* d* a b c d e', 'recent strip: last 3 opened on top');
+assert.equal(withRecent(dated).length, 3, 'no recent strip for a short list');
+const recView = strip(renderInteractiveView({ ...viewArgs, height: 30, choices: rec, settings: { recentStrip: 'on' } }));
+assert.ok(/ {4}Recent\n {2}› c/.test(recView) && /\n {4}All\n {4}a/.test(recView), 'recent strip: Recent and All headings');
+assert.deepEqual([maxListOf('12'), maxListOf('fill'), maxListOf(undefined)], [12, Infinity, 8], 'max rows setting');
+assert.ok(v({}).includes('^y copy') && !v({}).includes('move pin') && v({ choices: [{ name: 's', path: 'P', exists: true, pinned: true }] }).includes('A-↑↓ move pin'), '^y and move pin hints');
+assert.deepEqual([{ name: 'up', meta: true, sequence: '\x1b[1;3A' }, { name: 'up', meta: false, sequence: '\x1b\x1b[A' }, { name: 'up', sequence: '\x1b[A' }].map(isAlt), [true, true, false], 'Alt+arrow: modifier code or Esc prefix');
 assert.deepEqual(diffLinks({ a: { path: 'A' }, b: { path: 'B' } }, { b: { path: 'X' }, c: { path: 'C' } }), { added: ['c'], removed: ['a'], changed: ['b'] }, 'diffLinks');
 assert.deepEqual(keepUsage({ a: { path: 'A', uses: 1 }, b: { path: 'B' } }, { a: { path: 'Z', uses: 3, lastUsed: 9 } }), { a: { path: 'A', uses: 3, lastUsed: 9 }, b: { path: 'B' } }, 'keepUsage takes current stats');
 assert.equal(defaultName('/x/My Cool  App/'), 'My-Cool-App', 'defaultName: basename, spaces to dashes');
@@ -828,7 +843,7 @@ try {
   assert.equal(cfg2.paneSplit, 'horizontal', 'refused request saved nothing, later one did');
   assert.equal(cfg2.defaultOpener, 'vscode', 'default opener stored as its key');
   const st2 = await (await fetch(base + '/api/state', { headers: { 'x-upex-token': token } })).json();
-  assert.deepEqual(st2.settings, { startView: 'apps', sort: 'name', terminalLayout: 'panes', paneSplit: 'horizontal', terminalShell: 'powershell', fullScreen: 'on', theme: 'system', accent: 'default', density: 'comfortable', paths: 'dim', keyHints: 'full', rowDetails: 'both', pinned: 'top', defaultOpener: 'vscode' }, 'state reports settings');
+  assert.deepEqual(st2.settings, { startView: 'apps', sort: 'name', terminalLayout: 'panes', paneSplit: 'horizontal', terminalShell: 'powershell', fullScreen: 'on', theme: 'system', accent: 'default', density: 'comfortable', paths: 'dim', keyHints: 'full', maxRows: '8', recentStrip: 'off', rowDetails: 'both', pinned: 'top', defaultOpener: 'vscode' }, 'state reports settings');
   assert.deepEqual(Object.keys(cfg2.workspaces), ['work'], 'settings save keeps workspaces');
   const note = path.join(webHome, 'note.txt');
   fs.writeFileSync(note, '');

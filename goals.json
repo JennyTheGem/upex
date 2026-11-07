@@ -830,10 +830,11 @@
       "title": "Max rows setting",
       "body": "Cap the list height so the selector does not take over tall terminals.",
       "phase": "next",
-      "status": "planned",
+      "status": "done",
       "size": "S",
       "created": "2026-11-07",
-      "updated": "2026-11-07"
+      "updated": "2026-11-07",
+      "note": "maxRows setting 8/12/16/fill (Settings > Max rows), default 8"
     },
     {
       "id": "enter-behavior-setting",
@@ -886,10 +887,11 @@
       "title": "Reorder pinned shortcuts",
       "body": "Alt+Up/Down moves a pinned item; order saved on the entry.",
       "phase": "next",
-      "status": "planned",
+      "status": "done",
       "size": "S",
       "created": "2026-11-07",
-      "updated": "2026-11-07"
+      "updated": "2026-11-07",
+      "note": "Alt+Up/Down in selector, saved as pinOrder; byOrder + upex ui follow it; unpin drops it"
     },
     {
       "id": "recent-strip-in-selector",
@@ -897,10 +899,11 @@
       "title": "Recent strip in selector",
       "body": "Last 3 opened shown above the list, even when sort is A to Z. as sub setting off by default ",
       "phase": "next",
-      "status": "planned",
+      "status": "done",
       "size": "S",
       "created": "2026-11-07",
-      "updated": "2026-11-07"
+      "updated": "2026-11-07",
+      "note": "recentStrip setting (General > Recent on top), off by default; last 3 opened as rows under a Recent heading, not while searching"
     },
     {
       "id": "copy-path-from-selector",
@@ -908,10 +911,11 @@
       "title": "Copy path from selector",
       "body": "^y copies the highlighted shortcut's path to the clipboard and flashes it.",
       "phase": "next",
-      "status": "planned",
+      "status": "done",
       "size": "S",
       "created": "2026-11-07",
-      "updated": "2026-11-07"
+      "updated": "2026-11-07",
+      "note": "^y copies path/app/url and flashes it; Copy removed from the opener row (upex <name> copy still works)"
     },
     {
       "id": "wrap-around-navigation",

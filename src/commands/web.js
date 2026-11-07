@@ -121,6 +121,7 @@ function state() {
         aliases: aliasesOf(e),
         archived: Boolean(e.archived),
         pinned: Boolean(e.pinned),
+        pinOrder: e.pinned && Number.isFinite(e.pinOrder) ? e.pinOrder : null,
         opener: e.opener || '',
         lastUsed: e.lastUsed || 0,
         added: e.added || 0,

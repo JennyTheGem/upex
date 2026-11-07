@@ -87,19 +87,20 @@ const INTERACTIVE_APP_KEYS = [
   'webstorm',
   'cmd',
   'claude',
-  'copy',
 ];
 
 // Openers that open terminal windows (and so take a window count).
 export const isTerminalApp = key => key === 'cmd' || key === 'claude';
 
-// Settings in config.json; the first value is the default. Start view, sort and pinned are shared by the selector and upex ui; fullScreen and keyHints are selector only.
+// Settings in config.json; the first value is the default. Start view, sort and pinned are shared by the selector and upex ui; fullScreen, keyHints, maxRows and recentStrip are selector only.
 // Layout: separate windows, or tabs/panes in one Windows Terminal window. Shell 'profile' = wt default profile.
 export const SETTINGS = {
   // last = the tab (and opener) the selector or upex ui was left on.
   startView: ['shortcuts', 'apps', 'workspaces', 'last'],
   // recent = most used, opened = last opened, added = recently added.
   sort: ['recent', 'name', 'opened', 'added'],
+  // The last 3 opened above the list, whatever the sort.
+  recentStrip: ['off', 'on'],
   terminalLayout: ['windows', 'tabs', 'panes'],
   paneSplit: ['auto', 'vertical', 'horizontal'],
   terminalShell: ['cmd', 'powershell', 'pwsh', 'profile'],
@@ -111,6 +112,8 @@ export const SETTINGS = {
   paths: ['dim', 'full', 'hidden'],
   // Selector footer: both key rows, one row, or none. Settings always keeps its keys.
   keyHints: ['full', 'short', 'off'],
+  // Selector list height; fill = as many as the terminal fits.
+  maxRows: ['8', '12', '16', 'fill'],
   // Right side of a row (selector, ls, upex ui): #tags, badges (pinned, app, missing), both or none.
   rowDetails: ['both', 'tags', 'badges', 'none'],
   // Pinned shortcuts first, or first under their own Pinned heading (selector, upex ui).

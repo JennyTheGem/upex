@@ -71,7 +71,7 @@ npm link
 | `claude` | Terminal running Claude Code (`claude`) |
 | `finder` / `explorer` | System File Manager (reveals a file shortcut) |
 | `open` | OS default handler (opens a file in its default app) |
-| `copy` | Copy the path to the clipboard |
+| `copy` | Copy the path to the clipboard (`upex <name> copy`; in the selector use `Ctrl+Y`) |
 
 Add your own openers with `upex app`:
 
@@ -212,7 +212,8 @@ Run `upex` with no arguments to open the interactive selector. Pinned shortcuts 
 - `Ctrl+A` -- add a shortcut for the current directory
 - `Ctrl+E` -- edit the selected shortcut's path (starts filled in, `Ctrl+U` clears it)
 - `Ctrl+R` -- rename the selected shortcut (starts filled in)
-- `Ctrl+P` -- pin or unpin the selected shortcut
+- `Ctrl+P` -- pin or unpin the selected shortcut; `Alt+Up` / `Alt+Down` moves a pinned one among the pinned (saved, `upex ui` uses the same order)
+- `Ctrl+Y` -- copy the selected shortcut's path (or app / URL) to the clipboard
 - `Ctrl+S` -- list the selected folder's package.json scripts; Enter runs one in a terminal (like `upex run`), Esc goes back
 - While typing a path or name: `Left` / `Right` move the cursor, `Ctrl+Left` / `Ctrl+Right` jump a word, `Home` / `End`, `Ctrl+Backspace` (or `Ctrl+W`) deletes a word, `Del` deletes forward. `Ctrl+Backspace` also works in the filter
 - `Ctrl+D` -- delete the selected shortcut (confirm with `y`), `Ctrl+Z` undoes the last delete
@@ -306,7 +307,7 @@ Each entry is an object with optional fields:
 }
 ```
 
-`opener` is the default opener for `upex <name>` (set with `--opener`). `uses` / `lastUsed` are written automatically and drive the interactive selector's frecency ordering. Each open is also appended to `~/.upex/history.jsonl` (`{ ts, name, opener }` per line), which `upex stats` reads. `added` (set on add, drives `upex stale` for never-opened shortcuts) and `expires` (from `--ttl`) are timestamps too. `pinned: true` (from `upex pin`) keeps a shortcut at the top.
+`opener` is the default opener for `upex <name>` (set with `--opener`). `uses` / `lastUsed` are written automatically and drive the interactive selector's frecency ordering. Each open is also appended to `~/.upex/history.jsonl` (`{ ts, name, opener }` per line), which `upex stats` reads. `added` (set on add, drives `upex stale` for never-opened shortcuts) and `expires` (from `--ttl`) are timestamps too. `pinned: true` (from `upex pin`) keeps a shortcut at the top; `pinOrder` (from `Alt+Up` / `Alt+Down` in the selector) is its place among the pinned.
 
 Legacy string entries (`"name": "/path"`) are auto-migrated on read.
 
@@ -322,6 +323,7 @@ Settings, also on the Settings tab of `upex ui` and the selector (`Shift+Tab`), 
 
 - `"startView"`: the tab the selector and `upex ui` open on. `"shortcuts"` (default), `"apps"`, `"workspaces"` or `"last"` (the tab you left the selector or `upex ui` on, plus the opener you picked in the selector).
 - `"sort"`: shortcut order in the selector and `upex ui`. `"recent"` (default, most used first), `"name"` (A to Z), `"opened"` (last opened first) or `"added"` (recently added first).
+- `"recentStrip"` (selector only): `"off"` (default) or `"on"` (the last 3 opened again above the list under a Recent heading, whatever the sort; not while searching).
 - `"terminalLayout"` (Windows): how several terminals open. `"windows"` (default, separate windows), `"tabs"` or `"panes"` (added to your current Windows Terminal window). Falls back to windows when `wt` is missing. With tabs, a terminal opened from the selector leaves the selector open.
 - `"paneSplit"` (Windows, panes layout): `"auto"` (default), `"vertical"` (side by side) or `"horizontal"` (stacked).
 - `"terminalShell"` (Windows): the shell terminal openers start. `"cmd"` (default), `"powershell"`, `"pwsh"`, or `"profile"` (your Windows Terminal default profile; a start command like `claude` then runs in cmd, and without `wt` it falls back to cmd).
@@ -334,6 +336,7 @@ Appearance:
 - `"accent"`: `"default"` (green in `upex ui`, uncolored in the selector), `"green"`, `"blue"`, `"purple"`, `"orange"`, or any hex color like `"#ff66aa"` (`upex config set accent ff66aa`, the `#` is optional; truecolor in the selector, nearest color on terminals with fewer colors). The `upex ui` accent and the selector's `›` pointer and picked option.
 - `"density"`: `"comfortable"` (default) or `"compact"` (no spacer lines in the selector, tighter rows in `upex ui`).
 - `"keyHints"` (selector only): the key rows under the list. `"full"` (default, two rows), `"short"` (one row of the main keys, without ↑↓, Tab and Esc) or `"off"` (none, the list gets the rows). The Settings tab always shows its keys.
+- `"maxRows"` (selector only): list rows, `"8"` (default), `"12"`, `"16"` or `"fill"` (as many as the terminal fits).
 - `"paths"`: `"dim"` (default, parent folders dimmed), `"full"` or `"hidden"` (no paths, commands or URLs) in the selector, `upex ls`, `upex stale` and `upex ui`. Piped output always shows paths.
 - `"rowDetails"`: what shows on the right of a row in the selector, `upex ls` and `upex ui`. `"both"` (default), `"tags"` (#tags), `"badges"` (★ pinned, app, cmd, url, missing) or `"none"`. Piped `upex ls` always shows both.
 - `"pinned"`: `"top"` (default, pinned shortcuts first) or `"section"` (first, under a Pinned heading, the rest under All) in the selector and `upex ui`. A search in the selector sorts by match, so it drops the headings.

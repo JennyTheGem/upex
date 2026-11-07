@@ -184,10 +184,17 @@ export function setLink(name, pathOrEntry) {
   saveLinks(links);
 }
 
-// Entry with pinned set or dropped (never stored as false).
+// Entry with pinned set or dropped (never stored as false); unpinning also drops its place in the pin order.
 export function withPinned(entry, on) {
-  const { pinned: _old, ...rest } = entry;
-  return on ? { ...rest, pinned: true } : rest;
+  const { pinned: _p, pinOrder: _o, ...rest } = entry;
+  return on ? { ...entry, pinned: true } : rest;
+}
+
+// Pinned shortcuts in this order (Alt+Up/Down in the selector), one save.
+export function setPinOrder(names) {
+  const links = loadLinks();
+  names.forEach((n, i) => { if (links[n]?.pinned) links[n].pinOrder = i; });
+  saveLinks(links);
 }
 
 export function removeLink(name) {
