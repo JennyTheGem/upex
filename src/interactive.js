@@ -593,8 +593,13 @@ export function renderInteractiveView({
   const lw = pane ? w - pw - 3 : w; // list width, " │ " between
   const cw = lw - 2; // row width after the 2-space indent
   // With the pane, the rules join its │ with ┬ (top) and ┴ (bottom).
-  const ruleOf = j => chalk.dim(pane ? `  ${'─'.repeat(lw - 1)}${j}${'─'.repeat(pw + 1)}` : `  ${'─'.repeat(w - 2)}`);
-  const rule = ruleOf('┴');
+  const ruleText = j => (pane ? `  ${'─'.repeat(lw - 1)}${j}${'─'.repeat(pw + 1)}` : `  ${'─'.repeat(w - 2)}`);
+  const ruleOf = j => chalk.dim(ruleText(j));
+  // A plain string is a warning; { text, ok: true } a success. One line, right end of the bottom rule, so nothing moves.
+  const flashText = flash ? ui.truncate(` ${String(flash.text ?? flash).replace(/\s*\n\s*/g, ' ')} `, w - 6) : '';
+  const flashOn = (flash.ok ? chalk.green : chalk.yellow)(flashText);
+  const at = w - vis(flashText) - 2;
+  const rule = flash ? chalk.dim(ruleText('┴').slice(0, at)) + flashOn + chalk.dim(ruleText('┴').slice(at + vis(flashText))) : ruleOf('┴');
   const terminal = isTerminalApp(appChoices[selectedAppIndex]?.key);
   const pick = accentOf(settings.accent);
   // Compact: no spacer lines.
@@ -639,17 +644,18 @@ export function renderInteractiveView({
     const right = !isWs && marks.size ? pick(`● ${marks.size} marked`) : '';
     lines.push(right ? left + ' '.repeat(Math.max(2, w - vis(left) - vis(right))) + right : left);
   }
-  // A plain string is a warning; { text, ok: true } a success. One line, or rows below shift off the hit map.
-  if (flash) lines.push((flash.ok ? chalk.green : chalk.yellow)(`    ${String(flash.text ?? flash).replace(/\s*\n\s*/g, ' ')}`));
-  lines.push(isSettings ? rule : ruleOf('┬'));
+  lines.push(isSettings ? ruleOf('┴') : ruleOf('┬'));
   const bodyStart = lines.length;
 
+  // Rows under the body: footer rows and their rule, or just a flash row.
+  const footRows = rows => (rows.length ? rows.length + 1 : flash ? 1 : 0);
   // Full screen: blank rows push the footer (its rule included) to the bottom.
-  const pin = (rows) => { if (full) while (lines.length + (rows.length && rows.length + 1) < height) lines.push(''); };
-  // No rows (key hints off): no rule either.
+  const pin = (rows) => { if (full) while (lines.length + footRows(rows) < height) lines.push(''); };
+  // No rows (key hints off): no rule either, the flash gets its own row.
   const footer = (rows) => {
     pin(rows);
     if (rows.length) lines.push(rule, ...rows);
+    else if (flash) lines.push(' '.repeat(Math.max(0, w - vis(flashText))) + flashOn);
     return lines.join('\n');
   };
   const next = nextView(view, settings.views);
@@ -729,7 +735,7 @@ export function renderInteractiveView({
   } else {
     const nameWidth = nameCol(list);
     // Rows left after the header and the footer (its rule included).
-    const room = height - lines.length - (foot.length && foot.length + 1);
+    const room = height - lines.length - footRows(foot);
     // Pinned setting 'section': Pinned / All headings, unless a search reorders the list.
     // Recent strip rows (withRecent) go under their own Recent heading.
     const heads = settings.pinned === 'section' && !plain && !query?.trim() && list.find(c => !c.recent)?.pinned;

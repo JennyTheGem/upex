@@ -518,7 +518,13 @@ assert.deepEqual([rowClick({}, 5, 0, true), rowClick({}, 5, 0, false), rowClick(
   ['open', 'select', 'open', 'skip', 'open', 'open'], 'click selected opens, double-click opens once');
 const rowsOf = a => strip(renderInteractiveView(a)).split('\n');
 const twoLine = { ...viewArgs, height: 20, flash: 'Command "claude" not found.\nInstall it.' };
-assert.ok(rowsOf(twoLine).length === rowsOf({ ...twoLine, flash: 'x' }).length && rowsOf(twoLine).includes('    Command "claude" not found. Install it.'), 'multi-line flash stays one row');
+const noFlash = rowsOf({ ...twoLine, flash: '' });
+const flashed = rowsOf(twoLine);
+const ruleAt = noFlash.findLastIndex(l => l.trim().startsWith('─'));
+assert.ok(flashed.length === noFlash.length && flashed.every((l, i) => i === ruleAt || l === noFlash[i]), 'flash moves no row');
+assert.ok(flashed[ruleAt].endsWith(' Command "claude" not found. Install it. ──'), 'multi-line flash: one line, right end of the bottom rule');
+const bare = { ...viewArgs, view: 'apps', settings: { keyHints: 'off' } };
+assert.ok(rowsOf({ ...bare, flash: 'x' }).at(-1).endsWith(' x ') && rowsOf({ ...bare, flash: 'x' }).length === rowsOf(bare).length + 1, 'no footer: flash gets its own bottom row');
 const at = (args, x, y) => { const targets = []; renderInteractiveView({ ...args, targets }); return hitTest(targets, x, y); };
 const tabArgs = { ...viewArgs, counts: { shortcuts: 1, apps: 2, workspaces: 0 } };
 const head = strip(renderInteractiveView(tabArgs)).split('\n')[1];
@@ -588,8 +594,8 @@ assert.ok(v({ webUrl: webAt }).includes('^u stop web ui') && !v({}).includes('st
 assert.ok(!v({}).includes('^z') && v({ undo: true }).includes('^z undo') && v({ view: 'apps', undo: true }).includes('^z undo'), '^z hint only while undo is available');
 const lvl = chalk.level;
 chalk.level = 1;
-assert.ok(renderInteractiveView({ ...viewArgs, flash: { text: 'added "x"', ok: true } }).includes(chalk.green('    added "x"')), 'success flash is green');
-assert.ok(renderInteractiveView({ ...viewArgs, flash: 'path not found' }).includes(chalk.yellow('    path not found')), 'plain flash stays yellow');
+assert.ok(renderInteractiveView({ ...viewArgs, flash: { text: 'added "x"', ok: true } }).includes(chalk.green(' added "x" ')), 'success flash is green');
+assert.ok(renderInteractiveView({ ...viewArgs, flash: 'path not found' }).includes(chalk.yellow(' path not found ')), 'plain flash stays yellow');
 chalk.level = lvl;
 const gone = { name: 'old', entry: { path: 'P', aliases: ['o'] } };
 assert.equal(undoError(gone, { other: { path: 'Q' } }, {}), null, 'free name restores');
