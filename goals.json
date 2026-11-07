@@ -1088,6 +1088,17 @@
       "updated": "2026-10-16"
     },
     {
+      "id": "ascii-only-glyphs",
+      "section": 5,
+      "title": "ASCII-only glyphs",
+      "body": "Setting that swaps ‹ › ▏ ─ … ↑↓ for plain ASCII in the selector, for terminals or fonts that show boxes.",
+      "phase": "next",
+      "status": "planned",
+      "size": "S",
+      "created": "2026-11-07",
+      "updated": "2026-11-07"
+    },
+    {
       "id": "smoke-asserts-for-frecency-prunebroken",
       "section": 6,
       "title": "Smoke asserts for `frecency` + `pruneBroken`",
@@ -1321,10 +1332,11 @@
       "title": "Open goals in the detail pane",
       "body": "When the folder has a goals.json, show the open upgo count and the next 3 items. Ties upex and upgo together.",
       "phase": "next",
-      "status": "planned",
+      "status": "done",
       "size": "S",
       "created": "2026-11-07",
-      "updated": "2026-11-07"
+      "updated": "2026-11-07",
+      "note": "Settings > Detail pane > Open goals (off/3/5/10, default off): open count + that many goals by phase; S-right picks one, Enter copies id: title + body"
     },
     {
       "id": "git-status-in-the-detail-pane",

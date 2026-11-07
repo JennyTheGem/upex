@@ -6,7 +6,7 @@ a personal CLI to register named aliases for folder/app paths and instantly open
 
 Open work only. Full item: `upgo show <id>`. Any slice: `upgo list --phase later,wayLater,maybe`, `--status done,dropped`, `--section <n>`, `--search <text>`.
 
-Closed sections: §5 Platform support · §7 Web UI
+Closed sections: §7 Web UI
 
 ## 1. Shortcut management
 
@@ -24,6 +24,10 @@ Closed sections: §5 Platform support · §7 Web UI
 
 - Plus 3 maybe: `upgo list --section 4 --phase maybe`
 
+## 5. Platform support
+
+- `ascii-only-glyphs` ASCII-only glyphs (next)
+
 ## 6. Quality
 
 - Plus 1 maybe: `upgo list --section 6 --phase maybe`
@@ -36,5 +40,4 @@ Closed sections: §5 Platform support · §7 Web UI
 
 - `scripts-in-the-detail-pane` Scripts in the detail pane (next)
 - `shift-left-toggles-the-detail-pane-on-narrow` Shift+Left toggles the detail pane on narrow terminals (next)
-- `open-goals-in-the-detail-pane` Open goals in the detail pane (next)
 - `git-status-in-the-detail-pane` Git status in the detail pane (later)

@@ -22,7 +22,7 @@ import { applyShortcut, applyOpener, cleanEntries, startServer } from '../src/co
 import { COMMAND_NAMES } from '../src/fast.js';
 import { createProgram } from '../src/index.js';
 import { readScripts, detectPm } from '../src/commands/run.js';
-import { renderInteractiveView, nextView, backTo, accentOf, pathLook, inView, tidyPath, byOrder, optionRow, listRows, readMouse, hitTest, rowClick, undoError, clipName, prefill, editLine, inputLine, missingFlash, staysOpen, expandHome, underlineHits, movePinned, withRecent, maxListOf, isAlt, detailLines, rowOptions, pickedOf } from '../src/interactive.js';
+import { renderInteractiveView, nextView, backTo, accentOf, pathLook, inView, tidyPath, byOrder, optionRow, listRows, readMouse, hitTest, rowClick, undoError, clipName, prefill, editLine, inputLine, missingFlash, staysOpen, expandHome, underlineHits, movePinned, withRecent, maxListOf, isAlt, detailLines, rowOptions, pickedOf, goalSummary, goalsOf, goalText, oneLine } from '../src/interactive.js';
 import chalk from 'chalk';
 import { resolveTarget, resolveName, suggestNames } from '../src/fuzzy.js';
 
@@ -796,6 +796,27 @@ assert.ok(paneV.some(l => /│ web +★ pinned$/.test(l)) && paneV.some(l => l.i
 assert.ok(!paneV.some(l => l.includes('aliases')) && !strip(renderInteractiveView({ ...viewArgs, choices: [det], width: 150 })).includes('│'), 'no empty rows, no pane inline');
 assert.deepEqual(strip(detailLines({ name: 'dev', entries: [{ shortcut: 's', app: 'vscode' }] }, 40).join('|')), 'dev||s:vscode', 'workspace pane lists entries');
 assert.ok(!detailLines({ name: 'x', path: 'P', added: 'garbage' }, 60).join().includes('added'), 'a bad added date is left out, not thrown');
+// Open goals: planned/partial count, by phase then file order; the pane shows up to the setting's count.
+const gs = goalSummary({ items: [{ id: 'a', title: 'A', phase: 'later', status: 'planned' }, { id: 'b', title: 'B', phase: 'maybe', status: 'partial' },
+  { id: 'c', title: 'C', phase: 'now', status: 'done' }, { id: 'd', title: 'D', phase: 'next', status: 'planned' }, { id: 'e', title: 'E', phase: 'odd', status: 'planned' }, { id: 'f', title: 'F', phase: 'later', status: 'planned' }] });
+assert.deepEqual([gs.open, gs.next.map(g => g.id)], [5, ['d', 'a', 'f', 'b', 'e']], 'goalSummary counts open, next by phase');
+assert.deepEqual([goalText({ id: 'i', title: 'T', body: 'B' }), goalText({ id: 'i', title: 'T' })], ['i: T\nB', 'i: T'], 'goalText: id: title, body below');
+assert.deepEqual([goalSummary({}), goalSummary(null), goalSummary({ items: [null] })], [null, null, { open: 0, next: [] }], 'goalSummary: not a goals file');
+const gdir = fs.mkdtempSync(path.join(os.tmpdir(), 'upex-goals-'));
+assert.equal(goalsOf(gdir), null, 'no goals.json: nothing');
+fs.writeFileSync(path.join(gdir, 'goals.json'), '{ broken');
+assert.equal(goalsOf(gdir), null, 'broken goals.json: nothing, no throw');
+fs.writeFileSync(path.join(gdir, 'goals.json'), JSON.stringify({ items: ['Ship\nit', 'two', 'three', 'four'].map((title, i) => ({ id: `g${i}`, title, phase: 'now', status: 'planned' })) }));
+fs.utimesSync(path.join(gdir, 'goals.json'), new Date(), new Date(Date.now() + 5000));
+assert.equal(goalsOf(gdir)?.open, 4, 'changed goals.json is read again');
+const gdet = { ...det, path: gdir };
+const goalPane = (goals, extra) => strip(renderInteractiveView({ ...viewArgs, choices: [gdet], full: true, width: 150, height: 30, settings: { goals }, ...extra }));
+assert.ok(goalPane('3').includes('│ goals     4 open') && goalPane('3').includes('Ship it now') && !goalPane('3').includes('four') && goalPane('5').includes('four') && !goalPane('off').includes('goals     '), 'pane goals: up to the setting, off hides them');
+assert.ok(goalPane('3').includes('S-→ goals') && goalPane('3', { mode: 'goals', goalIndex: 1 }).includes('│         › two now') && goalPane('3', { mode: 'goals' }).includes('↵ copy'), 'S-→ goal picker marks the picked goal');
+const shortPane = goalPane('5', { mode: 'goals', goalIndex: 3, height: 14 }).split('\n');
+assert.ok(shortPane.some(l => l.includes('› four')) && shortPane.length === 14, 'short pane scrolls to the picked goal');
+assert.equal(oneLine('a\x1b[2J\u009b1m\n b'), 'a [2J 1m b', 'goals.json text: no escapes, one line');
+fs.rmSync(gdir, { recursive: true, force: true });
 // Full screen without the pane: the opener row is still clickable after the footer moves down.
 const fullA = { ...viewArgs, full: true, height: 30 };
 assert.equal(at(fullA, 15, strip(renderInteractiveView(fullA)).split('\n').findIndex(l => l.includes('open with')) + 1)?.opener, 0, 'full screen: opener row hit follows the pinned footer');
@@ -903,7 +924,7 @@ try {
   assert.equal(cfg2.paneSplit, 'horizontal', 'refused request saved nothing, later one did');
   assert.equal(cfg2.defaultOpener, 'vscode', 'default opener stored as its key');
   const st2 = await (await fetch(base + '/api/state', { headers: { 'x-upex-token': token } })).json();
-  assert.deepEqual(st2.settings, { startView: 'apps', sort: 'name', terminalLayout: 'panes', paneSplit: 'horizontal', terminalShell: 'powershell', fullScreen: 'on', theme: 'system', accent: 'default', density: 'comfortable', paths: 'dim', keyHints: 'full', maxRows: 'auto', recentStrip: 'off', views: 'all', enter: 'quit', rowDetails: 'both', pinned: 'top', defaultOpener: 'vscode' }, 'state reports settings');
+  assert.deepEqual(st2.settings, { startView: 'apps', sort: 'name', terminalLayout: 'panes', paneSplit: 'horizontal', terminalShell: 'powershell', fullScreen: 'on', theme: 'system', accent: 'default', density: 'comfortable', paths: 'dim', keyHints: 'full', maxRows: 'auto', recentStrip: 'off', views: 'all', enter: 'quit', rowDetails: 'both', pinned: 'top', goals: 'off', defaultOpener: 'vscode' }, 'state reports settings');
   assert.deepEqual(Object.keys(cfg2.workspaces), ['work'], 'settings save keeps workspaces');
   const note = path.join(webHome, 'note.txt');
   fs.writeFileSync(note, '');

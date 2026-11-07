@@ -366,6 +366,7 @@ const SETTING_ROWS = [
   { section: 'Appearance', key: 'rowDetails', label: 'Row details', names: { both: 'Both', tags: 'Tags', badges: 'Badges', none: 'None' } },
   { section: 'Appearance', key: 'pinned', label: 'Pinned', names: { top: 'On top', section: 'Own section' } },
   { section: 'Appearance', key: 'theme', label: 'Web theme', names: { system: 'System', dark: 'Dark', light: 'Light' } },
+  { section: 'Detail pane', key: 'goals', label: 'Open goals', names: { off: 'Off', 3: '3', 5: '5', 10: '10' } },
 ];
 // Pane split only matters for split panes.
 const visibleRows = s => SETTING_ROWS.filter(r => r.key !== 'paneSplit' || s.terminalLayout === 'panes');
@@ -393,6 +394,7 @@ function settingNote(key, s, wt) {
   if (key === 'paths') return 'Paths in the lists here, in upex ls / stale and in upex ui.';
   if (key === 'rowDetails') return 'Right side of a row: #tags, badges (pinned, app, missing), both or none. Here, in upex ls and upex ui.';
   if (key === 'pinned') return 'Pinned shortcuts first, or first under their own Pinned heading. Here and in upex ui. ^p pins, Alt+↑↓ moves one.';
+  if (key === 'goals') return 'Pane right of the list (full screen, 140+ columns): open upgo goals of a folder, up to this many. S-→ picks one to copy.';
   if (key === 'keyHints') return 'Key rows under the list. Short: one row of the main keys. Off: more room for the list. Settings keeps its keys.';
   if (key === 'theme') return 'upex ui only. The terminal keeps its own colors.';
   if (wt === null) return 'Windows only. Other systems use their own terminal.';
@@ -417,8 +419,40 @@ function webStatus(url, w) {
   return gap >= 2 ? left + ' '.repeat(gap) + note : left;
 }
 
-// Detail pane lines for the selected row, each at most `pw` wide.
-export function detailLines(c, pw, appChoices = [], now = Date.now()) {
+// upgo goals.json: open items (planned, partial), soonest phase first, then file order.
+const PHASE_ORDER = ['now', 'next', 'later', 'wayLater', 'maybe'];
+export function goalSummary(file) {
+  if (!Array.isArray(file?.items)) return null;
+  const open = file.items.filter(i => ['planned', 'partial'].includes(i?.status));
+  const rank = i => (PHASE_ORDER.indexOf(i.phase) + PHASE_ORDER.length + 1) % (PHASE_ORDER.length + 1);
+  return { open: open.length, next: [...open].sort((a, b) => rank(a) - rank(b)) };
+}
+// Per goals.json, read again only when it changes. Missing or broken: null.
+const goalCache = new Map();
+export function goalsOf(dir) {
+  const file = path.join(dir, 'goals.json');
+  let mtime;
+  try { mtime = fs.statSync(file).mtimeMs; } catch { return null; }
+  if (goalCache.get(file)?.mtime !== mtime) {
+    let goals = null;
+    try { goals = goalSummary(JSON.parse(fs.readFileSync(file, 'utf8'))); } catch { /* not a goals file */ }
+    goalCache.set(file, { mtime, goals });
+  }
+  return goalCache.get(file).goals;
+}
+// Goals the detail pane shows for a row, `max` from the goals setting ('off' = none): folder shortcuts only.
+function folderGoals(c, max) {
+  const g = Number(max) > 0 && c && !c.entries && !c.isApp && !c.isUrl && c.path && c.exists !== false && goalsOf(c.path);
+  return g ? { open: g.open, next: g.next.slice(0, Number(max)) } : null;
+}
+// What Enter copies in the goal picker: "id: title" and the body below.
+export const goalText = g => [[g.id, g.title].filter(Boolean).join(': '), g.body].filter(Boolean).join('\n');
+// goals.json is not ours: one line, control characters (escapes included) dropped.
+// eslint-disable-next-line no-control-regex
+export const oneLine = v => String(v ?? '').replace(/[\s\x00-\x1f\x7f-\x9f]+/g, ' ').trim();
+
+// Detail pane lines for the selected row, each at most `pw` wide. `goals` from goalSummary, `sel` the picked one.
+export function detailLines(c, pw, appChoices = [], now = Date.now(), { goals = null, sel = -1, pick = chalk.bold } = {}) {
   if (!c) return [];
   const row = (k, v) => (v ? `${chalk.dim(k.padEnd(10))}${String(v)}` : null);
   const badge = c.entries ? '' : c.exists === false ? chalk.red('missing') : c.pinned ? `${PIN} pinned` : '';
@@ -442,6 +476,14 @@ export function detailLines(c, pw, appChoices = [], now = Date.now()) {
     row('opened', c.uses ? `${c.uses}×${c.lastUsed ? `, last ${ui.span(now - c.lastUsed)} ago` : ''}` : 'never'),
     row('added', !isNaN(added) && added.toLocaleDateString('sv-SE')),
     row('expires', c.expires && `in ${ui.span(c.expires - now, Math.ceil)}`));
+  // Title clipped, so its phase stays in view.
+  if (goals) {
+    out.push('', row('goals', `${goals.open} open`), ...goals.next.map((g, i) => {
+      const phase = chalk.dim(` ${oneLine(g.phase)}`);
+      const title = ui.truncate(oneLine(g.title ?? g.id), Math.max(1, pw - 10 - vis(phase)));
+      return (i === sel ? `${' '.repeat(8)}${pick('›')} ${chalk.bold(title)}` : ' '.repeat(10) + title) + phase;
+    }));
+  }
   return out.filter(l => l !== null).map(l => ui.truncate(l, pw));
 }
 
@@ -469,6 +511,7 @@ export function renderInteractiveView({
   scripts = null, // script picker (mode 'scripts'): { pm, list: [{ name, path: command }] }
   scriptIndex = 0,
   marks = new Set(), // marked shortcut names (Space)
+  goalIndex = 0, // goal picker (mode 'goals', S-→ into the pane)
   width = 80,
   height = 24,
   maxList = Infinity,
@@ -485,6 +528,8 @@ export function renderInteractiveView({
   const plain = isWs || isScripts;
   // `width` leaves the terminal's last column free.
   const pane = full && !isSettings && !isScripts && width + 1 >= PANE_MIN;
+  const goals = pane && !isWs ? folderGoals(currentChoice, settings.goals) : null;
+  const isGoals = mode === 'goals' && !!goals?.next.length;
   const w = Math.max(width, 20);
   const pw = pane ? Math.min(72, Math.floor(w * 0.38)) : 0; // pane width
   const lw = pane ? w - pw - 3 : w; // list width, " │ " between
@@ -529,6 +574,8 @@ export function renderInteractiveView({
   } else if (isScripts) {
     const name = clipName(currentChoice?.name || '', 24).text;
     lines.push(`  ${chalk.bold(pick('›'))} ${chalk.dim('run a script of')} ${chalk.bold(name)} ${chalk.dim(`(${scripts.pm})`)}`);
+  } else if (isGoals) {
+    lines.push(`  ${chalk.bold(pick('›'))} ${chalk.dim('copy a goal of')} ${chalk.bold(clipName(currentChoice.name, 24).text)}`);
   } else if (!isSettings) {
     const left = `  ${chalk.bold(pick('›'))} ${query ? `${query}${chalk.dim('▏')}` : chalk.dim('▏type to filter')}`;
     const right = !isWs && marks.size ? pick(`● ${marks.size} marked`) : '';
@@ -593,7 +640,8 @@ export function renderInteractiveView({
   const windows = isShortcuts && terminal && ['S-↑↓', 'windows'];
   const scriptsKey = isShortcuts && ['^s', 'scripts'];
   const movePin = !isWs && !query?.trim() && currentChoice?.pinned && ['A-↑↓', 'move pin'];
-  const navRow = [openKey, scriptsKey, ['↑↓', 'move'], opener, windows, tabKey, escKey, movePin, markKey];
+  const goalsKey = goals?.next.length && ['S-→', 'goals'];
+  const navRow = [openKey, scriptsKey, ['↑↓', 'move'], opener, windows, tabKey, escKey, movePin, markKey, goalsKey];
   const actRow = [isShortcuts && ['^a', 'add'], isShortcuts && ['^e', 'edit path'], !isWs && ['^r', 'rename'],
     !isWs && list.length > 0 && ['^p', currentChoice?.pinned ? 'unpin' : 'pin'], ['^d', many ? `delete ${many} marked` : 'delete'], undoKey];
   // Last in their rows, so a narrow terminal drops them first.
@@ -602,9 +650,10 @@ export function renderInteractiveView({
   // Key hints setting. Full: two rows (typing: input keys, same height so the list stays put). Short: one row
   // without the keys you learn first (↑↓, tab, esc), cut to the width. Off: none.
   const hints = settings.keyHints === 'off' ? []
-    : settings.keyHints === 'short' ? [mode === 'input' ? inputRow : fitHint([openKey, opener, windows, ...actRow, markKey, scriptsKey, uiKey, copyKey, movePin], w)]
+    : settings.keyHints === 'short' ? [mode === 'input' ? inputRow : fitHint([openKey, opener, windows, ...actRow, markKey, scriptsKey, goalsKey, uiKey, copyKey, movePin], w)]
       : mode === 'input' ? [inputRow, ''] : [fitHint(navRow, w), fitHint([...actRow, uiKey, copyKey], w)];
   const foot = isScripts ? (hints.length ? [keyHint([['↵', 'run in a terminal'], ['↑↓', 'move'], escKey])] : [])
+    : isGoals ? (hints.length ? [keyHint([['↵', 'copy'], ['↑↓', 'move'], ['esc', 'back']])] : [])
     : [...(isShortcuts ? [`  ${chalk.dim('open with')}  ${openers}`, ...(hints.length ? gap : [])] : []), ...hints];
   // No footer rows above it: no blank row under the rule.
   foot.push(...(foot.length ? webRows : webRows.slice(-1)));
@@ -661,14 +710,17 @@ export function renderInteractiveView({
   pin(foot);
   // Detail pane: the selected row's details right of the list, top-aligned.
   if (pane) {
-    const detail = detailLines(currentChoice, pw, appChoices);
+    const sel = isGoals ? Math.min(goalIndex, goals.next.length - 1) : -1;
+    const detail = detailLines(currentChoice, pw, appChoices, Date.now(), { goals, sel, pick });
+    // Picking and taller than the pane: scroll to its end (the goals), the picked one in view.
+    const skip = isGoals ? Math.max(0, Math.min(detail.length - (lines.length - bodyStart), detail.length - goals.next.length + sel)) : 0;
     for (let i = bodyStart; i < lines.length; i++) {
       const l = ui.truncate(lines[i], lw);
-      lines[i] = `${l}${' '.repeat(Math.max(0, lw - vis(l)))}${chalk.dim(' │ ')}${detail[i - bodyStart] ?? ''}`;
+      lines[i] = `${l}${' '.repeat(Math.max(0, lw - vis(l)))}${chalk.dim(' │ ')}${detail[i - bodyStart + skip] ?? ''}`;
     }
   }
   // The opener row is the first footer row, after its rule; "  open with  " is 13 wide.
-  if (isShortcuts && !isScripts) for (const s of openerSpans) hit(lines.length + 1, 13 + s.from, 13 + s.to, { opener: s.index });
+  if (isShortcuts && !isScripts && !isGoals) for (const s of openerSpans) hit(lines.length + 1, 13 + s.from, 13 + s.to, { opener: s.index });
   return footer(foot);
 }
 
@@ -712,7 +764,8 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
     let cmdCount = 1;
     let frame = [];   // inline mode: lines drawn last time
     let alt = false;  // on the alternate screen
-    let mode = 'browse';   // 'browse' | 'input' | 'confirm' | 'scripts'
+    let mode = 'browse';   // 'browse' | 'input' | 'confirm' | 'scripts' | 'goals'
+    let goalIndex = 0;     // goal picker
     let scripts = null;    // script picker: { pm, list }
     let scriptIndex = 0;
     let action = null;     // 'edit' | 'rename' | 'add'
@@ -758,6 +811,8 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
       if (!appPicked && view === 'shortcuts') {
         selectedAppIndex = Math.max(0, appIndex(ownOpener(filteredChoices[selectedIndex])));
       }
+      // Goal picker whose pane or goals went away (resize): back to browse.
+      if (mode === 'goals' && !paneGoals()?.next.length) mode = 'browse';
       // Clip to terminal width: a wrapped line takes 2+ rows and would leave stale rows behind.
       const width = Math.max(1, (stdout.columns || 80) - 1);
       // Inline: the trailing newline takes a row, and the list keeps its old compact size.
@@ -786,6 +841,7 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
         scripts,
         scriptIndex,
         marks,
+        goalIndex,
         counts: { shortcuts: allChoices.filter(inView('shortcuts')).length, apps: allChoices.filter(inView('apps')).length, workspaces: wsChoices.length },
         width,
         height,
@@ -976,6 +1032,18 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
       finish({ status: 'selected', name: c.name, app: 'cmd', count: 1, start });
     };
 
+    // Goals the pane shows now (same checks as the render), else null.
+    const paneGoals = () => (alt && view === 'shortcuts' && (stdout.columns || 80) >= PANE_MIN ? folderGoals(filteredChoices[selectedIndex], settings.goals) : null);
+
+    const copy = (text, msg) => {
+      try {
+        copyToClipboard(text);
+        done(msg);
+      } catch (err) {
+        flash = `can't copy: ${err.message.split('\n')[0]}`;
+      }
+    };
+
     const startAction = (name) => {
       action = name;
       inputBuffer = prefill(name, filteredChoices[selectedIndex]);
@@ -1162,6 +1230,17 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
         return;
       }
 
+      // ── Goal picker in the pane: ↑↓ move, Enter copies, Esc / ← back. Pane gone (resize): back too. ──
+      if (mode === 'goals') {
+        const g = paneGoals()?.next || [];
+        goalIndex = Math.min(goalIndex, g.length - 1);
+        if (!g.length || key.name === 'escape' || key.name === 'left') mode = 'browse';
+        else if (key.name === 'return') { copy(goalText(g[goalIndex]), `copied "${oneLine(g[goalIndex].id ?? g[goalIndex].title)}"`); mode = 'browse'; }
+        else if (key.name === 'up' || key.name === 'down') goalIndex = (goalIndex + (key.name === 'up' ? g.length - 1 : 1)) % g.length;
+        redraw();
+        return;
+      }
+
       // ── Browse mode ──
       // Esc clears a typed filter first, then the marks, then quits.
       if (key.name === 'escape' && query) {
@@ -1291,12 +1370,7 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
       if (key.ctrl && key.name === 'y') {
         const c = filteredChoices[selectedIndex];
         if (!c?.path) return;
-        try {
-          copyToClipboard(c.path);
-          done(`copied ${c.path}`);
-        } catch (err) {
-          flash = `can't copy: ${err.message.split('\n')[0]}`;
-        }
+        copy(c.path, `copied ${c.path}`);
         redraw();
         return;
       }
@@ -1392,6 +1466,14 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
           selectedIndex = selectedIndex === filteredChoices.length - 1 ? 0 : selectedIndex + 1;
           redraw();
         }
+        return;
+      }
+
+      // Shift+Right into the pane's goals; without any it changes the opener like Right.
+      if (key.name === 'right' && key.shift && paneGoals()?.next.length) {
+        mode = 'goals';
+        goalIndex = 0;
+        redraw();
         return;
       }
 

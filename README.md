@@ -344,6 +344,10 @@ Appearance:
 - `"rowDetails"`: what shows on the right of a row in the selector, `upex ls` and `upex ui`. `"both"` (default), `"tags"` (#tags), `"badges"` (★ pinned, app, cmd, url, missing) or `"none"`. Piped `upex ls` always shows both.
 - `"pinned"`: `"top"` (default, pinned shortcuts first) or `"section"` (first, under a Pinned heading, the rest under All) in the selector and `upex ui`. A search in the selector sorts by match, so it drops the headings.
 
+Detail pane (selector only, full screen, 140+ columns):
+
+- `"goals"`: `"off"` (default), `"3"`, `"5"` or `"10"`. A folder shortcut with an [upgo](https://github.com/JennyTheGem/upgo) `goals.json` shows its open goal count and up to that many open goals, soonest phase first. Shift+→ picks one in the pane (↑↓ move, Enter copies `id: title` and its body, Esc or ← goes back).
+
 ### WebStorm on Windows (without `setx`)
 
 If `upex <name> webstorm` does not find WebStorm, add this file:
