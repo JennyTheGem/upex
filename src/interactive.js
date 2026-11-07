@@ -8,7 +8,8 @@ import path from 'node:path';
 import readline from 'node:readline';
 import chalk from 'chalk';
 import Fuse from 'fuse.js';
-import { getInteractiveAppChoices, getAppMap, isTerminalApp, hasWindowsTerminal, defaultOpener, readSettings, setting, startTab, shownTabs, isHex, copyToClipboard, SETTINGS } from './launcher.js';
+import { getInteractiveAppChoices, getAppMap, isTerminalApp, hasWindowsTerminal, defaultOpener, readSettings, setting, startTab, shownTabs, isHex, copyToClipboard, launchUrl, SETTINGS } from './launcher.js';
+import { gitOf, stopGit } from './git.js';
 import { loadLinks, activeLinks, aliasesOf, takenError, checkAliases, frecency, removeLinks, saveLinks, setLink, renameLink, loadWorkspaces, saveWorkspaces, removeWorkspace, nameError, loadConfig, saveConfig, withPinned, setPinOrder } from './store.js';
 import { describeEntry } from './commands/workspace.js';
 import { handleOpen } from './commands/open.js';
@@ -367,6 +368,7 @@ const SETTING_ROWS = [
   { section: 'Appearance', key: 'pinned', label: 'Pinned', names: { top: 'On top', section: 'Own section' } },
   { section: 'Appearance', key: 'theme', label: 'Web theme', names: { system: 'System', dark: 'Dark', light: 'Light' } },
   { section: 'Detail pane', key: 'goals', label: 'Open goals', names: { off: 'Off', 3: '3', 5: '5', 10: '10' } },
+  { section: 'Detail pane', key: 'git', label: 'Git status', names: { off: 'Off', on: 'On' } },
 ];
 // Pane split only matters for split panes.
 const visibleRows = s => SETTING_ROWS.filter(r => r.key !== 'paneSplit' || s.terminalLayout === 'panes');
@@ -395,6 +397,7 @@ function settingNote(key, s, wt) {
   if (key === 'rowDetails') return 'Right side of a row: #tags, badges (pinned, app, missing), both or none. Here, in upex ls and upex ui.';
   if (key === 'pinned') return 'Pinned shortcuts first, or first under their own Pinned heading. Here and in upex ui. ^p pins, Alt+↑↓ moves one.';
   if (key === 'goals') return 'Pane right of the list (full screen, 140+ columns): open upgo goals of a folder, up to this many. S-→ picks one to copy.';
+  if (key === 'git') return 'Pane right of the list (full screen, 140+ columns): branch, ahead/behind, changes and last commit of a folder in git. ^g opens its web page.';
   if (key === 'keyHints') return 'Key rows under the list. Short: one row of the main keys. Off: more room for the list. Settings keeps its keys.';
   if (key === 'theme') return 'upex ui only. The terminal keeps its own colors.';
   if (wt === null) return 'Windows only. Other systems use their own terminal.';
@@ -440,19 +443,36 @@ export function goalsOf(dir) {
   }
   return goalCache.get(file).goals;
 }
+const isFolder = c => !!(c && !c.entries && !c.isApp && !c.isUrl && c.path && c.exists !== false);
 // Goals the detail pane shows for a row, `max` from the goals setting ('off' = none): folder shortcuts only.
 function folderGoals(c, max) {
-  const g = Number(max) > 0 && c && !c.entries && !c.isApp && !c.isUrl && c.path && c.exists !== false && goalsOf(c.path);
+  const g = Number(max) > 0 && isFolder(c) && goalsOf(c.path);
   return g ? { open: g.open, next: g.next.slice(0, Number(max)) } : null;
 }
+// Git status the pane shows for a row (git setting on, folder shortcuts only); `gitFor(dir)` never blocks.
+const folderGit = (c, on, gitFor) => (on === 'on' && isFolder(c) ? gitFor(c.path) : null);
+// Short name of a repo's web host for the ^g hint: github, gitlab, ... (a one-label host as is).
+const hostName = url => new URL(url).hostname.split('.').slice(-2)[0];
 // What Enter copies in the goal picker: "id: title" and the body below.
 export const goalText = g => [[g.id, g.title].filter(Boolean).join(': '), g.body].filter(Boolean).join('\n');
 // goals.json is not ours: one line, control characters (escapes included) dropped.
 // eslint-disable-next-line no-control-regex
 export const oneLine = v => String(v ?? '').replace(/[\s\x00-\x1f\x7f-\x9f]+/g, ' ').trim();
 
+// Pane lines of a git status from gitOf; the web line is { text, web } so a click opens it.
+export function gitLines(g, pw, now = Date.now()) {
+  const row = (k, v) => `${chalk.dim(k.padEnd(10))}${v}`;
+  const ab = [g.ahead && `↑${g.ahead}`, g.behind && `↓${g.behind}`].filter(Boolean).join(' ');
+  const out = ['', row('git', `${oneLine(g.branch) || '?'}${ab ? `  ${ab}` : ''}`),
+    row('changes', g.changed ? `${g.changed} file${g.changed > 1 ? 's' : ''}` : chalk.dim('clean'))];
+  // Age first, so a long subject clips and the age stays.
+  if (g.last) out.push(row('commit', `${chalk.dim(`${ui.span(now - g.last.time)} ago`)}  ${oneLine(g.last.subject)}`));
+  if (g.web) out.push({ text: ui.truncate(row('web', `${g.web.replace(/^https:\/\//, '')}  ${chalk.dim('^g')}`), pw), web: true });
+  return out;
+}
+
 // Detail pane lines for the selected row, each at most `pw` wide. `goals` from goalSummary, `sel` the picked one.
-export function detailLines(c, pw, appChoices = [], now = Date.now(), { goals = null, sel = -1, pick = chalk.bold } = {}) {
+export function detailLines(c, pw, appChoices = [], now = Date.now(), { goals = null, sel = -1, pick = chalk.bold, git = null } = {}) {
   if (!c) return [];
   const row = (k, v) => (v ? `${chalk.dim(k.padEnd(10))}${String(v)}` : null);
   const badge = c.entries ? '' : c.exists === false ? chalk.red('missing') : c.pinned ? `${PIN} pinned` : '';
@@ -476,6 +496,7 @@ export function detailLines(c, pw, appChoices = [], now = Date.now(), { goals = 
     row('opened', c.uses ? `${c.uses}×${c.lastUsed ? `, last ${ui.span(now - c.lastUsed)} ago` : ''}` : 'never'),
     row('added', !isNaN(added) && added.toLocaleDateString('sv-SE')),
     row('expires', c.expires && `in ${ui.span(c.expires - now, Math.ceil)}`));
+  if (git) out.push(...gitLines(git, pw, now));
   // Title clipped, so its phase stays in view.
   if (goals) {
     out.push('', row('goals', `${goals.open} open`), ...goals.next.map((g, i) => {
@@ -484,7 +505,7 @@ export function detailLines(c, pw, appChoices = [], now = Date.now(), { goals = 
       return (i === sel ? `${' '.repeat(8)}${pick('›')} ${chalk.bold(title)}` : ' '.repeat(10) + title) + phase;
     }));
   }
-  return out.filter(l => l !== null).map(l => ui.truncate(l, pw));
+  return out.filter(l => l !== null).map(l => (l.web ? l : ui.truncate(l, pw)));
 }
 
 // Script picker in the pane, `rows` tall: a heading, then the scripts around `sel` as { text, i }.
@@ -528,6 +549,7 @@ export function renderInteractiveView({
   scriptIndex = 0,
   marks = new Set(), // marked shortcut names (Space)
   goalIndex = 0, // goal picker (mode 'goals', S-→ into the pane)
+  gitFor = gitOf, // dir -> cached git status or null, never blocks
   width = 80,
   height = 24,
   maxList = Infinity,
@@ -548,6 +570,7 @@ export function renderInteractiveView({
   const plain = isWs || listScripts;
   const goals = pane && !isWs ? folderGoals(currentChoice, settings.goals) : null;
   const isGoals = mode === 'goals' && !!goals?.next.length;
+  const git = pane && !isWs && !isScripts ? folderGit(currentChoice, settings.git, gitFor) : null;
   const w = Math.max(width, 20);
   const pw = pane ? Math.min(72, Math.floor(w * 0.38)) : 0; // pane width
   const lw = pane ? w - pw - 3 : w; // list width, " │ " between
@@ -659,7 +682,8 @@ export function renderInteractiveView({
   const scriptsKey = isShortcuts && ['^s', 'scripts'];
   const movePin = !isWs && !query?.trim() && currentChoice?.pinned && ['A-↑↓', 'move pin'];
   const goalsKey = goals?.next.length && ['S-→', 'goals'];
-  const navRow = [openKey, scriptsKey, ['↑↓', 'move'], opener, windows, tabKey, escKey, movePin, markKey, goalsKey];
+  const webKey = git?.web && ['^g', hostName(git.web)];
+  const navRow = [openKey, scriptsKey, ['↑↓', 'move'], opener, windows, tabKey, escKey, movePin, markKey, goalsKey, webKey];
   const actRow = [isShortcuts && ['^a', 'add'], isShortcuts && ['^e', 'edit path'], !isWs && ['^r', 'rename'],
     !isWs && list.length > 0 && ['^p', currentChoice?.pinned ? 'unpin' : 'pin'], ['^d', many ? `delete ${many} marked` : 'delete'], undoKey];
   // Last in their rows, so a narrow terminal drops them first.
@@ -668,7 +692,7 @@ export function renderInteractiveView({
   // Key hints setting. Full: two rows (typing: input keys, same height so the list stays put). Short: one row
   // without the keys you learn first (↑↓, tab, esc), cut to the width. Off: none.
   const hints = settings.keyHints === 'off' ? []
-    : settings.keyHints === 'short' ? [mode === 'input' ? inputRow : fitHint([openKey, opener, windows, ...actRow, markKey, scriptsKey, goalsKey, uiKey, copyKey, movePin], w)]
+    : settings.keyHints === 'short' ? [mode === 'input' ? inputRow : fitHint([openKey, opener, windows, ...actRow, markKey, scriptsKey, goalsKey, webKey, uiKey, copyKey, movePin], w)]
       : mode === 'input' ? [inputRow, ''] : [fitHint(navRow, w), fitHint([...actRow, uiKey, copyKey], w)];
   const foot = isScripts ? (hints.length ? [keyHint([['↵', 'run in a terminal'], ['↑↓', 'move'], escKey])] : [])
     : isGoals ? (hints.length ? [keyHint([['↵', 'copy'], ['↑↓', 'move'], ['esc', 'back']])] : [])
@@ -731,13 +755,14 @@ export function renderInteractiveView({
   if (pane) {
     const sel = isGoals ? Math.min(goalIndex, goals.next.length - 1) : -1;
     const detail = isScripts ? scriptLines(scripts, scriptIndex, pw, lines.length - bodyStart, pick)
-      : detailLines(currentChoice, pw, appChoices, Date.now(), { goals, sel, pick });
+      : detailLines(currentChoice, pw, appChoices, Date.now(), { goals, sel, pick, git });
     // Picking and taller than the pane: scroll to its end (the goals), the picked one in view.
     const skip = isGoals ? Math.max(0, Math.min(detail.length - (lines.length - bodyStart), detail.length - goals.next.length + sel)) : 0;
     for (let i = bodyStart; i < lines.length; i++) {
       const d = detail[i - bodyStart + skip];
       // A script row { text, i } is clickable right of the │.
       if (d?.i != null) hit(i, lw + 3, w, { row: d.i });
+      if (d?.web) hit(i, lw + 3, w, { web: true });
       const l = ui.truncate(lines[i], lw);
       lines[i] = `${l}${' '.repeat(Math.max(0, lw - vis(l)))}${chalk.dim(' │ ')}${d?.text ?? d ?? ''}`;
     }
@@ -865,6 +890,7 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
         scriptIndex,
         marks,
         goalIndex,
+        gitFor,
         counts: { shortcuts: allChoices.filter(inView('shortcuts')).length, apps: allChoices.filter(inView('apps')).length, workspaces: wsChoices.length },
         width,
         height,
@@ -992,6 +1018,8 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
     };
 
     const cleanup = () => {
+      closed = true;
+      stopGit();
       clearTimeout(flashTimer);
       stopWeb();
       stdin.removeListener('keypress', onKeypress);
@@ -1056,7 +1084,19 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
     };
 
     // Goals the pane shows now (same checks as the render), else null.
-    const paneGoals = () => (alt && view === 'shortcuts' && (stdout.columns || 80) >= PANE_MIN ? folderGoals(filteredChoices[selectedIndex], settings.goals) : null);
+    const paneOn = () => alt && view === 'shortcuts' && (stdout.columns || 80) >= PANE_MIN;
+    const paneGoals = () => (paneOn() ? folderGoals(filteredChoices[selectedIndex], settings.goals) : null);
+    // A git lookup landing redraws, which shows it (and looks up the row selected meanwhile).
+    let closed = false;
+    const gitFor = dir => gitOf(dir, guard(() => { if (!closed) redraw(); }));
+    // ^g / a click on the pane's web line: the selected repo's web page.
+    const openWeb = () => {
+      const url = paneOn() && folderGit(filteredChoices[selectedIndex], settings.git, gitFor)?.web;
+      if (!url) return;
+      const r = launchUrl(url);
+      if (r.ok) done(`opened ${url}`);
+      else flash = r.message.split('\n')[0];
+    };
 
     const copy = (text, msg) => {
       try {
@@ -1159,7 +1199,8 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
       }
       const t = hitTest(targets, x, y);
       const ws = view === 'workspaces';
-      const act = t?.row != null && rowClick(lastClick, y, Date.now(), t.row === (picking ? scriptIndex : ws ? wsIndex : selectedIndex));
+      // The web line opens on any click, so a double-click must not open it twice.
+      const act = (t?.row != null || t?.web) && rowClick(lastClick, y, Date.now(), !!t.web || t.row === (picking ? scriptIndex : ws ? wsIndex : selectedIndex));
       // Second half of a double-click that already opened: keep its flash.
       if (act === 'skip') return;
       // Any click dismisses the flash, an empty spot included.
@@ -1167,6 +1208,9 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
       if (t?.tab) {
         mode = 'browse';
         if (t.tab !== view) switchTo(t.tab);
+      } else if (t?.web) {
+        openWeb();
+        lastClick = { y, at: Date.now(), opened: true };
       } else if (act) {
         if (act === 'open') handleKey(undefined, { name: 'return' });
         else if (act === 'select' && picking) scriptIndex = t.row;
@@ -1387,6 +1431,11 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
         setLink(c.name, withPinned(entry, !entry.pinned));
         rebuild(c.name);
         done(`${entry.pinned ? 'unpinned' : 'pinned'} "${c.name}"`);
+        redraw();
+        return;
+      }
+      if (key.ctrl && key.name === 'g') {
+        openWeb();
         redraw();
         return;
       }

@@ -1345,10 +1345,11 @@
       "title": "Git status in the detail pane",
       "body": "Branch, changed file count, ahead/behind, last commit message and age for a folder shortcut. Cached per path, computed off the render path so scrolling stays fast. as setting off by default",
       "phase": "later",
-      "status": "planned",
+      "status": "done",
       "size": "M",
       "created": "2026-11-07",
-      "updated": "2026-11-07"
+      "updated": "2026-11-07",
+      "note": "Settings > Detail pane > Git status (off by default): branch, ahead/behind, changed files, last commit; async cached lookup in src/git.js; ^g or click opens the origin web page"
     }
   ]
 }

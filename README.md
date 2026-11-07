@@ -347,6 +347,7 @@ Appearance:
 Detail pane (selector only, full screen, 140+ columns):
 
 - `"goals"`: `"off"` (default), `"3"`, `"5"` or `"10"`. A folder shortcut with an [upgo](https://github.com/JennyTheGem/upgo) `goals.json` shows its open goal count and up to that many open goals, soonest phase first. Shift+→ picks one in the pane (↑↓ move, Enter copies `id: title` and its body, Esc or ← goes back).
+- `"git"`: `"off"` (default) or `"on"`. A folder shortcut inside a git repo shows its branch, ahead/behind, changed file count and last commit (age and message), looked up in the background and cached per folder for a few seconds, so scrolling stays fast. With an `origin` remote it also shows the repo's web page: Ctrl+G or a click opens it in the browser.
 
 ### WebStorm on Windows (without `setx`)
 

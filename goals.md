@@ -39,4 +39,3 @@ Closed sections: §7 Web UI
 ## 9. Detail pane
 
 - `shift-left-toggles-the-detail-pane-on-narrow` Shift+Left toggles the detail pane on narrow terminals (next)
-- `git-status-in-the-detail-pane` Git status in the detail pane (later)

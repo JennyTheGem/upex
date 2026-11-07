@@ -23,6 +23,7 @@ import { COMMAND_NAMES } from '../src/fast.js';
 import { createProgram } from '../src/index.js';
 import { readScripts, detectPm } from '../src/commands/run.js';
 import { renderInteractiveView, nextView, backTo, accentOf, pathLook, inView, tidyPath, byOrder, optionRow, listRows, readMouse, hitTest, rowClick, undoError, clipName, prefill, editLine, inputLine, missingFlash, staysOpen, expandHome, underlineHits, movePinned, withRecent, maxListOf, isAlt, detailLines, rowOptions, pickedOf, goalSummary, goalsOf, goalText, oneLine, scriptLines } from '../src/interactive.js';
+import { parseStatus, parseLog, gitOf, stopGit } from '../src/git.js';
 import chalk from 'chalk';
 import { resolveTarget, resolveName, suggestNames } from '../src/fuzzy.js';
 
@@ -368,6 +369,7 @@ assert.equal(remoteWebUrl('https://github.com/me/a"b'), 'https://github.com/me/a
 for (const local of [String.raw`C:\repos\x`,'C:/repos/x', '/home/me/x', '../x', 'file:///c/x']) assert.equal(remoteWebUrl(local), null, `local ${local}`);
 for (const evil of ['git@h.com:me/$(id).git', 'git@h.com:me/x?`id`', 'ssh://git@e"&calc&"x.com/r', 'git@h.com:%USERNAME%/x']) assert.equal(remoteWebUrl(evil), null, `shell-unsafe ${evil}`);
 assert.equal(remoteWebUrl('https://dev.azure.com/o/My%20Proj/_git/r'), 'https://dev.azure.com/o/My%20Proj/_git/r', 'percent escapes kept');
+assert.equal(remoteWebUrl('git@1.2.3.4.5:me/x'), null, 'bad host: null, no throw');
 
 // -- selector tabs: folders on Shortcuts, apps + URLs on Apps --
 const tabbed = [{ name: 'f' }, { name: 'a', isApp: true }, { name: 'u', isUrl: true }];
@@ -817,6 +819,38 @@ const shortPane = goalPane('5', { mode: 'goals', goalIndex: 3, height: 14 }).spl
 assert.ok(shortPane.some(l => l.includes('› four')) && shortPane.length === 14, 'short pane scrolls to the picked goal');
 assert.equal(oneLine('a\x1b[2J\u009b1m\n b'), 'a [2J 1m b', 'goals.json text: no escapes, one line');
 fs.rmSync(gdir, { recursive: true, force: true });
+// Git status: parsed from porcelain v2, shown when the setting is on, web line clickable.
+assert.deepEqual(parseStatus('# branch.oid abc\n# branch.head main\n# branch.ab +2 -1\n1 .M N... 100644 100644 100644 a b src/x.js\n? new.txt\n'), { branch: 'main', ahead: 2, behind: 1, changed: 2 }, 'parseStatus');
+assert.deepEqual([parseLog('1700000000 fix it'), parseLog(''), parseLog(null)], [{ time: 1700000000000, subject: 'fix it' }, null, null], 'parseLog');
+{
+  const g = { branch: 'dev', ahead: 1, behind: 0, changed: 3, last: { time: Date.now() - 7200000, subject: 'ship\nit' }, web: 'https://github.com/o/r' };
+  const targets = [];
+  const gargs = { ...viewArgs, choices: [det], full: true, width: 150, height: 30, gitFor: () => g, targets };
+  const on = strip(renderInteractiveView({ ...gargs, settings: { git: 'on' } })).split('\n');
+  assert.ok(on.some(l => l.includes('│ git       dev  ↑1')) && on.some(l => l.includes('│ changes   3 files')) && on.some(l => l.includes('│ commit    2h ago  ship it')), 'pane shows git status');
+  const y = on.findIndex(l => l.includes('│ web       github.com/o/r  ^g'));
+  assert.ok(y >= 0 && targets.some(t => t.web && t.line === y) && on.some(l => l.includes('^g github')), 'web line clickable, ^g hint');
+  assert.ok(!strip(renderInteractiveView({ ...gargs, settings: {} })).includes('│ git'), 'git off by default');
+  assert.ok(strip(detailLines(det, 60, [], Date.now(), { git: { branch: 'm', changed: 0 } }).join('|')).includes('changes   clean'), 'clean repo, no web line');
+  const alias = strip(renderInteractiveView({ ...gargs, gitFor: () => ({ ...g, web: 'https://gh-work/o/r' }), settings: { git: 'on' } }));
+  assert.ok(alias.includes('^g gh-work') && !alias.includes('undefined'), 'one-label host hint');
+}
+// gitOf: one lookup at a time, a fresh cache is not looked up again, stopGit drops a running one.
+{
+  const [a, b, c] = [0, 1, 2].map(() => fs.mkdtempSync(path.join(os.tmpdir(), 'upex-git-')));
+  const seen = [];
+  const land = dir => new Promise(res => gitOf(dir, () => { seen.push(dir); res(); }));
+  const la = land(a);
+  land(b); // busy: no lookup, never lands
+  await la;
+  gitOf(a, () => seen.push('again')); // fresh: no lookup
+  await land(b); // never lands (exit 13) if a was looked up again
+  gitOf(path.join(c, 'x'), () => seen.push('stopped'));
+  stopGit();
+  await land(c); // never lands if the stopped one kept the slot
+  assert.deepEqual(seen, [a, b, c], 'gitOf one at a time, cached, stoppable');
+  for (const d of [a, b, c]) fs.rmSync(d, { recursive: true, force: true });
+}
 // ^s with the pane: scripts there, the shortcut list stays; a pane row click picks that script.
 {
   const sargs = { ...viewArgs, choices: [det], full: true, width: 150, height: 30, mode: 'scripts', scriptIndex: 1, scripts: { pm: 'npm', list: [{ name: 'dev', path: 'vite' }, { name: 'build', path: 'vite build' }] } };
@@ -936,7 +970,7 @@ try {
   assert.equal(cfg2.paneSplit, 'horizontal', 'refused request saved nothing, later one did');
   assert.equal(cfg2.defaultOpener, 'vscode', 'default opener stored as its key');
   const st2 = await (await fetch(base + '/api/state', { headers: { 'x-upex-token': token } })).json();
-  assert.deepEqual(st2.settings, { startView: 'apps', sort: 'name', terminalLayout: 'panes', paneSplit: 'horizontal', terminalShell: 'powershell', fullScreen: 'on', theme: 'system', accent: 'default', density: 'comfortable', paths: 'dim', keyHints: 'full', maxRows: 'auto', recentStrip: 'off', views: 'all', enter: 'quit', rowDetails: 'both', pinned: 'top', goals: 'off', defaultOpener: 'vscode' }, 'state reports settings');
+  assert.deepEqual(st2.settings, { startView: 'apps', sort: 'name', terminalLayout: 'panes', paneSplit: 'horizontal', terminalShell: 'powershell', fullScreen: 'on', theme: 'system', accent: 'default', density: 'comfortable', paths: 'dim', keyHints: 'full', maxRows: 'auto', recentStrip: 'off', views: 'all', enter: 'quit', rowDetails: 'both', pinned: 'top', goals: 'off', git: 'off', defaultOpener: 'vscode' }, 'state reports settings');
   assert.deepEqual(Object.keys(cfg2.workspaces), ['work'], 'settings save keeps workspaces');
   const note = path.join(webHome, 'note.txt');
   fs.writeFileSync(note, '');
