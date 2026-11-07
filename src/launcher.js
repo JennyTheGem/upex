@@ -116,8 +116,8 @@ export const SETTINGS = {
   paths: ['dim', 'full', 'hidden'],
   // Selector footer: both key rows, one row, or none. Settings always keeps its keys.
   keyHints: ['full', 'short', 'off'],
-  // Selector list height; fill = as many as the terminal fits.
-  maxRows: ['8', '12', '16', 'fill'],
+  // Selector list height; auto = fill in full screen, 8 inline. A dropped 'fill' reads as auto.
+  maxRows: ['auto', '8', '12', '16'],
   // Right side of a row (selector, ls, upex ui): #tags, badges (pinned, app, missing), both or none.
   rowDetails: ['both', 'tags', 'badges', 'none'],
   // Pinned shortcuts first, or first under their own Pinned heading (selector, upex ui).

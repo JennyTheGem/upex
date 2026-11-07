@@ -35,6 +35,10 @@
     {
       "n": 8,
       "title": "Distribution"
+    },
+    {
+      "n": 9,
+      "title": "Detail pane"
     }
   ],
   "traps": [],
@@ -957,6 +961,17 @@
       "note": "^p toggles pin in the selector (hint shows pin/unpin); pinned badge is now ★"
     },
     {
+      "id": "selector-uses-big-terminals",
+      "section": 3,
+      "title": "Selector uses big terminals",
+      "phase": "now",
+      "status": "done",
+      "size": "M",
+      "created": "2026-11-07",
+      "updated": "2026-11-07",
+      "note": "Max rows Auto (default) fills the screen in full screen; key rows pinned to the bottom; detail pane right of the list at 140+ cols"
+    },
+    {
       "id": "cd-support-via-wrapper-hidden-resolve-public-go",
       "section": 4,
       "title": "`cd` support via wrapper + hidden `__resolve` / public `go`",
@@ -1263,6 +1278,60 @@
       "title": "Bundle with esbuild on publish",
       "body": "Measured: ls 190ms to 137ms bundled (module lookup ~45ms is the main cost). Needs createRequire banner for commander, package.json/web asset paths, prepublishOnly step and esbuild devDep. Repo has no build step today.",
       "phase": "maybe",
+      "status": "planned",
+      "size": "M",
+      "created": "2026-11-07",
+      "updated": "2026-11-07"
+    },
+    {
+      "id": "scripts-in-the-detail-pane",
+      "section": 9,
+      "title": "Scripts in the detail pane",
+      "body": "^s shows the folder's package.json scripts in the right pane instead of replacing the list; pick one there (arrows/mouse), Enter runs it like upex run. Narrow or inline: keep today's script picker.",
+      "phase": "next",
+      "status": "planned",
+      "size": "M",
+      "pointers": {
+        "files": [
+          "src/interactive.js"
+        ]
+      },
+      "created": "2026-11-07",
+      "updated": "2026-11-07"
+    },
+    {
+      "id": "shift-left-toggles-the-detail-pane-on-narrow",
+      "section": 9,
+      "title": "Shift+Left toggles the detail pane on narrow terminals",
+      "body": "Below the 140-column threshold, Shift+Left opens the detail pane anyway (list gets narrower), Shift+Left/Esc closes it. Check S-arrows are free: Shift+Up/Down already set the terminal window count.",
+      "phase": "next",
+      "status": "planned",
+      "size": "S",
+      "pointers": {
+        "files": [
+          "src/interactive.js"
+        ]
+      },
+      "created": "2026-11-07",
+      "updated": "2026-11-07"
+    },
+    {
+      "id": "open-goals-in-the-detail-pane",
+      "section": 9,
+      "title": "Open goals in the detail pane",
+      "body": "When the folder has a goals.json, show the open upgo count and the next 3 items. Ties upex and upgo together.",
+      "phase": "next",
+      "status": "planned",
+      "size": "S",
+      "created": "2026-11-07",
+      "updated": "2026-11-07"
+    },
+    {
+      "id": "git-status-in-the-detail-pane",
+      "section": 9,
+      "title": "Git status in the detail pane",
+      "body": "Branch, changed file count, ahead/behind, last commit message and age for a folder shortcut. Cached per path, computed off the render path so scrolling stays fast. as setting off by default",
+      "phase": "later",
       "status": "planned",
       "size": "M",
       "created": "2026-11-07",

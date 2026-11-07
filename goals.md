@@ -31,3 +31,10 @@ Closed sections: §5 Platform support · §7 Web UI
 ## 8. Distribution
 
 - Plus 1 maybe: `upgo list --section 8 --phase maybe`
+
+## 9. Detail pane
+
+- `scripts-in-the-detail-pane` Scripts in the detail pane (next)
+- `shift-left-toggles-the-detail-pane-on-narrow` Shift+Left toggles the detail pane on narrow terminals (next)
+- `open-goals-in-the-detail-pane` Open goals in the detail pane (next)
+- `git-status-in-the-detail-pane` Git status in the detail pane (later)

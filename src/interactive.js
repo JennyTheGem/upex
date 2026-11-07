@@ -8,7 +8,7 @@ import path from 'node:path';
 import readline from 'node:readline';
 import chalk from 'chalk';
 import Fuse from 'fuse.js';
-import { getInteractiveAppChoices, getAppMap, isTerminalApp, hasWindowsTerminal, defaultOpener, readSettings, setting, startTab, shownTabs, isHex, copyToClipboard } from './launcher.js';
+import { getInteractiveAppChoices, getAppMap, isTerminalApp, hasWindowsTerminal, defaultOpener, readSettings, setting, startTab, shownTabs, isHex, copyToClipboard, SETTINGS } from './launcher.js';
 import { loadLinks, activeLinks, aliasesOf, takenError, checkAliases, frecency, removeLinks, saveLinks, setLink, renameLink, loadWorkspaces, saveWorkspaces, removeWorkspace, nameError, loadConfig, saveConfig, withPinned, setPinOrder } from './store.js';
 import { describeEntry } from './commands/workspace.js';
 import { handleOpen } from './commands/open.js';
@@ -17,7 +17,8 @@ import { readScripts, detectPm } from './commands/run.js';
 import * as ui from './ui.js';
 
 const MAX_VISIBLE_CHOICES = 8;
-const MAX_WIDTH = 100;
+// Full screen in a terminal at least this wide: detail pane right of the list.
+const PANE_MIN = 140;
 const ALT_ON = '\x1b[?1049h';
 const ALT_OFF = '\x1b[?1049l';
 const HIDE_CURSOR = '\x1b[?25l';
@@ -44,6 +45,9 @@ function buildChoices() {
       score: frecency(entry),
       lastUsed: entry.lastUsed || 0,
       added: entry.added || 0,
+      uses: entry.uses || 0,
+      expires: entry.expires || 0,
+      aliases: aliasesOf(entry),
     }))
     .sort(byOrder(setting('sort')));
 }
@@ -74,8 +78,8 @@ export function withRecent(list, n = 3) {
   return list.length > n && recent.length ? [...recent.map(c => ({ ...c, recent: true })), ...list] : list;
 }
 
-// Max rows setting -> list rows.
-export const maxListOf = v => (v === 'fill' ? Infinity : Number(v) || MAX_VISIBLE_CHOICES);
+// Max rows setting -> list rows. Auto: fill in full screen, else 8.
+export const maxListOf = (v, full = false) => (full && !Number(v) ? Infinity : Number(v) || MAX_VISIBLE_CHOICES);
 
 // Folder shortcuts on the Shortcuts tab, app + URL shortcuts on the Apps tab.
 export const inView = (view) => (c) => (view === 'apps') === !!(c.isApp || c.isUrl);
@@ -84,7 +88,7 @@ export const inView = (view) => (c) => (view === 'apps') === !!(c.isApp || c.isU
 function buildWorkspaceChoices() {
   return Object.entries(loadWorkspaces()).map(([name, entries]) => {
     const summary = (entries || []).map(describeEntry).join('  ');
-    return { name, path: summary, searchText: `${name} ${summary}` };
+    return { name, path: summary, entries: entries || [], searchText: `${name} ${summary}` };
   });
 }
 
@@ -355,7 +359,7 @@ const SETTING_ROWS = [
   { section: 'Opening', key: 'defaultOpener', label: 'Default opener' },
   { section: 'Appearance', key: 'fullScreen', label: 'Full screen', names: { on: 'On', off: 'Off' } },
   { section: 'Appearance', key: 'keyHints', label: 'Key hints', names: { full: 'Full', short: 'Short', off: 'Off' } },
-  { section: 'Appearance', key: 'maxRows', label: 'Max rows', names: { 8: '8', 12: '12', 16: '16', fill: 'Fill screen' } },
+  { section: 'Appearance', key: 'maxRows', label: 'Max rows', names: { auto: 'Auto', 8: '8', 12: '12', 16: '16' } },
   { section: 'Appearance', key: 'accent', label: 'Accent', names: { default: 'Default', green: 'Green', blue: 'Blue', purple: 'Purple', orange: 'Orange' } },
   { section: 'Appearance', key: 'density', label: 'Density', names: { comfortable: 'Comfortable', compact: 'Compact' } },
   { section: 'Appearance', key: 'paths', label: 'Paths', names: { dim: 'Dim folders', full: 'Full', hidden: 'Hidden' } },
@@ -365,10 +369,15 @@ const SETTING_ROWS = [
 ];
 // Pane split only matters for split panes.
 const visibleRows = s => SETTING_ROWS.filter(r => r.key !== 'paneSplit' || s.terminalLayout === 'panes');
-// [key, label] options of a settings row; copy is no way to open a folder. A hex accent shows as its own option.
-const rowOptions = (row, appChoices, s = {}) => (row.names
-  ? [...Object.entries(row.names), ...(row.key === 'accent' && isHex(s.accent) ? [[s.accent, s.accent]] : [])]
-  : appChoices.filter(c => c.key !== 'copy').map(c => [c.key, c.label]));
+// Inline, Max rows Auto is 8: one "8" option that keeps auto, so going full screen still fills.
+const inlineRows = (row, s) => row.key === 'maxRows' && s.fullScreen === 'off';
+// [key, label] options of a settings row, in SETTINGS order (object keys put "8" before "auto"); copy is no way
+// to open a folder. A hex accent shows as its own option.
+export const rowOptions = (row, appChoices, s = {}) => (inlineRows(row, s) ? [['auto', '8'], ['12', '12'], ['16', '16']]
+  : row.names ? [...SETTINGS[row.key].map(k => [k, row.names[k] ?? k]), ...(row.key === 'accent' && isHex(s.accent) ? [[s.accent, s.accent]] : [])]
+    : appChoices.filter(c => c.key !== 'copy').map(c => [c.key, c.label]));
+// The option a row shows as picked.
+export const pickedOf = (row, s) => (inlineRows(row, s) && s.maxRows === '8' ? 'auto' : s[row.key]);
 
 function settingNote(key, s, wt) {
   if (key === 'startView') return 'The tab upex and upex ui open on. Last used: where you left off, opener included.';
@@ -376,7 +385,7 @@ function settingNote(key, s, wt) {
   if (key === 'recentStrip') return 'The last 3 opened again above the list, under a Recent heading, whatever the sort.';
   if (key === 'views') return 'Which tabs show and Tab cycles through, here and in upex ui.';
   if (key === 'enter') return 'Selector only. Open and stay keeps upex open after Enter, to open more.';
-  if (key === 'maxRows') return 'List rows here. Fill screen: as many as the terminal fits.';
+  if (key === 'maxRows') return s.fullScreen === 'off' ? 'List rows here.' : 'List rows here. Auto: as many as the screen fits.';
   if (key === 'defaultOpener') return 'Opens folder shortcuts that have no opener of their own.';
   if (key === 'fullScreen') return 'Whole terminal plus mouse, restored on exit. Off: inline, no mouse.';
   if (key === 'accent') return 'Color of the › pointer and the picked option, here and in upex ui. Any color: upex config set accent ff66aa';
@@ -408,6 +417,34 @@ function webStatus(url, w) {
   return gap >= 2 ? left + ' '.repeat(gap) + note : left;
 }
 
+// Detail pane lines for the selected row, each at most `pw` wide.
+export function detailLines(c, pw, appChoices = [], now = Date.now()) {
+  if (!c) return [];
+  const row = (k, v) => (v ? `${chalk.dim(k.padEnd(10))}${String(v)}` : null);
+  const badge = c.entries ? '' : c.exists === false ? chalk.red('missing') : c.pinned ? `${PIN} pinned` : '';
+  const head = clipName(c.name, Math.max(1, pw - vis(badge) - 2)).text;
+  const out = [chalk.bold(head) + (badge ? ' '.repeat(pw - vis(head) - vis(badge)) + badge : '')];
+  if (c.entries) return [...out, '', ...c.entries.map(describeEntry)].map(l => ui.truncate(l, pw));
+  // The full target, wrapped instead of clipped (4 lines at most).
+  for (let p = c.path || '', n = 0; p && n < 4; n++) {
+    const part = ui.fit(p, pw) || p[0];
+    out.push(c.isUrl || c.isApp ? part : ui.dimParent(part));
+    p = p.slice(part.length);
+  }
+  const opener = c.opener && (appChoices.find(a => a.key === c.opener)?.label || c.opener);
+  // Local day; a hand-edited bad value is left out (toISOString would throw).
+  const added = new Date(c.added || NaN);
+  out.push('',
+    row('type', c.isCmd ? 'command' : c.isApp ? 'app' : c.isUrl ? 'url' : 'folder'),
+    row('opens in', opener),
+    row('aliases', c.aliases?.join(' ')),
+    row('tags', c.tags?.length && `#${c.tags.join(' #')}`),
+    row('opened', c.uses ? `${c.uses}×${c.lastUsed ? `, last ${ui.span(now - c.lastUsed)} ago` : ''}` : 'never'),
+    row('added', !isNaN(added) && added.toLocaleDateString('sv-SE')),
+    row('expires', c.expires && `in ${ui.span(c.expires - now, Math.ceil)}`));
+  return out.filter(l => l !== null).map(l => ui.truncate(l, pw));
+}
+
 export function renderInteractiveView({
   query,
   choices,
@@ -435,6 +472,7 @@ export function renderInteractiveView({
   width = 80,
   height = 24,
   maxList = Infinity,
+  full = false, // full screen: footer at the bottom, detail pane when wide
   targets = null, // optional out: clickable { line, from, to, tab | row | opener | setting [+ option] }
 }) {
   const isWs = view === 'workspaces';
@@ -445,9 +483,15 @@ export function renderInteractiveView({
   const index = isScripts ? scriptIndex : isWs ? wsIndex : selectedIndex;
   // Workspace and script rows: plain text, no badges.
   const plain = isWs || isScripts;
-  const w = Math.min(Math.max(width, 20), MAX_WIDTH);
-  const cw = w - 2; // row width after the 2-space indent
-  const rule = chalk.dim(`  ${'─'.repeat(cw)}`);
+  // `width` leaves the terminal's last column free.
+  const pane = full && !isSettings && !isScripts && width + 1 >= PANE_MIN;
+  const w = Math.max(width, 20);
+  const pw = pane ? Math.min(72, Math.floor(w * 0.38)) : 0; // pane width
+  const lw = pane ? w - pw - 3 : w; // list width, " │ " between
+  const cw = lw - 2; // row width after the 2-space indent
+  // With the pane, the rules join its │ with ┬ (top) and ┴ (bottom).
+  const ruleOf = j => chalk.dim(pane ? `  ${'─'.repeat(lw - 1)}${j}${'─'.repeat(pw + 1)}` : `  ${'─'.repeat(w - 2)}`);
+  const rule = ruleOf('┴');
   const terminal = isTerminalApp(appChoices[selectedAppIndex]?.key);
   const pick = accentOf(settings.accent);
   // Compact: no spacer lines.
@@ -476,7 +520,7 @@ export function renderInteractiveView({
   if (mode === 'input') {
     const label = PROMPT_LABEL[action](clipName(currentChoice?.name || '', 24).text);
     // Keep the end of a long value in view, where the cursor is.
-    lines.push(`  ${chalk.bold(pick('›'))} ${label} ${inputLine(inputBuffer, inputCursor, Math.max(1, cw - vis(label) - 3))}`);
+    lines.push(`  ${chalk.bold(pick('›'))} ${label} ${inputLine(inputBuffer, inputCursor, Math.max(1, w - vis(label) - 5))}`);
   } else if (mode === 'confirm') {
     const what = `  ? delete ${isWs ? 'workspace ' : ''}`;
     // Clip the name, not the line, so "y / n" stays visible.
@@ -492,10 +536,14 @@ export function renderInteractiveView({
   }
   // A plain string is a warning; { text, ok: true } a success. One line, or rows below shift off the hit map.
   if (flash) lines.push((flash.ok ? chalk.green : chalk.yellow)(`    ${String(flash.text ?? flash).replace(/\s*\n\s*/g, ' ')}`));
-  lines.push(rule);
+  lines.push(isSettings ? rule : ruleOf('┬'));
+  const bodyStart = lines.length;
 
+  // Full screen: blank rows push the footer (its rule included) to the bottom.
+  const pin = (rows) => { if (full) while (lines.length + (rows.length && rows.length + 1) < height) lines.push(''); };
   // No rows (key hints off): no rule either.
   const footer = (rows) => {
+    pin(rows);
     if (rows.length) lines.push(rule, ...rows);
     return lines.join('\n');
   };
@@ -521,7 +569,7 @@ export function renderInteractiveView({
       const opts = rowOptions(row, appChoices, settings);
       const sel = i === settingIndex;
       const spans = [];
-      const picker = optionRow(opts.map(([, l]) => l), opts.findIndex(([k]) => k === settings[row.key]), w - 20, spans, pick);
+      const picker = optionRow(opts.map(([, l]) => l), opts.findIndex(([k]) => k === pickedOf(row, settings)), w - 20, spans, pick);
       const hits = [...spans.map(s => [20 + s.from, 20 + s.to, { setting: i, option: s.index }]), [0, w, { setting: i }]];
       body.push({ text: `  ${sel ? pick('›') : ' '} ${(sel ? chalk.bold : chalk.dim)(row.label.padEnd(16))}${picker}`, hits, i });
     });
@@ -589,7 +637,7 @@ export function renderInteractiveView({
       const tags = tagsOn && c.tags?.length ? chalk.dim(`#${c.tags.join(' #')}`) : '';
       const kind = c.isCmd ? 'cmd' : c.isApp ? 'app' : c.isUrl ? 'url' : '';
       const badge = !badgesOn ? '' : !c.exists ? chalk.red('missing') : chalk.dim(badgeText([c.pinned && group(c) !== 'Pinned' && PIN, kind]));
-      hit(lines.length, 0, w, { row: i });
+      hit(lines.length, 0, lw, { row: i });
       lines.push(renderRow(pathLook({
         sel: i === index,
         mark: !plain && marks.has(c.name),
@@ -609,6 +657,16 @@ export function renderInteractiveView({
     if (more) lines.push(more);
   }
 
+  // Before the opener hit below and the pane, which runs down to the footer.
+  pin(foot);
+  // Detail pane: the selected row's details right of the list, top-aligned.
+  if (pane) {
+    const detail = detailLines(currentChoice, pw, appChoices);
+    for (let i = bodyStart; i < lines.length; i++) {
+      const l = ui.truncate(lines[i], lw);
+      lines[i] = `${l}${' '.repeat(Math.max(0, lw - vis(l)))}${chalk.dim(' │ ')}${detail[i - bodyStart] ?? ''}`;
+    }
+  }
   // The opener row is the first footer row, after its rule; "  open with  " is 13 wide.
   if (isShortcuts && !isScripts) for (const s of openerSpans) hit(lines.length + 1, 13 + s.from, 13 + s.to, { opener: s.index });
   return footer(foot);
@@ -731,7 +789,8 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
         counts: { shortcuts: allChoices.filter(inView('shortcuts')).length, apps: allChoices.filter(inView('apps')).length, workspaces: wsChoices.length },
         width,
         height,
-        maxList: maxListOf(settings.maxRows),
+        maxList: maxListOf(settings.maxRows, alt),
+        full: alt,
         targets,
       });
       // Never taller than the screen, or the top scrolls away and frames stack up.
@@ -1146,7 +1205,7 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
           // Only the layout row changes which rows show, and pane split comes after it, so the index stays put.
           const row = rows[settingIndex];
           const keys = rowOptions(row, appChoices, settings).map(([k]) => k);
-          const at = Math.max(0, keys.indexOf(settings[row.key]));
+          const at = Math.max(0, keys.indexOf(pickedOf(row, settings)));
           chooseSetting(row, keys[(at + (key.name === 'left' ? keys.length - 1 : 1)) % keys.length]);
           redraw();
         }

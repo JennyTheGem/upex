@@ -39,7 +39,7 @@ export function info(msg) {
   console.log(`  ${msg}`);
 }
 
-// Row width after the 2-space indent, like the selector (last column kept free, at most 100 wide).
+// Row width after the 2-space indent (last column kept free, at most 100 wide).
 export const cols = () => Math.min(Math.max((process.stdout.columns || 80) - 1, 20), 100) - 2;
 
 export function heading(text) {
