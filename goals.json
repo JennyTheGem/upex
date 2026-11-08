@@ -1809,6 +1809,17 @@
       "created": "2026-11-08",
       "updated": "2026-11-08",
       "note": "Settings > Maintenance: broken, stale, stats, doctor, export, import"
+    },
+    {
+      "id": "tui-archive-instead-of-delete-wrapping-key-rows",
+      "section": 10,
+      "title": "TUI: archive instead of delete, wrapping key rows, ^k key overlay",
+      "phase": "later",
+      "status": "done",
+      "size": "M",
+      "created": "2026-11-08",
+      "updated": "2026-11-08",
+      "note": "^x archives (marked too), ^d deletes only workspaces and Settings > Archived rows; full key rows wrap (^s, ^g last after a |), row count from the widest case; short mode ^k overlay"
     }
   ]
 }

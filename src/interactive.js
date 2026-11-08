@@ -199,9 +199,26 @@ export const showsDetail = (rowDetails = 'both', what) => rowDetails === 'both' 
 let asciiHints = false;
 const ASCII_KEYS = [['↑↓', 'up/down'], ['←→', 'left/right'], ['→', 'right'], ['←', 'left'], ['↵', 'enter'], ['⌫', 'bs']];
 const hintKey = k => (asciiHints ? ASCII_KEYS.reduce((s, [a, b]) => s.replace(a, b), k) : k);
-const keyHint = pairs => '  ' + pairs.filter(Boolean).map(([k, label]) => `${hintKey(k)} ${chalk.dim(label)}`).join('  ');
+// HINT_SEP in a pair list: a dim | between key groups, dropped at a row's start or end.
+const HINT_SEP = '|';
+const keyHint = (pairs) => {
+  const ps = pairs.filter(Boolean);
+  while (ps[0] === HINT_SEP) ps.shift();
+  while (ps.at(-1) === HINT_SEP) ps.pop();
+  return '  ' + ps.map(p => (p === HINT_SEP ? chalk.dim(HINT_SEP) : `${hintKey(p[0])} ${chalk.dim(p[1])}`)).join('  ');
+};
 // One hint row of at most w columns: from the first pair that doesn't fit on, pairs are left out.
 const fitHint = (pairs, w) => keyHint(pairs.filter(Boolean).filter((p, i, a) => vis(keyHint(a.slice(0, i + 1))) <= w));
+// Hint rows of at most w columns: a pair that doesn't fit starts the next row.
+export const wrapHint = (pairs, w) => pairs.filter(Boolean)
+  .reduce((rows, p) => {
+    const last = rows.at(-1);
+    if (last && vis(keyHint([...last, p])) <= w) last.push(p);
+    else rows.push([p]);
+    return rows;
+  }, [])
+  .map(r => ui.truncate(keyHint(r), w))
+  .filter(r => r.trim());
 // Fuse hit ranges are UTF-16 offsets, inclusive.
 export const underlineHits = (s, hits = []) => ui.graphemes(s)
   .map(({ segment: g, index: i }) => (hits.some(([a, b]) => a < i + g.length && b >= i) ? chalk.underline(g) : g)).join('');
@@ -591,7 +608,7 @@ function settingNote(key, s, wt) {
   if (key === 'paneWidth') return 'How much of the screen the pane takes: Narrow leaves the list more room, Wide shows more details.';
   if (key === 'goals') return 'Pane right of the list (full screen): open upgo goals of a folder, up to this many. S-→ picks one to copy, a click copies it.';
   if (key === 'git') return 'Pane right of the list (full screen): branch, ahead/behind, changes and last commit of a folder in git. ^g opens its web page.';
-  if (key === 'keyHints') return 'Key rows under the list. Short: one row of the main keys. Off: more room for the list. Settings keeps its keys.';
+  if (key === 'keyHints') return 'Key rows under the list. Short: one row of the main keys, ^k shows them all. Off: more room for the list. Settings keeps its keys.';
   if (key === 'glyphs') return 'Selector only. ASCII swaps arrows, pointers, lines and the ellipsis for plain characters, for fonts that show boxes.';
   if (key === 'theme') return 'upex ui only. The terminal keeps its own colors.';
   if (wt === null) return 'Windows only. Other systems use their own terminal.';
@@ -782,12 +799,12 @@ export function scriptLines({ list }, sel, pw, rows, pick = chalk.bold) {
   return more ? [...out, ui.truncate(more, pw)] : out;
 }
 
-// Pane with marks, `rows` tall: each marked row and what Enter opens it in, then what ^d does.
+// Pane with marks, `rows` tall: each marked row and what Enter opens it in, then what ^x does.
 // `marked` [{ c, app, count }] as Enter would open them.
 export function markLines(marked, pw, rows, appChoices = [], pick = chalk.bold) {
   const n = marked.length;
   const nw = Math.min(nameCol(marked.map(m => m.c)), Math.floor(pw / 2));
-  // Head, blank, Enter line, blank and ^d line take 5; a cut list ends in "↓ n more".
+  // Head, blank, Enter line, blank and ^x line take 5; a cut list ends in "↓ n more".
   const room = Math.max(1, rows - 5);
   const shown = n <= room ? marked : marked.slice(0, Math.max(1, room - 1));
   const how = ({ c, app, count }) => (c.exists === false ? chalk.red('missing') : c.isUrl ? 'browser' : c.isApp ? 'launches'
@@ -798,7 +815,7 @@ export function markLines(marked, pw, rows, appChoices = [], pick = chalk.bold) 
       return `  ${name}${' '.repeat(nw - vis(name) + 2)}${how(m)}`;
     })];
   if (shown.length < n) out.push(chalk.dim(`  ↓ ${n - shown.length} more`));
-  out.push('', `${hintKey('^d')} ${chalk.dim(`deletes ${n > 1 ? `all ${n}` : 'it'}, ^z undo`)}`);
+  out.push('', `${hintKey('^x')} ${chalk.dim(`archives ${n > 1 ? `all ${n}` : 'it'}, ^z undo`)}`);
   return out.map(l => ui.truncate(l, pw));
 }
 
@@ -824,6 +841,7 @@ export function renderInteractiveView({
   extras = [], // Settings: rows before Archived [{ section, kind, name, text }] (openers, maintenance)
   expanded = null, // Settings: { kind, lines } shown under that extra row (stats, doctor)
   ask = '', // confirm question, else the delete / archive one
+  keysHelp = false, // ^k: every key over the list
   inputName = null, // name in the input prompt, else the selected row's
   form = null, // edit form (mode 'form'), see formLines
   wt = null,
@@ -905,10 +923,10 @@ export function renderInteractiveView({
     // Keep the end of a long value in view, where the cursor is.
     lines.push(`  ${chalk.bold(pick('›'))} ${label} ${inputLine(inputBuffer, inputCursor, Math.max(1, w - vis(label) - 5))}`);
   } else if (mode === 'confirm') {
-    const what = `  ? ${action === 'archive' ? 'archive' : 'delete'} ${isWs ? 'workspace ' : ''}`;
+    const what = `  ? ${action?.startsWith('archive') ? 'archive' : 'delete'} ${isWs ? 'workspace ' : ''}`;
     // Clip the name, not the line, so "y / n" stays visible.
     const name = clipName(currentChoice?.name || '', Math.max(1, w - vis(what) - 10)).text;
-    const q = ask ? `  ? ${ui.truncate(ask, Math.max(1, w - 12))}` : !isWs && marks.size && action !== 'archive' ? `${what}${marks.size} marked?` : `${what}"${name}"?`;
+    const q = ask ? `  ? ${ui.truncate(ask, Math.max(1, w - 12))}` : action === 'archiveMarked' ? `${what}${marks.size} marked?` : `${what}"${name}"?`;
     lines.push(chalk.yellow(q) + chalk.dim('  y / n'));
   } else if (isForm) {
     const left = `  ${chalk.bold(pick('›'))} ${chalk.dim(form.ws ? 'edit workspace' : 'edit')} ${chalk.bold(clipName(form.name, 24).text)}`;
@@ -987,12 +1005,12 @@ export function renderInteractiveView({
       for (const [from, to, t] of b.hits || []) hit(lines.length, from, to, t);
       lines.push(b.text);
     }
-    const note = onArchived ? `Enter or a second click brings it back to its tab, like upex restore ${onExtra.name}.`
+    const note = onArchived ? `Enter or a second click brings it back to its tab, like upex restore ${onExtra.name}. ^d deletes it for good.`
       : onExtra ? EXTRA_NOTES[onExtra.kind] : settingNote(rows[settingIndex].key, settings, wt);
     lines.push(...gap, chalk.dim(`    ${note}`));
     const enter = onExtra && ['↵', expanded && expanded.kind === onExtra.kind ? 'hide' : EXTRA_KEYS[onExtra.kind]];
     const keys = mode === 'input' ? inputRow
-      : keyHint([['↑↓', 'setting'], enter || ['←→', 'change (saved)'], onExtra?.kind === 'opener' && ['^d', 'remove'], undoKey, tabKey, ['S-Tab', 'back'], ['esc', 'quit'], uiKey]);
+      : keyHint([['↑↓', 'setting'], enter || ['←→', 'change (saved)'], onExtra?.kind === 'opener' && ['^d', 'remove'], onArchived && ['^d', 'delete'], undoKey, tabKey, ['S-Tab', 'back'], ['esc', 'quit'], uiKey]);
     return footer([keys, ...webRows]);
   }
 
@@ -1008,25 +1026,54 @@ export function renderInteractiveView({
   const goalsKey = goals?.next.length && ['S-→', 'goals'];
   const webKey = git?.web && ['^g', hostName(git.web)];
   const paneKey = toggles && (pane ? ['S-←', 'hide details'] : ['S-→', 'details']);
-  // Esc already says "hide details": no second hint, so goals and ^g still fit on narrow screens.
-  const navRow = [openKey, scriptsKey, ['↑↓', 'move'], opener, windows, tabKey, escKey, escKey[1] !== paneKey[1] && paneKey, movePin, markKey, goalsKey, webKey];
-  const actRow = [(isShortcuts || isWs) && ['^a', isWs ? 'add marked' : 'add'], list.length > 0 && ['^e', 'edit'], !isWs && ['^r', 'rename'],
-    !isWs && list.length > 0 && ['^p', currentChoice?.pinned ? 'unpin' : 'pin'], ['^d', many ? `delete ${many} marked` : 'delete'], undoKey];
-  // Last in their rows, so a narrow terminal drops them first.
+  const editKeys = [(isShortcuts || isWs) && ['^a', isWs ? 'add marked' : 'add'], list.length > 0 && ['^e', 'edit'], !isWs && ['^r', 'rename']];
+  const pinKey = !isWs && list.length > 0 && ['^p', currentChoice?.pinned ? 'unpin' : 'pin'];
+  // Shortcuts are archived, not deleted (^d deletes in Settings > Archived); workspaces have no archive.
+  const dropKey = isWs ? list.length > 0 && ['^d', 'delete'] : (list.length > 0 || many) && ['^x', many ? `archive ${many} marked` : 'archive'];
   const copyKey = !isWs && list.length > 0 && ['^y', 'copy'];
-  // Key hints setting. Full: two rows (typing: input keys, same height so the list stays put). Short: one row
-  // without the keys you learn first (↑↓, tab, esc), cut to the width. Off: none.
+  // Full: rows of keys, a pair that doesn't fit wraps. Keys that change with the selection, marks, filter or mode
+  // count at their widest for the row count, so the list only moves on resize. Esc already saying "hide details" drops the pane key.
+  const paneHint = escKey[1] !== paneKey[1] && paneKey;
+  const fullRows = ({ open = openKey, win = windows, esc = escKey, pane: pk = paneHint, pin = movePin, goals: gk = goalsKey, p = pinKey, drop = dropKey, z = undoKey, web = webKey } = {}) => [
+    ...wrapHint([open, ['↑↓', 'move'], opener, win, tabKey, esc, pk, pin, markKey, gk], w),
+    ...wrapHint([...editKeys, p, drop, z, uiKey, copyKey, HINT_SEP, scriptsKey, web], w),
+  ];
+  const most = `${Math.max(many, 9)} marked`;
+  const widest = fullRows({
+    open: isWs ? openKey : ['↵', isShortcuts ? `open ${most}` : 'open in browser'],
+    win: isShortcuts && ['S-↑↓', 'windows'],
+    esc: ['esc', 'cancel'],
+    pane: paneKey,
+    pin: !isWs && ['A-↑↓', 'move pin'],
+    goals: isShortcuts && pane && Number(settings.goals) > 0 && ['S-→', 'goals'],
+    p: pinKey && ['^p', 'unpin'],
+    drop: isWs ? dropKey : ['^x', `archive ${most}`],
+    z: ['^z', 'undo'],
+    web: isShortcuts && pane && settings.git === 'on' && (webKey || ['^g', 'github']),
+  });
+  const padTo = (rows, n) => [...rows, ...Array(Math.max(0, n - rows.length)).fill('')];
+  // Key hints setting. Full: the rows above (typing: input keys, same height so the list stays put). Short: one row
+  // without the keys you learn first (↑↓, tab, esc), cut to the width; ^k shows them all. Off: none.
   const hints = settings.keyHints === 'off' ? []
-    : settings.keyHints === 'short' ? [mode === 'input' ? inputRow : fitHint([openKey, opener, windows, ...actRow, markKey, scriptsKey, goalsKey, webKey, paneKey, uiKey, copyKey, movePin], w)]
-      : mode === 'input' ? [inputRow, ''] : [fitHint(navRow, w), fitHint([...actRow, uiKey, copyKey], w)];
-  const foot = isForm ? (hints.length ? [formKeys(form, inputRow), ...(settings.keyHints === 'short' ? [] : [''])] : [])
+    : settings.keyHints === 'short' ? [mode === 'input' ? inputRow : fitHint([['^k', 'keys'], openKey, opener, windows, ...editKeys, pinKey, dropKey, undoKey, markKey, scriptsKey, goalsKey, webKey, paneKey, uiKey, copyKey, movePin], w)]
+      : padTo(mode === 'input' ? [inputRow] : fullRows(), widest.length);
+  const foot = isForm ? (hints.length ? padTo([formKeys(form, inputRow)], settings.keyHints === 'short' ? 1 : widest.length) : [])
     : isScripts ? (hints.length ? [keyHint([['↵', 'run in a terminal'], ['↑↓', 'move'], escKey])] : [])
     : isGoals ? (hints.length ? [keyHint([['↵', 'copy'], ['↑↓', 'move'], ['esc', 'back']])] : [])
     : [...(isShortcuts ? [`  ${chalk.dim('open with')}  ${openers}`, ...(hints.length ? gap : [])] : []), ...hints];
   // No footer rows above it: no blank row under the rule.
   foot.push(...(foot.length ? webRows : webRows.slice(-1)));
 
-  if (listForm) {
+  if (keysHelp) {
+    // ^k: every key of this tab in groups, over the list.
+    const groups = [
+      ['Move', [openKey, ['↑↓', 'move'], opener, windows, tabKey, escKey, paneHint, markKey, !isWs && ['A-↑↓', 'move pin']]],
+      ['Edit', [...editKeys, pinKey, dropKey, ['^z', 'undo'], copyKey]],
+      ['More', [scriptsKey, isShortcuts && ['S-→', 'goals'], isShortcuts && (webKey || ['^g', 'git web page']), uiKey]],
+    ];
+    const help = groups.flatMap(([name, pairs], i) => [...(i ? [''] : []), `    ${chalk.bold(name)}`, ...wrapHint(pairs, cw).map(r => `  ${r}`)]);
+    lines.push(...help.slice(0, Math.max(0, height - lines.length - footRows(foot) - 2)), '', chalk.dim('    any key closes'));
+  } else if (listForm) {
     lines.push(...formLines(form, cw, appChoices, pick).map(l => `  ${l}`));
   } else if (list.length === 0) {
     const empty = {
@@ -1157,7 +1204,7 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
     let goalIndex = 0;     // goal picker
     let scripts = null;    // script picker: { pm, list }
     let scriptIndex = 0;
-    let action = null;     // input: a PROMPT_LABEL key, confirm: 'delete' | 'archive' | 'prune' | 'stale' | 'removeOpener'
+    let action = null;     // input: a PROMPT_LABEL key, confirm: 'delete' (workspace) | 'archive' | 'archiveMarked' | 'deleteArchived' | 'prune' | 'stale' | 'removeOpener'
     let inputBuffer = '';
     let inputCursor = 0;
     let flash = '';
@@ -1170,6 +1217,7 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
     let extras = []; // Settings: openers and maintenance rows, read when it opens
     let expanded = null; // Settings: { kind, lines } of stats or doctor
     let ask = ''; // confirm question for the Settings actions
+    let keysHelp = false; // ^k key overlay, any key closes it
     let inputName = null; // the prompt's name when it isn't the selected row's (an opener, a count)
     let form = null; // edit form: { name, ws, field, editing, buffer, cursor, kind, history }
     let wt = null;
@@ -1245,6 +1293,7 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
         extras,
         expanded,
         ask,
+        keysHelp,
         inputName,
         form: mode === 'form' && form ? { ...form, entry: formEntry() } : null,
         wt,
@@ -1468,18 +1517,24 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
       else flash = r.message.split('\n')[0];
     };
 
-    // ^x / a click on the pane's stale line: ask, then archive the selected shortcut; ^z brings it back.
-    const askArchive = () => {
-      if (view !== 'workspaces' && filteredChoices[selectedIndex]) { mode = 'confirm'; action = 'archive'; }
+    // ^x: ask, then archive the marked shortcuts or the selected one; a click on the pane's stale line: only the selected.
+    // ^z brings them back.
+    const askArchive = (useMarks) => {
+      if (view === 'workspaces') return;
+      if (useMarks && marks.size) { mode = 'confirm'; action = 'archiveMarked'; }
+      else if (filteredChoices[selectedIndex]) { mode = 'confirm'; action = 'archive'; }
     };
     const archive = () => {
-      const c = filteredChoices[selectedIndex];
-      const entry = c && loadLinks()[c.name];
-      if (!entry) return;
-      setLink(c.name, { ...entry, archived: true });
-      undo = [{ name: c.name, entry, archived: true }];
+      const links = loadLinks();
+      const names = (action === 'archiveMarked' ? [...marks] : [filteredChoices[selectedIndex]?.name]).filter(n => links[n] && !links[n].archived);
+      if (!names.length) return;
+      // All in one save, so one ^z restores them.
+      undo = names.map(name => ({ name, entry: links[name], archived: true }));
+      for (const name of names) links[name] = { ...links[name], archived: true };
+      saveLinks(links);
+      if (action === 'archiveMarked') marks.clear();
       rebuild();
-      done(`archived "${c.name}" (^z undo)`);
+      done(`archived ${howMany(names)} (^z undo)`);
     };
 
     const copy = (text, msg) => {
@@ -1889,6 +1944,11 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
       const picking = mode === 'scripts';
       const goalPick = mode === 'goals';
       if (!alt || (mode !== 'browse' && !picking && !goalPick) || !(wheel || click)) return;
+      // The ^k overlay: a click closes it, the wheel does nothing.
+      if (keysHelp) {
+        if (click) { keysHelp = false; redraw(); }
+        return;
+      }
       if (wheel) {
         flash = '';
         if (picking) scriptIndex = clamp(scriptIndex + wheel, scripts.list.length);
@@ -1948,8 +2008,13 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
         finish({ status: 'cancelled' });
         return;
       }
+      if (keysHelp) {
+        keysHelp = false;
+        redraw();
+        return;
+      }
 
-      // ── Confirm-delete mode ──
+      // ── Confirm mode ──
       if (mode === 'confirm') {
         const yes = key.name === 'y';
         if (yes && action === 'prune') {
@@ -1969,6 +2034,12 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
           if (gone.length) undo = gone;
           rebuild();
           done(gone.length ? `archived ${howMany(gone.map(g => g.name))} (^z undo)` : 'nothing stale');
+        } else if (yes && action === 'deleteArchived') {
+          // ^z puts it back, still archived.
+          const gone = Object.entries(removeLinks([inputName])).map(([name, entry]) => ({ name, entry }));
+          if (gone.length) undo = gone;
+          rebuild();
+          done(gone.length ? `deleted "${inputName}" (^z undo)` : `"${inputName}" is gone already`);
         } else if (yes && action === 'removeOpener') {
           const { [inputName]: _gone, ...apps } = configApps();
           saveConfig({ ...loadConfig(), apps });
@@ -1982,24 +2053,15 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
           redraw();
           return;
         }
-        if (key.name === 'y' && action === 'archive') {
+        if (yes && action?.startsWith('archive')) {
           archive();
-        } else if (key.name === 'y' && view === 'workspaces') {
+        } else if (yes && view === 'workspaces') {
           const victim = filteredWs[wsIndex];
           const entry = victim && loadWorkspaces()[victim.name];
           if (entry) {
             removeWorkspace(victim.name);
             undo = [{ name: victim.name, entry, ws: true }];
             done(`deleted workspace "${victim.name}" (^z undo)`);
-          }
-          rebuild();
-        } else if (key.name === 'y') {
-          // Marked ones all go in one save; otherwise the highlighted one.
-          const gone = Object.entries(removeLinks(marks.size ? [...marks] : [filteredChoices[selectedIndex]?.name])).map(([name, entry]) => ({ name, entry }));
-          marks.clear();
-          if (gone.length) {
-            undo = gone;
-            done(`deleted ${howMany(gone.map(g => g.name))} (^z undo)`);
           }
           rebuild();
         }
@@ -2139,8 +2201,14 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
         return;
       }
 
+      if (key.ctrl && key.name === 'k' && mode === 'browse' && view !== 'settings') {
+        keysHelp = true;
+        redraw();
+        return;
+      }
+
       // Settings: Up/Down picks a row, Left/Right changes and saves it, Enter acts on an opener, maintenance or archived row,
-      // ^d removes a custom opener; everything else is ignored.
+      // ^d removes a custom opener or deletes an archived shortcut; everything else is ignored.
       if (view === 'settings') {
         const rows = visibleRows(settings);
         const x = extraAt();
@@ -2152,6 +2220,9 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
         } else if (key.ctrl && key.name === 'd' && x?.kind === 'opener') {
           inputName = x.name;
           confirmAsk('removeOpener', `remove opener "${x.name}"?`);
+        } else if (key.ctrl && key.name === 'd' && x?.kind === 'archived') {
+          inputName = x.name;
+          confirmAsk('deleteArchived', `delete "${x.name}" for good?`);
         } else if ((key.name === 'left' || key.name === 'right') && settingIndex < rows.length) {
           // Only the layout row changes which rows show, and pane split comes after it, so the index stays put.
           const row = rows[settingIndex];
@@ -2209,10 +2280,6 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
         if (view === 'shortcuts') { startAction('add'); redraw(); }
         return;
       }
-      if (key.ctrl && key.name === 'd') {
-        if (filteredChoices.length > 0 || marks.size) { mode = 'confirm'; action = 'delete'; redraw(); }
-        return;
-      }
       if (key.ctrl && key.name === 'e') {
         const target = filteredChoices[selectedIndex];
         // A missing folder opens on its path, to fix it.
@@ -2234,7 +2301,7 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
         return;
       }
       if (key.ctrl && key.name === 'x') {
-        askArchive();
+        askArchive(true);
         redraw();
         return;
       }

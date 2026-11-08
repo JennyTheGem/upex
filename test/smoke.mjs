@@ -22,7 +22,7 @@ import { applyShortcut, applyOpener, cleanEntries, startServer } from '../src/co
 import { COMMAND_NAMES } from '../src/fast.js';
 import { createProgram } from '../src/index.js';
 import { readScripts, detectPm } from '../src/commands/run.js';
-import { renderInteractiveView, nextView, backTo, accentOf, pathLook, inView, tidyPath, byOrder, optionRow, listRows, readMouse, hitTest, rowClick, undoError, undoneLinks, clipName, prefill, editLine, sameLinks, kindOf, retyped, setField, fieldWords, completeTag, expiryOptions, formRows, formLines, statLines, doctorLines, inputLine, missingFlash, staysOpen, expandHome, underlineHits, movePinned, sameGroup, withRecent, withGroups, filterChoices, maxListOf, isAlt, detailLines, rowOptions, pickedOf, goalSummary, goalsOf, goalText, oneLine, scriptLines, markLines, paneShown, paneToggles, paneWidthOf, withSamePath, archivedList, dotLines, lr } from '../src/interactive.js';
+import { renderInteractiveView, nextView, backTo, accentOf, pathLook, inView, tidyPath, byOrder, optionRow, listRows, readMouse, hitTest, rowClick, undoError, undoneLinks, clipName, prefill, editLine, sameLinks, kindOf, retyped, setField, fieldWords, completeTag, expiryOptions, formRows, formLines, statLines, doctorLines, inputLine, missingFlash, staysOpen, expandHome, underlineHits, movePinned, sameGroup, withRecent, withGroups, filterChoices, maxListOf, isAlt, detailLines, rowOptions, pickedOf, goalSummary, goalsOf, goalText, oneLine, scriptLines, markLines, paneShown, paneToggles, paneWidthOf, withSamePath, archivedList, dotLines, lr, wrapHint } from '../src/interactive.js';
 import { parseStatus, parseDiff, parseLog, gitOf, stopGit } from '../src/git.js';
 import chalk from 'chalk';
 import { resolveTarget, resolveName, suggestNames } from '../src/fuzzy.js';
@@ -439,7 +439,7 @@ const arcView = strip(renderInteractiveView({ ...arcArgs, settingIndex: 0 }));
 assert.ok(arcView.includes('Archived 1') && arcView.includes('/old/dir') && arcView.includes('change (saved)'), 'archived section lists them');
 // 23 setting rows (pane split hidden), so index 23 is the first archived one.
 const arcSel = strip(renderInteractiveView({ ...arcArgs, settingIndex: 23 }));
-assert.ok(arcSel.includes('› old') && arcSel.includes('↵ restore') && arcSel.includes('upex restore old'), 'picked archived row: restore key and note');
+assert.ok(arcSel.includes('› old') && arcSel.includes('↵ restore') && arcSel.includes('upex restore old') && arcSel.includes('^d delete') && !arcView.includes('^d delete'), 'picked archived row: restore and delete keys, note');
 
 // rows stay inside the given width, the missing badge survives a long path
 const longArgs = (width, exists) => ({ ...viewArgs, width, choices: [{ name: 's', path: 'P/'.repeat(60) + 'leaf', exists }] });
@@ -473,7 +473,7 @@ assert.ok(strip(renderInteractiveView(wideOpeners)).split('\n').some(l => l.incl
 assert.equal(setting('fullScreen', {}), 'on', 'full screen on by default');
 assert.equal(setting('fullScreen', { fullScreen: 'off' }), 'off', 'full screen can be turned off');
 assert.ok(strip(renderInteractiveView({ ...setArgs, settings: { ...setArgs.settings, fullScreen: 'off' } })).includes('Full screen     On  ‹ Off ›'), 'full screen row');
-// key hints: full = two rows, short = one row cut to the width, off = none; the list takes the freed rows
+// key hints: full = rows that wrap, short = one row cut to the width, off = none; the list takes the freed rows
 const withHints = (keyHints, extra = {}) => strip(renderInteractiveView({ ...many, height: 30, settings: { keyHints }, ...extra })).split('\n');
 for (const k of ['full', 'short', 'off']) assert.equal(withHints(k).length, 30, `hints ${k}: fills the height`);
 const [full, short1, off] = ['full', 'short', 'off'].map(k => withHints(k));
@@ -491,6 +491,28 @@ assert.ok(withHints('off', { view: 'apps' }).at(-1).includes('↓'), 'off in app
 assert.ok(/^ {2}─+$/.test(withHints('off', { view: 'apps', webUrl: 'http://h/?t=x' }).at(-2)), 'off: web link right under the rule');
 assert.ok(withHints('off', { view: 'settings' }).some(l => l.includes('change (saved)')), 'settings keeps its keys');
 assert.equal(withHints('short', { mode: 'input', action: 'rename' }).at(-1).trim().startsWith('↵ save'), true, 'short: typing shows input keys');
+// full rows wrap instead of cutting; ^s and ^g sit last behind a |; the row count ignores the selection
+assert.deepEqual(wrapHint([['a', 'one'], ['b', 'two'], '|', ['c', 'three']], 14).map(strip), ['  a one  b two', '  c three'], 'wrapHint wraps, a | starting a row goes');
+assert.deepEqual(wrapHint([['a', 'one'], '|', false], 40).map(strip), ['  a one'], 'trailing | dropped');
+{
+  const nar = withHints('full', { width: 50 });
+  const rule = nar.findLastIndex(l => /^ *─+$/.test(l));
+  const keys = nar.slice(rule + 1).join(' ');
+  assert.ok(nar.slice(rule).every(l => l.length <= 50) && keys.includes('^y copy') && keys.includes('^u web ui') && keys.includes('|  ^s scripts'), 'narrow full: keys wrap, nothing cut, | before ^s');
+  // Rows under the last rule (full screen, so S-→ details shows): the same with the pinned row (A-↑↓ move pin, ^p unpin) or the other one selected, marks, a filter, a confirm or typing.
+  const footOf = (extra) => {
+    const l = withHints('full', { full: true, choices: [{ name: 'a', path: 'P', exists: true, pinned: true }, { name: 'b', path: 'Q', exists: true }], ...extra });
+    return l.length - l.findLastIndex(x => /^ *─+$/.test(x));
+  };
+  const states = [{ selectedIndex: 1 }, { marks: new Set(['a']) }, { query: 'a' }, { mode: 'confirm', action: 'archive' }, { mode: 'input', action: 'rename' }];
+  assert.ok([60, 99].every(width => states.every(s => footOf({ width, ...s }) === footOf({ width }))), 'key rows keep their count when the selection, marks, filter or mode change');
+  const apps = { view: 'apps', width: 89, choices: [{ name: 'x', path: 'x.exe', isApp: true, exists: true }, { name: 'u', path: 'http://x', isUrl: true, exists: true }] };
+  assert.equal(footOf(apps), footOf({ ...apps, selectedIndex: 1 }), 'apps: launch app and open in browser rows count the same');
+  assert.ok(withHints('short').at(-1).trim().startsWith('^k keys'), 'short: ^k first');
+  const help = withHints('short', { keysHelp: true }).join('\n');
+  assert.ok(help.includes('Move') && help.includes('tab apps') && help.includes('^x archive') && help.includes('any key closes') && !help.includes('p0 '), '^k overlay lists every key over the list');
+  assert.ok(withHints('full', { view: 'workspaces', workspaces: [{ name: 'w', entries: [] }] }).join(' ').includes('^d delete'), 'workspaces keep ^d delete');
+}
 // row details + pinned section
 {
   const two = [{ name: 'pin', path: 'P', exists: true, pinned: true, tags: ['w'] }, { name: 'gone', path: 'Q', exists: false, tags: ['x'] }];
@@ -703,9 +725,9 @@ const markArgs = { ...viewArgs, selectedIndex: 1, choices: [{ name: 's', path: '
 const marked = strip(renderInteractiveView(markArgs)).split('\n');
 assert.ok(marked.some(l => l.startsWith('  ● s ')) && marked.some(l => l.startsWith('  › t ')), 'marked row shows ●, the highlight keeps ›');
 assert.equal(marked.find(l => l.startsWith('  ● s ')).indexOf('P'), marked.find(l => l.startsWith('  › t ')).indexOf('Q'), 'the mark keeps the row layout');
-assert.ok(marked.join('\n').includes('● 1 marked') && marked.join('\n').includes('↵ open 1 marked') && marked.join('\n').includes('^d delete 1 marked') && marked.join('\n').includes('esc unmark'), 'marked count and hints');
+assert.ok(marked.join('\n').includes('● 1 marked') && marked.join('\n').includes('↵ open 1 marked') && marked.join('\n').includes('^x archive 1 marked') && marked.join('\n').includes('esc unmark'), 'marked count and hints');
 assert.ok(strip(renderInteractiveView(viewArgs)).includes('space mark'), 'space mark hint');
-assert.ok(strip(renderInteractiveView({ ...markArgs, mode: 'confirm', marks: new Set(['s', 't']) })).includes('? delete 2 marked?  y / n'), 'confirm names the marked count');
+assert.ok(strip(renderInteractiveView({ ...markArgs, mode: 'confirm', action: 'archiveMarked', marks: new Set(['s', 't']) })).includes('? archive 2 marked?  y / n'), 'confirm names the marked count');
 assert.ok(strip(renderInteractiveView({ ...markArgs, mode: 'confirm', action: 'archive', marks: new Set(['s', 't']) })).includes('? archive "t"?  y / n'), 'archive confirm names the one row, not the marks');
 
 // -- removeLinks: one save, so one upex undo brings all of them back --
@@ -922,7 +944,7 @@ assert.deepEqual([pickedOf(mr, { fullScreen: 'off', maxRows: '8' }), pickedOf(mr
 assert.deepEqual([maxListOf('auto'), maxListOf('auto', true), maxListOf('8', true)], [8, Infinity, 8], 'max rows auto: fill only in full screen');
 // Full screen: footer on the last row; wide enough: detail pane beside the list.
 const fullV = renderInteractiveView({ ...viewArgs, full: true, height: 30, maxList: 8 }).split('\n');
-assert.ok(fullV.length === 30 && strip(fullV.at(-1)).includes('^d delete'), 'full screen pins the footer to the bottom');
+assert.ok(fullV.length === 30 && strip(fullV.slice(-3).join(' ')).includes('^x archive'), 'full screen pins the footer to the bottom');
 const det = { name: 'web', path: 'E:/code/web', exists: true, pinned: true, tags: ['node'], uses: 3, lastUsed: Date.now() - 7200000, opener: 'explorer', aliases: [] };
 const paneV = strip(renderInteractiveView({ ...viewArgs, choices: [det], full: true, width: 150, height: 30 })).split('\n');
 assert.ok(paneV.some(l => l.includes('┬')) && paneV.some(l => l.includes('┴')) && paneV.every(l => l.length <= 150), 'pane joins the rules and stays in width');
@@ -1042,9 +1064,9 @@ assert.deepEqual([parseLog('1700000000 fix it'), parseLog(''), parseLog(null)], 
   // Marks: the pane lists them and what Enter / ^d do, instead of the selected row.
   const mk = [{ c: { name: 'web', path: 'P' }, app: 'cmd', count: 2 }, { c: { name: 'u', isUrl: true } }, { c: { name: 'gone', exists: false } }];
   const mp = strip(renderInteractiveView({ ...viewArgs, choices: [det], full: true, width: 150, height: 30, marks: new Set(['web']), marked: mk }));
-  assert.ok(/│ ● 3 marked$/m.test(mp) && /│ {3}web +cmd ×2$/m.test(mp) && /│ {3}u +browser$/m.test(mp) && /│ {3}gone +missing$/m.test(mp) && mp.includes('^d deletes all 3') && !mp.includes('opens in'), 'pane lists the marks');
+  assert.ok(/│ ● 3 marked$/m.test(mp) && /│ {3}web +cmd ×2$/m.test(mp) && /│ {3}u +browser$/m.test(mp) && /│ {3}gone +missing$/m.test(mp) && mp.includes('^x archives all 3') && !mp.includes('opens in'), 'pane lists the marks');
   const cut = markLines(Array.from({ length: 10 }, (_, i) => ({ c: { name: `m${i}` }, app: 'x' })), 40, 8).map(strip);
-  assert.ok(cut.length === 8 && cut.includes('  ↓ 8 more') && cut.at(-1).startsWith('^d'), 'many marks: list cut, ^d line kept');
+  assert.ok(cut.length === 8 && cut.includes('  ↓ 8 more') && cut.at(-1).startsWith('^x'), 'many marks: list cut, ^x line kept');
 }
 // Full screen without the pane: the opener row is still clickable after the footer moves down.
 const fullA = { ...viewArgs, full: true, height: 30 };
