@@ -202,9 +202,10 @@ upex import backup.json --replace  # replace everything
 
 ## Interactive Mode
 
-Run `upex` with no arguments to open the interactive selector. Pinned shortcuts (`upex pin`) come first, then the rest by frecency (most-used and most-recent first), or A to Z, last opened or recently added with the `sort` setting. It opens on the `startView` tab (Shortcuts with `--app`).
+Run `upex` with no arguments to open the interactive selector. Pinned shortcuts (`upex pin`) come first, then the rest by frecency (most-used and most-recent first), or A to Z, last opened or recently added with the `sort` setting. It opens on the `startView` tab (Shortcuts with `--app`, or with no shortcuts yet, so `Ctrl+A` adds the first).
 
 - `Up` / `Down` -- move through shortcuts
+- `PgUp` / `PgDn` -- move a screen of rows, `Home` / `End` -- first / last row (every tab, Settings too)
 - `Left` / `Right` -- change the selected app (starts on the shortcut's default opener)
 - `Shift+Up` / `Shift+Down` (or `Ctrl`) -- terminal count when a terminal opener (cmd, claude) is selected
 - `Tab` -- cycle the Shortcuts (folders), Apps (app + URL shortcuts) and Workspaces views (Enter opens the whole workspace, `Ctrl+D` deletes it (`Ctrl+Z` undoes), `Ctrl+A` puts the marked shortcuts into a new or existing one, `Ctrl+E` edits one: its name, and per entry the opener (Left/Right), start command (Enter) or `Ctrl+D` to remove it). The `views` setting hides Apps and/or Workspaces

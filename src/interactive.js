@@ -128,6 +128,11 @@ export function withGroups(list, byName = false) {
 // Max rows setting -> list rows. Auto: fill in full screen, else 8.
 export const maxListOf = (v, full = false) => (full && !Number(v) ? Infinity : Number(v) || MAX_VISIBLE_CHOICES);
 
+// PgUp/PgDn move `page` rows (no wrap), Home/End go to the first/last; null for other keys or an empty list.
+export const jumpIndex = (name, i, n, page) => (n < 1 ? null
+  : name === 'home' ? 0 : name === 'end' ? n - 1
+    : name === 'pageup' ? Math.max(0, i - Math.max(1, page)) : name === 'pagedown' ? Math.min(n - 1, i + Math.max(1, page)) : null);
+
 // Folder shortcuts on the Shortcuts tab, app + URL shortcuts on the Apps tab.
 export const inView = (view) => (c) => (view === 'apps') === !!(c.isApp || c.isUrl);
 
@@ -1151,7 +1156,7 @@ export function renderInteractiveView({
   if (keysHelp) {
     // ^k: every key of this tab in groups, over the list.
     const groups = [
-      ['Move', [openKey, ['↑↓', 'move'], opener, windows, tabKey, escKey, paneHint, markKey, !isWs && ['A-↑↓', 'move pin']]],
+      ['Move', [openKey, ['↑↓', 'move'], ['PgUp/Dn Home/End', 'jump'], opener, windows, tabKey, escKey, paneHint, markKey, !isWs && ['A-↑↓', 'move pin']]],
       ['Edit', [...editKeys, pinKey, dropKey, ['^z', 'undo'], copyKey]],
       ['More', [scriptsKey, isShortcuts && ['S-→', 'goals'], isShortcuts && (webKey || ['^g', 'git web page']), uiKey, full && ['right-click', 'row menu']]],
     ];
@@ -1259,21 +1264,19 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
   };
   loadApps();
 
-  if (allChoices.length === 0) {
+  if (!stdin.isTTY || !stdout.isTTY) {
+    if (allChoices.length) return { status: 'noninteractive' };
     ui.blank();
     ui.info('No shortcuts saved. Use: upex add <name> [path]');
     ui.blank();
     return { status: 'empty' };
   }
 
-  if (!stdin.isTTY || !stdout.isTTY) {
-    return { status: 'noninteractive' };
-  }
-
   return new Promise((resolve, reject) => {
     let query = '';
     // Tab cycles 'shortcuts' | 'apps' | 'workspaces'; --app only matters on Shortcuts.
-    let view = preferredApp ? 'shortcuts' : startTab(config);
+    // No shortcuts yet: Shortcuts, where ^a adds the first.
+    let view = preferredApp || !allChoices.length ? 'shortcuts' : startTab(config);
     let choices = allChoices.filter(inView(view));
     let filteredChoices = choices;
     let selectedIndex = 0;
@@ -2391,12 +2394,18 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
         return;
       }
 
+      // A page = the rows the last frame showed.
+      const jump = (i, n) => jumpIndex(key.name, i, n, new Set(targets.map(t => t.row ?? t.setting).filter(x => x != null)).size);
+
       // Settings: Up/Down picks a row, Left/Right changes and saves it, Enter acts on an opener, maintenance or archived row,
       // ^d removes a custom opener or deletes an archived shortcut; everything else is ignored.
       if (view === 'settings') {
         const rows = visibleRows(settings);
         const x = extraAt();
-        if (key.name === 'up' || key.name === 'down') {
+        const j = jump(settingIndex, settingCount());
+        if (j != null) {
+          settingIndex = j;
+        } else if (key.name === 'up' || key.name === 'down') {
           const n = settingCount();
           settingIndex = (settingIndex + (key.name === 'up' ? n - 1 : 1)) % n;
         } else if (key.name === 'return' && x) {
@@ -2443,13 +2452,14 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
           else finish({ status: 'workspace', name });
           return;
         }
-        if ((key.name === 'up' || key.name === 'down') && n > 0) {
-          wsIndex = (wsIndex + (key.name === 'up' ? n - 1 : 1)) % n;
+        const j = jump(wsIndex, n);
+        if (j != null || ((key.name === 'up' || key.name === 'down') && n > 0)) {
+          wsIndex = j ?? (wsIndex + (key.name === 'up' ? n - 1 : 1)) % n;
           redraw();
           return;
         }
-        // Shortcut-only keys (^A/^E/^R, Left/Right) do nothing here.
-        if ((key.ctrl && key.name !== 'w') || key.name === 'left' || key.name === 'right' || key.name === 'up' || key.name === 'down') return;
+        // Shortcut-only keys (^A/^E/^R, Left/Right) do nothing here, nor moves on an empty list.
+        if ((key.ctrl && key.name !== 'w') || ['left', 'right', 'up', 'down', 'pageup', 'pagedown', 'home', 'end'].includes(key.name)) return;
       }
 
       if (key.ctrl && key.name === 's') {
@@ -2536,6 +2546,13 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
 
       if (key.name === 'return') {
         openSelected();
+        return;
+      }
+
+      const j = jump(selectedIndex, filteredChoices.length);
+      if (j != null) {
+        selectedIndex = j;
+        redraw();
         return;
       }
 

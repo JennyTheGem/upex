@@ -22,7 +22,7 @@ import { applyShortcut, applyOpener, cleanEntries, startServer } from '../src/co
 import { COMMAND_NAMES } from '../src/fast.js';
 import { createProgram } from '../src/index.js';
 import { readScripts, detectPm } from '../src/commands/run.js';
-import { renderInteractiveView, nextView, backTo, accentOf, pathLook, inView, tidyPath, byOrder, optionRow, listRows, readMouse, hitTest, rowClick, undoError, undoneLinks, clipName, prefill, editLine, sameLinks, kindOf, retyped, setField, fieldWords, completeTag, expiryOptions, formRows, formLines, statLines, doctorLines, inputLine, missingFlash, staysOpen, expandHome, underlineHits, movePinned, sameGroup, withRecent, withGroups, filterChoices, maxListOf, isAlt, detailLines, rowOptions, pickedOf, goalSummary, goalsOf, goalText, oneLine, scriptLines, markLines, paneShown, paneToggles, paneWidthOf, withSamePath, archivedList, dotLines, lr, wrapHint, splice, overlayMenu } from '../src/interactive.js';
+import { renderInteractiveView, nextView, backTo, accentOf, pathLook, inView, tidyPath, byOrder, optionRow, listRows, readMouse, hitTest, rowClick, undoError, undoneLinks, clipName, prefill, editLine, sameLinks, kindOf, retyped, setField, fieldWords, completeTag, expiryOptions, formRows, formLines, statLines, doctorLines, inputLine, missingFlash, staysOpen, expandHome, underlineHits, movePinned, sameGroup, withRecent, withGroups, filterChoices, maxListOf, jumpIndex, isAlt, detailLines, rowOptions, pickedOf, goalSummary, goalsOf, goalText, oneLine, scriptLines, markLines, paneShown, paneToggles, paneWidthOf, withSamePath, archivedList, dotLines, lr, wrapHint, splice, overlayMenu } from '../src/interactive.js';
 import { parseStatus, parseDiff, parseLog, gitOf, stopGit } from '../src/git.js';
 import chalk from 'chalk';
 import { resolveTarget, resolveName, suggestNames } from '../src/fuzzy.js';
@@ -1001,6 +1001,8 @@ const mr = { key: 'maxRows', names: { auto: 'Auto', 8: '8', 12: '12', 16: '16' }
 assert.deepEqual(rowOptions(mr, [], { fullScreen: 'off' }).map(([, l]) => l), ['8', '12', '16'], 'inline max rows hides Auto');
 assert.deepEqual([pickedOf(mr, { fullScreen: 'off', maxRows: '8' }), pickedOf(mr, { maxRows: '8' })], ['auto', '8'], 'inline 8 shows on the 8 option');
 assert.deepEqual([maxListOf('auto'), maxListOf('auto', true), maxListOf('8', true)], [8, Infinity, 8], 'max rows auto: fill only in full screen');
+assert.deepEqual(['home', 'end', 'pageup', 'pagedown', 'pageup', 'pagedown', 'up'].map((k, x) => jumpIndex(k, x < 4 ? 5 : 0, 20, 8)), [0, 19, 0, 13, 0, 8, null], 'PgUp/PgDn page, Home/End ends');
+assert.deepEqual([jumpIndex('pagedown', 18, 20, 8), jumpIndex('end', 0, 0, 8), jumpIndex('pagedown', 0, 5, 0)], [19, null, 1], 'jump clamps, empty list, page at least 1');
 // Full screen: footer on the last row; wide enough: detail pane beside the list.
 const fullV = renderInteractiveView({ ...viewArgs, full: true, height: 30, maxList: 8 }).split('\n');
 assert.ok(fullV.length === 30 && strip(fullV.slice(-3).join(' ')).includes('^x archive'), 'full screen pins the footer to the bottom');

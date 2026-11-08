@@ -1114,10 +1114,11 @@
       "title": "PgUp/PgDn and Home/End in lists",
       "body": "Lists only move one row per arrow press. PgUp/PgDn jump a page, Home/End jump to first/last row (when the filter is empty, so the filter keeps Home/End for the cursor).",
       "phase": "next",
-      "status": "planned",
+      "status": "done",
       "size": "S",
       "created": "2026-11-08",
-      "updated": "2026-11-08"
+      "updated": "2026-11-08",
+      "note": "jumpIndex: PgUp/PgDn a screen (rows of the last frame), Home/End first/last on Shortcuts, Apps, Workspaces, Settings; Home/End always jump since the filter has no cursor"
     },
     {
       "id": "empty-start-opens-the-selector",
@@ -1125,8 +1126,86 @@
       "title": "Empty start opens the selector",
       "body": "With zero shortcuts, upex prints 'No shortcuts saved' and quits, so a new user can't use ^a in the TUI. Open the selector with an empty-state hint and ^a ready instead.",
       "phase": "next",
+      "status": "done",
+      "size": "S",
+      "created": "2026-11-08",
+      "updated": "2026-11-08",
+      "note": "TTY with zero shortcuts opens the selector on Shortcuts with the ^a hint; non-TTY still prints No shortcuts saved"
+    },
+    {
+      "id": "mouse-setting",
+      "section": 3,
+      "title": "Mouse setting",
+      "body": "Mouse on/off separate from Full screen, so full screen can leave terminal text selection alone.",
+      "phase": "later",
       "status": "planned",
       "size": "S",
+      "created": "2026-11-08",
+      "updated": "2026-11-08"
+    },
+    {
+      "id": "stale-after-setting",
+      "section": 3,
+      "title": "Stale after setting",
+      "body": "30/60/90/180 days instead of the fixed STALE_DAYS = 60 (src/interactive.js): drives is:stale, Settings > Maintenance and upex stale.",
+      "phase": "later",
+      "status": "planned",
+      "size": "S",
+      "created": "2026-11-08",
+      "updated": "2026-11-08"
+    },
+    {
+      "id": "recent-count-setting",
+      "section": 3,
+      "title": "Recent count setting",
+      "body": "Recent on top: Off / 3 / 5 instead of on = fixed 3.",
+      "phase": "later",
+      "status": "planned",
+      "size": "S",
+      "created": "2026-11-08",
+      "updated": "2026-11-08"
+    },
+    {
+      "id": "settings-regroup-sections",
+      "section": 3,
+      "title": "Settings: regroup sections",
+      "body": "Split the 12-row Appearance into List (Sort, Recent on top, Pinned, Groups, Max rows, Density), Rows (Paths, Row details) and Look (Accent, Glyphs, Web theme, Key hints, Messages, Full screen). Sort and Recent on top move out of General.",
+      "phase": "next",
+      "status": "planned",
+      "size": "S",
+      "created": "2026-11-08",
+      "updated": "2026-11-08"
+    },
+    {
+      "id": "settings-changed-dot-and-per-row-reset",
+      "section": 3,
+      "title": "Settings: changed dot and per-row reset",
+      "body": "Dim dot on rows that differ from the default; Backspace resets that row, like upex config reset <key>. Undo with ^z.",
+      "phase": "next",
+      "status": "planned",
+      "size": "S",
+      "created": "2026-11-08",
+      "updated": "2026-11-08"
+    },
+    {
+      "id": "settings-scope-tag-per-row",
+      "section": 3,
+      "title": "Settings: scope tag per row",
+      "body": "Dim tui / tui+web / all on the right of each row, so notes drop the repeated 'here and in upex ui'.",
+      "phase": "next",
+      "status": "planned",
+      "size": "S",
+      "created": "2026-11-08",
+      "updated": "2026-11-08"
+    },
+    {
+      "id": "settings-type-to-filter-and-clearer-labels",
+      "section": 3,
+      "title": "Settings: type to filter and clearer labels",
+      "body": "Typing filters settings by label and note. Labels: Enter -> After open, Messages -> Message time, Narrow screens -> Pane on narrow, Tabs options named by what shows, not what is hidden.",
+      "phase": "next",
+      "status": "planned",
+      "size": "M",
       "created": "2026-11-08",
       "updated": "2026-11-08"
     },
