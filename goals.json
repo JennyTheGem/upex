@@ -1138,10 +1138,11 @@
       "title": "Mouse setting",
       "body": "Mouse on/off separate from Full screen, so full screen can leave terminal text selection alone.",
       "phase": "later",
-      "status": "planned",
+      "status": "done",
       "size": "S",
       "created": "2026-11-08",
-      "updated": "2026-11-08"
+      "updated": "2026-11-09",
+      "note": "mouse setting (Look > Mouse, full screen only): off keeps full screen without mouse reporting"
     },
     {
       "id": "stale-after-setting",
@@ -1149,10 +1150,11 @@
       "title": "Stale after setting",
       "body": "30/60/90/180 days instead of the fixed STALE_DAYS = 60 (src/interactive.js): drives is:stale, Settings > Maintenance and upex stale.",
       "phase": "later",
-      "status": "planned",
+      "status": "done",
       "size": "S",
       "created": "2026-11-08",
-      "updated": "2026-11-08"
+      "updated": "2026-11-09",
+      "note": "staleAfter 30/60/90/180 (default 60): is:stale in selector and upex ui, Maintenance > Stale, upex stale default"
     },
     {
       "id": "recent-count-setting",
@@ -1160,10 +1162,11 @@
       "title": "Recent count setting",
       "body": "Recent on top: Off / 3 / 5 instead of on = fixed 3.",
       "phase": "later",
-      "status": "planned",
+      "status": "done",
       "size": "S",
       "created": "2026-11-08",
-      "updated": "2026-11-08"
+      "updated": "2026-11-09",
+      "note": "recentStrip off/3/5, old 'on' reads as 3"
     },
     {
       "id": "settings-regroup-sections",

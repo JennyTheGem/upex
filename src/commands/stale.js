@@ -7,15 +7,16 @@ import readline from 'node:readline/promises';
 import chalk from 'chalk';
 import { loadLinks, saveLinks, staleLinks } from '../store.js';
 import { printRows, tidyPath } from '../interactive.js';
+import { setting } from '../launcher.js';
 import * as ui from '../ui.js';
 
 export function registerStale(program) {
   program
     .command('stale [days]')
-    .description('List shortcuts not opened in [days] (default 60) and offer to archive them')
+    .description('List shortcuts not opened in [days] (default: the staleAfter setting, 60) and offer to archive them')
     .summary('List unused shortcuts, offer to archive them')
     .option('-y, --yes', 'Archive all listed shortcuts without asking')
-    .action(async (days = '60', options) => {
+    .action(async (days = setting('staleAfter'), options) => {
       if (!/^\d+$/.test(days)) {
         ui.error(`Days must be a whole number, got "${days}".`);
         process.exit(1);

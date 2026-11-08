@@ -95,15 +95,17 @@ const INTERACTIVE_APP_KEYS = [
 // Openers that open terminal windows (and so take a window count).
 export const isTerminalApp = key => key === 'cmd' || key === 'claude';
 
-// Settings in config.json; the first value is the default. Start view, views, sort, searchIn, pinned and groups are shared by the selector and upex ui; fullScreen, keyHints, maxRows, recentStrip, enter, flash, narrowPane, paneWidth, goals, git and glyphs are selector only.
+// Settings in config.json; the first value is the default unless DEFAULTS says. Start view, views, sort, searchIn, staleAfter, pinned and groups are shared by the selector and upex ui; fullScreen, mouse, keyHints, maxRows, recentStrip, enter, flash, narrowPane, paneWidth, goals, git and glyphs are selector only.
 // Layout: separate windows, or tabs/panes in one Windows Terminal window. Shell 'profile' = wt default profile.
 export const SETTINGS = {
   // last = the tab (and opener) the selector or upex ui was left on.
   startView: ['shortcuts', 'apps', 'workspaces', 'last'],
   // recent = most used, opened = last opened, added = recently added.
   sort: ['recent', 'name', 'opened', 'added'],
-  // The last 3 opened above the list, whatever the sort.
-  recentStrip: ['off', 'on'],
+  // The last 3 or 5 opened above the list, whatever the sort. A dropped 'on' reads as 3.
+  recentStrip: ['off', '3', '5'],
+  // Days not opened before a shortcut counts as stale: is:stale, Settings > Maintenance, upex stale. Default 60.
+  staleAfter: ['30', '60', '90', '180'],
   // Tabs shown (selector, upex ui); Shortcuts always is.
   views: ['all', 'no-workspaces', 'no-apps', 'shortcuts'],
   // Selector Enter: open and quit, or open and keep the selector.
@@ -121,6 +123,8 @@ export const SETTINGS = {
   paneSplit: ['auto', 'vertical', 'horizontal'],
   terminalShell: ['cmd', 'powershell', 'pwsh', 'profile'],
   fullScreen: ['on', 'off'],
+  // Mouse in full screen; off leaves text selection to the terminal.
+  mouse: ['on', 'off'],
   // Theme is upex ui only, the rest also the selector (paths: also upex ls / stale).
   theme: ['system', 'dark', 'light'],
   accent: ['default', 'green', 'blue', 'purple', 'orange'],
@@ -155,7 +159,14 @@ export const settingShown = key => platform === 'win32' || !WINDOWS_ONLY.include
 // Accent also takes a hex color, stored as #rrggbb.
 export const isHex = v => typeof v === 'string' && /^#[0-9a-f]{6}$/i.test(v);
 const valid = (key, v) => SETTINGS[key].includes(v) || (key === 'accent' && isHex(v));
-export const setting = (key, config = loadConfig()) => (valid(key, config[key]) ? config[key] : SETTINGS[key][0]);
+// Defaults that aren't the first value, so options keep their natural order.
+const DEFAULTS = { staleAfter: '60' };
+// Dropped values that still read as a current one.
+const LEGACY = { recentStrip: { on: '3' } };
+export const setting = (key, config = loadConfig()) => {
+  const v = LEGACY[key]?.[config[key]] ?? config[key];
+  return valid(key, v) ? v : DEFAULTS[key] ?? SETTINGS[key][0];
+};
 // Every setting name, defaultOpener included.
 export const SETTING_KEYS = [...Object.keys(SETTINGS), 'defaultOpener'];
 // Config without these settings (all when none given), so they fall back to their defaults.

@@ -148,32 +148,31 @@ function buildWorkspaceChoices() {
   });
 }
 
-const STALE_DAYS = 60;
 // is: tokens; upex ui has its own copy in index.html. Workspaces have no lastUsed, so never stale.
 const IS = {
   pinned: c => c.pinned,
   missing: c => c.exists === false,
-  stale: c => c.lastUsed !== undefined && Date.now() - (c.lastUsed || c.added || 0) >= STALE_DAYS * 86400000,
+  stale: (c, days) => c.lastUsed !== undefined && Date.now() - (c.lastUsed || c.added || 0) >= days * 86400000,
   app: c => c.isApp,
 };
 const TOKEN = /^(#|@|is:)(.*)$/i;
 // Test for a #tag, @opener or is:x word, prefix match, any case; null for a bare #, @ or is:. Unknown is:x matches none.
-function tokenTest(w) {
+function tokenTest(w, staleDays) {
   const [, kind, v] = w.toLowerCase().match(TOKEN);
   if (!v) return null;
   if (kind === '#') return c => !!c.tags?.some(t => t.toLowerCase().startsWith(v));
   if (kind === '@') return c => !!c.opener?.toLowerCase().startsWith(v);
   const key = Object.keys(IS).find(k => k.startsWith(v));
-  return key ? IS[key] : () => false;
+  return key ? c => IS[key](c, staleDays) : () => false;
 }
 
-// `fuzzy` and `searchIn` are the settings of the same name.
-export function filterChoices(choices, query, { fuzzy, searchIn } = {}) {
+// `fuzzy`, `searchIn` and `staleAfter` are the settings of the same name.
+export function filterChoices(choices, query, { fuzzy, searchIn, staleAfter = '60' } = {}) {
   // Token words (#tag, @opener, is:pinned|missing|stale|app) narrow the list; the other words search fuzzy.
   // Also split before each token: Space marks, so "#we#ui" or "apiis:pinned".
   const words = query.trim().split(/\s+|(?=[#@])|(?=is:)/i);
   const isToken = w => TOKEN.test(w);
-  const tests = words.filter(isToken).map(tokenTest).filter(Boolean);
+  const tests = words.filter(isToken).map(w => tokenTest(w, Number(staleAfter))).filter(Boolean);
   const pool = tests.length ? choices.filter(c => tests.every(t => t(c))) : choices;
   const trimmed = words.filter(w => !isToken(w)).join(' ');
   if (!trimmed) return pool;
@@ -621,6 +620,7 @@ const SETTING_ROWS = [
   { section: 'General', key: 'views', label: 'Tabs', scope: 'tui+web', names: { all: 'All', 'no-workspaces': 'Shortcuts, Apps', 'no-apps': 'Shortcuts, Workspaces', shortcuts: 'Shortcuts only' } },
   { section: 'General', key: 'enter', label: 'After open', scope: 'tui', names: { quit: 'Quit', stay: 'Stay open' } },
   { section: 'General', key: 'updateCheck', label: 'Update check', scope: 'cli', names: { on: 'On', off: 'Off' } },
+  { section: 'General', key: 'staleAfter', label: 'Stale after', scope: 'all', names: { 30: '30 days', 60: '60 days', 90: '90 days', 180: '180 days' } },
   { section: 'Search', key: 'fuzzy', label: 'Fuzzy', scope: 'tui+cli', names: { normal: 'Normal', exact: 'Exact', loose: 'Loose' } },
   { section: 'Search', key: 'searchIn', label: 'Search in', scope: 'tui+web', names: { all: 'Names, paths, tags', names: 'Names only' } },
   { section: 'Terminals', key: 'terminalLayout', label: 'Layout', scope: 'all', names: { here: 'This window', windows: 'Separate windows', tabs: 'Tabs', panes: 'Split panes' } },
@@ -628,7 +628,7 @@ const SETTING_ROWS = [
   { section: 'Terminals', key: 'terminalShell', label: 'Shell', scope: 'all', names: { cmd: 'cmd', powershell: 'PowerShell', pwsh: 'PowerShell 7', profile: 'WT profile' } },
   { section: 'Opening', key: 'defaultOpener', label: 'Default opener', scope: 'all' },
   { section: 'List', key: 'sort', label: 'Sort', scope: 'tui+web', names: { recent: 'Most used', name: 'A to Z', opened: 'Last opened', added: 'Recently added' } },
-  { section: 'List', key: 'recentStrip', label: 'Recent on top', scope: 'tui', names: { off: 'Off', on: 'On' } },
+  { section: 'List', key: 'recentStrip', label: 'Recent on top', scope: 'tui', names: { off: 'Off', 3: '3', 5: '5' } },
   { section: 'List', key: 'pinned', label: 'Pinned', scope: 'tui+web', names: { top: 'On top', section: 'Own section' } },
   { section: 'List', key: 'groups', label: 'Groups', scope: 'tui+web', names: { off: 'Off', tags: 'By tag' } },
   { section: 'List', key: 'maxRows', label: 'Max rows', scope: 'tui', names: { auto: 'Auto', 8: '8', 12: '12', 16: '16' } },
@@ -641,13 +641,15 @@ const SETTING_ROWS = [
   { section: 'Look', key: 'keyHints', label: 'Key hints', scope: 'tui', names: { full: 'Full', short: 'Short', off: 'Off' } },
   { section: 'Look', key: 'flash', label: 'Message time', scope: 'tui', names: { 3: '3 s', 6: '6 s', key: 'Until a key' } },
   { section: 'Look', key: 'fullScreen', label: 'Full screen', scope: 'tui', names: { on: 'On', off: 'Off' } },
+  { section: 'Look', key: 'mouse', label: 'Mouse', scope: 'tui', names: { on: 'On', off: 'Off' } },
   { section: 'Detail pane', key: 'narrowPane', label: 'Pane on narrow', scope: 'tui', names: { toggle: 'Shift+→ / ←', always: 'Always' } },
   { section: 'Detail pane', key: 'paneWidth', label: 'Width', scope: 'tui', names: { normal: 'Normal', narrow: 'Narrow', wide: 'Wide' } },
   { section: 'Detail pane', key: 'goals', label: 'Open goals', scope: 'tui', names: { off: 'Off', 3: '3', 5: '5', 10: '10' } },
   { section: 'Detail pane', key: 'git', label: 'Git status', scope: 'tui', names: { off: 'Off', on: 'On' } },
 ];
-// Pane split only matters for split panes; Windows-only rows hide elsewhere.
-const visibleRows = s => SETTING_ROWS.filter(r => settingShown(r.key) && (r.key !== 'paneSplit' || s.terminalLayout === 'panes'));
+// Pane split only matters for split panes, mouse for full screen; Windows-only rows hide elsewhere.
+const visibleRows = s => SETTING_ROWS.filter(r => settingShown(r.key) && (r.key !== 'paneSplit' || s.terminalLayout === 'panes')
+  && (r.key !== 'mouse' || s.fullScreen !== 'off'));
 // Settings rows and the openers, maintenance and archived rows under them, narrowed by the typed filter
 // (section, label, options and note; extras by name and note, archived by name and path).
 export function settingsList(s, q = '', extras = [], archived = [], wt = null) {
@@ -674,7 +676,9 @@ export const pickedOf = (row, s) => (inlineRows(row, s) && s.maxRows === '8' ? '
 function settingNote(key, s, wt) {
   if (key === 'startView') return 'The tab to open on. Last used: where you left off, opener included.';
   if (key === 'sort') return 'Shortcut order.';
-  if (key === 'recentStrip') return 'The last 3 opened again above the list, under a Recent heading, whatever the sort.';
+  if (key === 'recentStrip') return 'The last 3 or 5 opened again above the list, under a Recent heading, whatever the sort.';
+  if (key === 'staleAfter') return 'Not opened (or added, if never opened) in this long counts as stale: is:stale, Maintenance > Stale and upex stale.';
+  if (key === 'mouse') return 'Clicks, right-click menu and the wheel. Off: the terminal selects text as usual.';
   if (key === 'views') return 'Which tabs show and Tab cycles through.';
   if (key === 'enter') return 'What Enter does after opening. Stay open keeps upex open, to open more.';
   if (key === 'fuzzy') return 'How close a typed name must be, in this filter and for upex <name> / go. Exact: the letters in a row, no typos. Loose: more typos.';
@@ -683,7 +687,7 @@ function settingNote(key, s, wt) {
   if (key === 'flash') return 'How long a success message (bottom right) stays. Warnings always stay until the next key.';
   if (key === 'maxRows') return s.fullScreen === 'off' ? 'List rows here.' : 'List rows here. Auto: as many as the screen fits.';
   if (key === 'defaultOpener') return 'Opens folder shortcuts that have no opener of their own.';
-  if (key === 'fullScreen') return 'Whole terminal plus mouse, restored on exit. Off: inline, no mouse.';
+  if (key === 'fullScreen') return 'Whole terminal, restored on exit. Off: inline, no mouse.';
   if (key === 'accent') return 'Color of the › pointer and the picked option. Any color: upex config set accent ff66aa';
   if (key === 'density') return 'Compact drops the spacer lines.';
   if (key === 'paths') return 'Dim folders dims the parent folders. Hidden drops paths, commands and URLs. Also upex ls / stale.';
@@ -715,7 +719,7 @@ const EXTRA_NOTES = {
   opener: 'A custom opener: upex runs this command with the folder. It shows in the opener row, like upex app.',
   newOpener: 'Adds an opener from a command that opens a folder, like cursor or subl, like upex app <name> <command>.',
   broken: 'Folder shortcuts whose path is gone. Enter removes them (one with an app keeps it), like upex check --prune. ^z undoes.',
-  stale: `Not opened in ${STALE_DAYS}+ days. Enter archives them all, like upex stale --yes. ^z undoes, or restore one under Archived.`,
+  stale: 'Not opened in the Stale after days (General). Enter archives them all, like upex stale --yes. ^z undoes, or restore one under Archived.',
   stats: 'Most opened in the last 30 days. Enter shows more, like upex stats.',
   doctor: 'Checks the store, openers, shell wrapper and completion, like upex doctor.',
   export: 'Shortcuts and settings as one JSON file, like upex export.',
@@ -1161,7 +1165,7 @@ export function renderInteractiveView({
     const groups = [
       ['Move', [openKey, ['↑↓', 'move'], ['PgUp/Dn Home/End', 'jump'], opener, windows, tabKey, escKey, paneHint, markKey, !isWs && ['A-↑↓', 'move pin']]],
       ['Edit', [...editKeys, pinKey, dropKey, ['^z', 'undo'], copyKey]],
-      ['More', [scriptsKey, isShortcuts && ['S-→', 'goals'], isShortcuts && (webKey || ['^g', 'git web page']), uiKey, full && ['right-click', 'row menu']]],
+      ['More', [scriptsKey, isShortcuts && ['S-→', 'goals'], isShortcuts && (webKey || ['^g', 'git web page']), uiKey, full && settings.mouse !== 'off' && ['right-click', 'row menu']]],
     ];
     const help = groups.flatMap(([name, pairs], i) => [...(i ? [''] : []), `    ${chalk.bold(name)}`, ...wrapHint(pairs, cw).map(r => `  ${r}`)]);
     lines.push(...help.slice(0, Math.max(0, height - lines.length - footRows(foot) - 2)), '', chalk.dim('    any key closes'));
@@ -1346,7 +1350,7 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
     const setFullScreen = (on) => {
       if (on === alt) return;
       if (on) clearRendered();
-      stdout.write(on ? ALT_ON + MOUSE_ON : MOUSE_OFF + ALT_OFF);
+      stdout.write(on ? ALT_ON + (settings.mouse === 'on' ? MOUSE_ON : '') : MOUSE_OFF + ALT_OFF);
       alt = on;
     };
 
@@ -1429,7 +1433,7 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
       if (!query.trim()) {
         const base = filteredChoices;
         if (settings.groups === 'tags') filteredChoices = withGroups(base, settings.sort === 'name');
-        if (settings.recentStrip === 'on') filteredChoices = withRecent(base, 3, filteredChoices);
+        if (settings.recentStrip !== 'off') filteredChoices = withRecent(base, Number(settings.recentStrip), filteredChoices);
       }
       if (filteredChoices.length === 0) {
         selectedIndex = 0;
@@ -1978,6 +1982,8 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
       if (row.key === 'defaultOpener') fallback = next;
       if (row.key === 'sort') rebuild();
       if (row.key === 'fullScreen') setFullScreen(next === 'on');
+      if (row.key === 'mouse' && alt) stdout.write(next === 'on' ? MOUSE_ON : MOUSE_OFF);
+      if (row.key === 'staleAfter') refreshSettings();
       // Without a terminal app (Linux over SSH), only 'here' offers terminal openers.
       if (row.key === 'terminalLayout') reloadOpeners();
     };
@@ -1996,19 +2002,20 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
       settingIndex = Math.max(0, settingItems().findIndex(x => itemId(x) === id));
     };
     const filterSettings = (q) => keepPicked(() => { query = q; });
+    const staleDays = () => Number(settings.staleAfter);
     // Maintenance rows with their counts now; doctor keeps its last result.
     let doctorSummary = '';
     const buildExtras = () => {
       const links = loadLinks();
       const broken = pruneBroken(links).removed;
-      const stale = staleLinks(links, STALE_DAYS);
+      const stale = staleLinks(links, staleDays());
       const top = statsFrom(loadHistory(), { since: Date.now() - 30 * 86400000 }).shortcuts.slice(0, 3);
       const row = (section, kind, name, text) => ({ section, kind, name, text });
       return [
         ...Object.entries(configApps()).map(([name, command]) => row('Openers', 'opener', name, chalk.dim(String(command)))),
         row('Openers', 'newOpener', '+ add opener', ''),
         row('Maintenance', 'broken', 'Broken paths', broken.length ? chalk.yellow(`${broken.length} missing: ${broken.join(' ')}`) : chalk.dim('none')),
-        row('Maintenance', 'stale', 'Stale', stale.length ? chalk.yellow(`${stale.length} not opened in ${STALE_DAYS}+ days`) : chalk.dim('none')),
+        row('Maintenance', 'stale', 'Stale', stale.length ? chalk.yellow(`${stale.length} not opened in ${staleDays()}+ days`) : chalk.dim('none')),
         row('Maintenance', 'stats', 'Stats', top.length ? top.map(([n, c]) => `${n} ${chalk.dim(c)}`).join(chalk.dim(' · ')) : chalk.dim('no opens in 30 days')),
         row('Maintenance', 'doctor', 'Doctor', doctorSummary || chalk.dim('store, openers, shell setup')),
         row('Maintenance', 'export', 'Export', chalk.dim('shortcuts and settings to a file')),
@@ -2052,9 +2059,9 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
         if (!n) done('no broken paths');
         else confirmAsk('prune', `remove ${n} broken shortcut${n > 1 ? 's' : ''}?`);
       } else if (x.kind === 'stale') {
-        const n = staleLinks(loadLinks(), STALE_DAYS).length;
-        if (!n) done(`all opened in the last ${STALE_DAYS} days`);
-        else confirmAsk('stale', `archive ${n} not opened in ${STALE_DAYS}+ days?`);
+        const n = staleLinks(loadLinks(), staleDays()).length;
+        if (!n) done(`all opened in the last ${staleDays()} days`);
+        else confirmAsk('stale', `archive ${n} not opened in ${staleDays()}+ days?`);
       } else if (x.kind === 'stats') toggle(statLines(appMap));
       else if (x.kind === 'doctor') {
         if (expanded?.kind === 'doctor') { expanded = null; return; }
@@ -2221,7 +2228,7 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
           done(removed.length ? `removed ${howMany(removed)} (^z undo)` : 'no broken paths');
         } else if (yes && action === 'stale') {
           const links = loadLinks();
-          const gone = staleLinks(links, STALE_DAYS).map(({ name }) => name);
+          const gone = staleLinks(links, staleDays()).map(({ name }) => name);
           for (const name of gone) links[name] = { ...links[name], archived: true };
           saveLinks(links);
           rebuild();

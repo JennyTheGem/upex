@@ -52,7 +52,7 @@ npm link
 | `upex copy <name>` | Copy shortcut path to clipboard |
 | `upex app [alias] [command]` | Manage custom openers (list / add / `--remove`) |
 | `upex check [--prune]` | Report broken paths (`--prune` removes them) |
-| `upex stale [days] [--yes]` | List shortcuts not opened in N days (default 60), offer to archive each (`--yes` archives all) |
+| `upex stale [days] [--yes]` | List shortcuts not opened in N days (default: the `staleAfter` setting, 60), offer to archive each (`--yes` archives all) |
 | `upex doctor` | Check the store, openers, shell wrapper and completion |
 | `upex stats [--days N] [--all]` | Most used shortcuts and openers (default last 30 days) and opens per week |
 | `upex ui [--port <n>] [--no-open]` | Manage shortcuts and workspaces in the browser |
@@ -212,7 +212,7 @@ Run `upex` with no arguments to open the interactive selector. Pinned shortcuts 
 - `Shift+Tab` -- jump to Settings (Left/Right changes a setting, saved right away), again to go back. Settings are grouped General, Search, Terminals, Opening, List, Rows, Look and Detail pane; a dim tag right of each row says where it applies (`tui` this selector, `web` upex ui, `cli` commands, `all`). Typing filters the rows by label, option and note (also the openers, maintenance and archived rows), Esc clears it. Below the settings: Openers (custom ones, Enter edits the command, `Ctrl+D` removes, "+ add opener"), Maintenance (prune broken paths, archive stale shortcuts, `Ctrl+Z` undoes; stats, doctor, export, import) and Archived (Enter restores one, `Ctrl+D` deletes one for good after `y`, `Ctrl+Z` brings it back still archived)
 - `Enter` -- open the selected shortcut in the selected app, then quit (or stay open with the `enter` setting on `stay`)
 - `Space` -- mark or unmark the selected shortcut (Shortcuts and Apps tabs) and move down; `Enter` then opens every marked one (folders in the picked opener, else their own) and `Ctrl+X` archives them all (one `Ctrl+Z` or `upex undo` brings them back)
-- Type -- fuzzy-filter the list (Space marks instead of typing); `#vel` keeps shortcuts with a tag starting with vel, `#vel#web` needs both tags, `api#vel` also searches api fuzzy; `@vs` keeps folders whose default opener starts with vs (vscode), `is:pinned`, `is:missing`, `is:stale` (not opened in 60+ days) and `is:app` (any prefix, `is:p`) chain the same way. The `upex ui` search takes the same tokens
+- Type -- fuzzy-filter the list (Space marks instead of typing); `#vel` keeps shortcuts with a tag starting with vel, `#vel#web` needs both tags, `api#vel` also searches api fuzzy; `@vs` keeps folders whose default opener starts with vs (vscode), `is:pinned`, `is:missing`, `is:stale` (not opened in the `staleAfter` days, 60 by default) and `is:app` (any prefix, `is:p`) chain the same way. The `upex ui` search takes the same tokens
 - `Ctrl+A` -- add a shortcut for the current directory, then edit it in the form below
 - `Ctrl+E` -- edit the selected shortcut in a form (in the detail pane when it shows): name, target, type (folder, app, command or URL), opener, tags (Tab completes one), aliases, note and expiry. Up/Down picks a row, Enter edits a text row and Enter saves it, Left/Right changes a choice row and saves it, `Ctrl+Z` undoes the form's last save, Esc closes it
 - `Ctrl+R` -- rename the selected shortcut (starts filled in)
@@ -333,14 +333,16 @@ Settings, also on the Settings tab of `upex ui` and the selector (`Shift+Tab`), 
 - `"sort"`: shortcut order in the selector and `upex ui`. `"recent"` (default, most used first), `"name"` (A to Z), `"opened"` (last opened first) or `"added"` (recently added first).
 - `"views"`: the tabs the selector and `upex ui` show. `"all"` (default), `"no-workspaces"`, `"no-apps"` or `"shortcuts"` (Shortcuts only). A hidden start view opens Shortcuts.
 - `"enter"` (selector only): what Enter does. `"quit"` (default, open and close the selector) or `"stay"` (open in place, the selector stays open; also for workspaces, scripts and marked rows).
-- `"recentStrip"` (selector only): `"off"` (default) or `"on"` (the last 3 opened again above the list under a Recent heading, whatever the sort; not while searching).
+- `"recentStrip"` (selector only): `"off"` (default), `"3"` or `"5"` (the last 3 or 5 opened again above the list under a Recent heading, whatever the sort; not while searching). An old `"on"` reads as `"3"`.
+- `"staleAfter"`: days not opened (or added, if never opened) before a shortcut counts as stale, for `is:stale` (selector and `upex ui`), Settings > Maintenance > Stale and the default of `upex stale`. `"30"`, `"60"` (default), `"90"` or `"180"`.
 - `"fuzzy"`: how close a typed name must be, in the selector filter and for names (`upex <name>`, `go`, ...). `"normal"` (default), `"exact"` (the typed letters in a row, anywhere in the name, no typos) or `"loose"` (more typos).
 - `"searchIn"`: what the selector filter and the `upex ui` search look at. `"all"` (default, names, aliases, paths and tags) or `"names"` (names and aliases). `#tag`, `@opener` and `is:pinned|missing|stale|app` filter either way, in the selector and `upex ui`.
 - `"terminalLayout"`: where terminal openers run. `"here"` (default): one terminal runs in the terminal upex is in, upex quits and a shell starts at the folder (with the start command, like claude), `exit` comes back; several at once, workspaces and `upex ui` get separate windows. `"windows"` (separate windows), and on Windows `"tabs"` or `"panes"` (added to your current Windows Terminal window). Falls back to windows when `wt` is missing. With tabs, a terminal opened from the selector leaves the selector open.
 - `"paneSplit"` (Windows, panes layout): `"auto"` (default), `"vertical"` (side by side) or `"horizontal"` (stacked).
 - `"terminalShell"` (Windows): the shell terminal openers start. `"cmd"` (default), `"powershell"`, `"pwsh"`, or `"profile"` (your Windows Terminal default profile; a start command like `claude` then runs in cmd, and without `wt` it falls back to cmd).
 - `"defaultOpener"`: opener for folder shortcuts without their own `opener`, e.g. `"vscode"`. Default `"explorer"`. Files still open in their default app.
-- `"fullScreen"` (selector only): `"on"` (default, the whole terminal with mouse support, restored on exit) or `"off"` (drawn inline, no mouse).
+- `"fullScreen"` (selector only): `"on"` (default, the whole terminal, restored on exit) or `"off"` (drawn inline, no mouse).
+- `"mouse"` (selector only, full screen): `"on"` (default, clicks, right-click menu and the wheel) or `"off"` (the terminal selects text as usual).
 
 Appearance:
 
