@@ -22,7 +22,7 @@ import { applyShortcut, applyOpener, cleanEntries, startServer } from '../src/co
 import { COMMAND_NAMES } from '../src/fast.js';
 import { createProgram } from '../src/index.js';
 import { readScripts, detectPm } from '../src/commands/run.js';
-import { renderInteractiveView, nextView, backTo, accentOf, pathLook, inView, tidyPath, byOrder, optionRow, listRows, readMouse, hitTest, rowClick, undoError, clipName, prefill, editLine, inputLine, missingFlash, staysOpen, expandHome, underlineHits, movePinned, withRecent, maxListOf, isAlt, detailLines, rowOptions, pickedOf, goalSummary, goalsOf, goalText, oneLine, scriptLines, markLines, paneShown, paneToggles } from '../src/interactive.js';
+import { renderInteractiveView, nextView, backTo, accentOf, pathLook, inView, tidyPath, byOrder, optionRow, listRows, readMouse, hitTest, rowClick, undoError, clipName, prefill, editLine, inputLine, missingFlash, staysOpen, expandHome, underlineHits, movePinned, withRecent, maxListOf, isAlt, detailLines, rowOptions, pickedOf, goalSummary, goalsOf, goalText, oneLine, scriptLines, markLines, paneShown, paneToggles, withSamePath } from '../src/interactive.js';
 import { parseStatus, parseDiff, parseLog, gitOf, stopGit } from '../src/git.js';
 import chalk from 'chalk';
 import { resolveTarget, resolveName, suggestNames } from '../src/fuzzy.js';
@@ -816,6 +816,15 @@ assert.ok(thin({ paneOpen: true, query: 's' }).includes('esc clear') && thin({ p
 assert.ok(thin({ settings: { narrowPane: 'always' } }).includes('│ opens in') && !thin({ settings: { narrowPane: 'always' } }).includes('details'), 'Always: pane without the toggle');
 assert.deepEqual(strip(detailLines({ name: 'dev', entries: [{ shortcut: 's', app: 'vscode' }] }, 40).join('|')), 'dev||s:vscode', 'workspace pane lists entries');
 assert.ok(!detailLines({ name: 'x', path: 'P', added: 'garbage' }, 60).join().includes('added'), 'a bad added date is left out, not thrown');
+// Same path: other folder shortcuts on it (trailing slash ignored), shown as a pane row.
+{
+  const sp = withSamePath([{ name: 'a', path: 'X/y', isDir: true }, { name: 'b', path: 'X/y/', isDir: true }, { name: 'c', path: 'X/z', isDir: true }, { name: 'u', path: 'X/y', isUrl: true }]);
+  assert.deepEqual(sp.map(c => c.same), [['b'], ['a'], [], undefined], 'withSamePath');
+  assert.ok(strip(detailLines({ ...det, same: ['b'] }, 60).join('|')).includes('same path b') && !strip(detailLines(det, 60).join('|')).includes('same path'), 'same path row');
+}
+const day = 86400000;
+const staleRow = c => strip(detailLines({ name: 'x', path: 'P', ...c }, 80).join('|')).includes('stale     30+ days archive: upex rm x --archive');
+assert.deepEqual([staleRow({ lastUsed: Date.now() - 31 * day }), staleRow({ lastUsed: Date.now() - day }), staleRow({ added: Date.now() - day }), staleRow({ added: Date.now() - 40 * day })], [true, false, false, true], 'stale hint after 30 days');
 // Open goals: planned/partial count, by phase then file order; the pane shows up to the setting's count.
 const gs = goalSummary({ items: [{ id: 'a', title: 'A', phase: 'later', status: 'planned' }, { id: 'b', title: 'B', phase: 'maybe', status: 'partial' },
   { id: 'c', title: 'C', phase: 'now', status: 'done' }, { id: 'd', title: 'D', phase: 'next', status: 'planned' }, { id: 'e', title: 'E', phase: 'odd', status: 'planned' }, { id: 'f', title: 'F', phase: 'later', status: 'planned' }] });

@@ -34,8 +34,20 @@ const SHOW_CURSOR = '\x1b[?25h';
 const MOUSE_ON = '\x1b[?1000h\x1b[?1006h';
 const MOUSE_OFF = '\x1b[?1006l\x1b[?1000l';
 
+// Folder path as a compare key: resolved, no trailing slash, case-insensitive on Windows.
+const pathKey = (p) => {
+  const r = path.resolve(p).replace(/(.)[\\/]+$/, '$1');
+  return os.platform() === 'win32' ? r.toLowerCase() : r;
+};
+// Each folder shortcut's `same`: other shortcut names on the same path.
+export function withSamePath(list) {
+  const by = new Map();
+  for (const c of list) if (c.isDir) by.set(pathKey(c.path), [...(by.get(pathKey(c.path)) || []), c.name]);
+  return list.map(c => (c.isDir ? { ...c, same: by.get(pathKey(c.path)).filter(n => n !== c.name) } : c));
+}
+
 function buildChoices() {
-  return Object.entries(activeLinks(loadLinks()))
+  return withSamePath(Object.entries(activeLinks(loadLinks()))
     .map(([name, entry]) => ({
       name,
       path: entry.path || entry.app || entry.url || '',
@@ -43,6 +55,7 @@ function buildChoices() {
       isApp: !!entry.app,
       isCmd: !!(entry.app && entry.terminal),
       isUrl: !!entry.url,
+      isDir: !!entry.path,
       tags: entry.tags || [],
       pinned: !!entry.pinned,
       pinOrder: entry.pinned && Number.isFinite(entry.pinOrder) ? entry.pinOrder : undefined,
@@ -55,7 +68,7 @@ function buildChoices() {
       uses: entry.uses || 0,
       expires: entry.expires || 0,
       aliases: aliasesOf(entry),
-    }))
+    })))
     .sort(byOrder(setting('sort')));
 }
 
@@ -505,12 +518,16 @@ export function detailLines(c, pw, appChoices = [], now = Date.now(), { goals = 
   const opener = c.opener && (appChoices.find(a => a.key === c.opener)?.label || c.opener);
   // Local day; a hand-edited bad value is left out (toISOString would throw).
   const added = new Date(c.added || NaN);
+  // Not opened (or added, if never opened) in 30+ days, like upex stale.
+  const stale = now - (c.lastUsed || c.added || 0) >= 30 * 86400000;
   out.push('',
+    row('same path', c.same?.length && chalk.yellow(c.same.join(' '))),
     row('type', c.isCmd ? 'command' : c.isApp ? 'app' : c.isUrl ? 'url' : 'folder'),
     row('opens in', opener),
     row('aliases', c.aliases?.join(' ')),
     row('tags', c.tags?.length && `#${c.tags.join(' #')}`),
     row('opened', c.uses ? `${c.uses}×${c.lastUsed ? `, last ${ui.span(now - c.lastUsed)} ago` : ''}` : 'never'),
+    row('stale', stale && `${chalk.yellow('30+ days')} ${chalk.dim(`archive: upex rm ${c.name} --archive`)}`),
     row('added', !isNaN(added) && added.toLocaleDateString('sv-SE')),
     row('expires', c.expires && `in ${ui.span(c.expires - now, Math.ceil)}`));
   if (git) out.push(...gitLines(git, pw, now));

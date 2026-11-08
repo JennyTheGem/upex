@@ -1481,6 +1481,146 @@
       "created": "2026-11-07",
       "updated": "2026-11-07",
       "note": "With marks the pane lists them (opener per row, missing in red, cut with N more) and the ^d line; goals and git hidden then"
+    },
+    {
+      "id": "shortcut-note-in-the-detail-pane",
+      "section": 9,
+      "title": "Shortcut note in the detail pane",
+      "body": "A short free-text note per shortcut (upex note web \"...\"), shown in the pane.",
+      "phase": "next",
+      "status": "planned",
+      "size": "S",
+      "created": "2026-11-08",
+      "updated": "2026-11-08"
+    },
+    {
+      "id": "last-touched-in-the-detail-pane",
+      "section": 9,
+      "title": "Last touched in the detail pane",
+      "body": "When the newest file in the folder changed (\"touched 2h ago\").",
+      "phase": "later",
+      "status": "dropped",
+      "size": "S",
+      "created": "2026-11-08",
+      "updated": "2026-11-08",
+      "note": "Out of scope"
+    },
+    {
+      "id": "same-path-warning-in-the-detail-pane",
+      "section": 9,
+      "title": "Same path warning in the detail pane",
+      "body": "Warn when another shortcut points to the same path.",
+      "phase": "next",
+      "status": "done",
+      "size": "S",
+      "created": "2026-11-08",
+      "updated": "2026-11-08",
+      "note": "Pane row 'same path' lists other active folder shortcuts on the same path in yellow (resolved, trailing slash ignored, case-insensitive on Windows)"
+    },
+    {
+      "id": "stale-hint-in-the-detail-pane",
+      "section": 9,
+      "title": "Stale hint in the detail pane",
+      "body": "Not opened in 30+ days: a hint to archive it.",
+      "phase": "next",
+      "status": "done",
+      "size": "S",
+      "created": "2026-11-08",
+      "updated": "2026-11-08",
+      "note": "Pane row 'stale' when not opened (or added, if never opened) in 30+ days, with the upex rm <name> --archive command"
+    },
+    {
+      "id": "git-change-split-in-the-detail-pane",
+      "section": 9,
+      "title": "Git change split in the detail pane",
+      "body": "Changed files split into staged, modified and untracked.",
+      "phase": "later",
+      "status": "dropped",
+      "size": "S",
+      "created": "2026-11-08",
+      "updated": "2026-11-08",
+      "note": "Out of scope"
+    },
+    {
+      "id": "latest-tag-in-the-detail-pane",
+      "section": 9,
+      "title": "Latest tag in the detail pane",
+      "body": "Latest tag and commits since it (\"v1.4.2 +7\").",
+      "phase": "later",
+      "status": "dropped",
+      "size": "S",
+      "created": "2026-11-08",
+      "updated": "2026-11-08",
+      "note": "Out of scope"
+    },
+    {
+      "id": "goal-progress-bar-in-the-detail-pane",
+      "section": 9,
+      "title": "Goal progress bar in the detail pane",
+      "body": "A done/total bar for the project's goals. only if it dosent impact performance\n",
+      "phase": "next",
+      "status": "planned",
+      "size": "S",
+      "created": "2026-11-08",
+      "updated": "2026-11-08"
+    },
+    {
+      "id": "partial-goals-mark-in-the-detail-pane",
+      "section": 9,
+      "title": "Partial goals mark in the detail pane",
+      "body": "Goals already started get their own mark.",
+      "phase": "later",
+      "status": "dropped",
+      "size": "S",
+      "created": "2026-11-08",
+      "updated": "2026-11-08",
+      "note": "Out of scope"
+    },
+    {
+      "id": "last-done-goal-in-the-detail-pane",
+      "section": 9,
+      "title": "Last done goal in the detail pane",
+      "body": "\"last done: X, 2d ago\".",
+      "phase": "later",
+      "status": "dropped",
+      "size": "S",
+      "created": "2026-11-08",
+      "updated": "2026-11-08",
+      "note": "Out of scope"
+    },
+    {
+      "id": "changed-files-picker-in-the-detail-pane",
+      "section": 9,
+      "title": "Changed files picker in the detail pane",
+      "body": "Click \"changes\" to list changed files in the pane, like the scripts picker.",
+      "phase": "later",
+      "status": "dropped",
+      "size": "M",
+      "created": "2026-11-08",
+      "updated": "2026-11-08",
+      "note": "Out of scope"
+    },
+    {
+      "id": "folder-size-in-the-detail-pane",
+      "section": 9,
+      "title": "Folder size in the detail pane",
+      "body": "Size and file count, computed in the background and cached. only if it dosent impact performance\n",
+      "phase": "next",
+      "status": "planned",
+      "size": "M",
+      "created": "2026-11-08",
+      "updated": "2026-11-08"
+    },
+    {
+      "id": "detail-pane-width",
+      "section": 9,
+      "title": "Detail pane width",
+      "body": "A narrow/wide setting, or drag the divider with the mouse.",
+      "phase": "maybe",
+      "status": "planned",
+      "size": "M",
+      "created": "2026-11-08",
+      "updated": "2026-11-08"
     }
   ]
 }
