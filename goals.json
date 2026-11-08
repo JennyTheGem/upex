@@ -366,10 +366,11 @@
       "title": "Archived shortcuts in the TUI",
       "body": "The selector shows archived shortcuts somewhere (e.g. a tab or a toggle), so they can be seen and restored without upex ls --archived / upex restore.",
       "phase": "next",
-      "status": "planned",
+      "status": "done",
       "size": "M",
       "created": "2026-11-08",
-      "updated": "2026-11-08"
+      "updated": "2026-11-08",
+      "note": "Settings ends with an Archived section (A to Z); Enter or a second click restores one like upex restore"
     },
     {
       "id": "open-in-explorer-default-app-vs-code-webstorm",

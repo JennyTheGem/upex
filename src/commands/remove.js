@@ -4,7 +4,7 @@
  *        upex restore <name>
  */
 
-import { removeLink, loadLinks, setLink, nameOwner } from '../store.js';
+import { removeLink, loadLinks, setLink, nameOwner, unarchived } from '../store.js';
 import { resolveName } from '../fuzzy.js';
 import * as ui from '../ui.js';
 
@@ -66,9 +66,7 @@ export function registerRemove(program) {
         ui.info(`Run: upex restore ${resolved.name}`);
         return;
       }
-      // Dropping expires keeps it from being re-archived right away.
-      const { archived: _drop, expires: _gone, ...entry } = links[resolved.name];
-      setLink(resolved.name, entry);
+      setLink(resolved.name, unarchived(links[resolved.name]));
       ui.success(`Restored: ${resolved.name}`);
     });
 }

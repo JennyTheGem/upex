@@ -557,14 +557,14 @@ export function detailLines(c, pw, appChoices = [], now = Date.now(), { goals = 
     row('added', !isNaN(added) && added.toLocaleDateString('sv-SE')),
     row('expires', c.expires && `in ${ui.span(c.expires - now, Math.ceil)}`));
   if (git) out.push(...gitLines(git, pw, now));
-  // Title clipped, so its phase stays in view. A click copies it, like Enter in the picker.
+  // Phase in the label column, once per group. A click copies a goal, like Enter in the picker.
   if (goals) {
     const fill = goals.total ? Math.round((goals.done / goals.total) * 10) : 0;
-    const bar = goals.total ? `${chalk.green('▰'.repeat(fill))}${chalk.dim('▱'.repeat(10 - fill))}  ${goals.done}/${goals.total} done  ` : '';
+    const bar = goals.total ? `${chalk.green('▰'.repeat(fill))}${chalk.dim('▱'.repeat(10 - fill))}  ` : '';
     out.push('', row('goals', `${bar}${goals.open} open`), ...goals.next.map((g, i) => {
-      const phase = chalk.dim(` ${oneLine(g.phase)}`);
-      const title = ui.truncate(oneLine(g.title ?? g.id), Math.max(1, pw - 10 - vis(phase)));
-      const text = (i === sel ? `${' '.repeat(8)}${pick('›')} ${chalk.bold(title)}` : ' '.repeat(10) + title) + phase;
+      const phase = oneLine(g.phase) !== oneLine(goals.next[i - 1]?.phase) ? oneLine(g.phase).slice(0, 8) : '';
+      const title = ui.truncate(oneLine(g.title ?? g.id), Math.max(1, pw - 10));
+      const text = chalk.dim(phase.padEnd(8)) + (i === sel ? `${pick('›')} ${chalk.bold(title)}` : `  ${title}`);
       return { text, copy: goalText(g), msg: `copied "${oneLine(g.id ?? g.title)}"` };
     }));
   }

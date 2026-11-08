@@ -864,14 +864,14 @@ fs.utimesSync(path.join(gdir, 'goals.json'), new Date(), new Date(Date.now() + 5
 assert.equal(goalsOf(gdir)?.open, 4, 'changed goals.json is read again');
 const gdet = { ...det, path: gdir };
 const goalPane = (goals, extra) => strip(renderInteractiveView({ ...viewArgs, choices: [gdet], full: true, width: 150, height: 30, settings: { goals }, ...extra }));
-assert.ok(goalPane('3').includes('│ goals     ▱▱▱▱▱▱▱▱▱▱  0/4 done  4 open') && goalPane('3').includes('Ship it now') && !goalPane('3').includes('four') && goalPane('5').includes('four') && !goalPane('off').includes('goals     '), 'pane goals: up to the setting, off hides them');
+assert.ok(goalPane('3').includes('│ goals     ▱▱▱▱▱▱▱▱▱▱  4 open') && goalPane('3').includes('│ now       Ship it') && !goalPane('3').includes('four') && goalPane('5').includes('four') && !goalPane('off').includes('goals     '), 'pane goals: up to the setting, off hides them');
 {
   const bdir = fs.mkdtempSync(path.join(os.tmpdir(), 'upex-goals-'));
   fs.writeFileSync(path.join(bdir, 'goals.json'), JSON.stringify({ items: ['done', 'done', 'done', 'planned'].map((status, i) => ({ id: `b${i}`, phase: 'now', status })) }));
   const bp = strip(renderInteractiveView({ ...viewArgs, choices: [{ ...det, path: bdir }], full: true, width: 150, height: 30, settings: { goals: '3' } }));
-  assert.ok(bp.includes('│ goals     ▰▰▰▰▰▰▰▰▱▱  3/4 done  1 open'), 'goal bar fills by done/total');
+  assert.ok(bp.includes('│ goals     ▰▰▰▰▰▰▰▰▱▱  1 open'), 'goal bar fills by done/total');
 }
-assert.ok(goalPane('3').includes('S-→ goals') && goalPane('3', { mode: 'goals', goalIndex: 1 }).includes('│         › two now') && goalPane('3', { mode: 'goals' }).includes('↵ copy'), 'S-→ goal picker marks the picked goal');
+assert.ok(goalPane('3').includes('S-→ goals') && goalPane('3', { mode: 'goals', goalIndex: 1 }).includes('│         › two') && goalPane('3', { mode: 'goals' }).includes('↵ copy'), 'S-→ goal picker marks the picked goal');
 const shortPane = goalPane('5', { mode: 'goals', goalIndex: 3, height: 14 }).split('\n');
 assert.ok(shortPane.some(l => l.includes('› four')) && shortPane.length === 14, 'short pane scrolls to the picked goal');
 {

@@ -268,6 +268,8 @@ export function aliasClashes(links) {
 // Everything except archived shortcuts (or only those, with archived = true).
 export const activeLinks = (links, archived = false) =>
   Object.fromEntries(Object.entries(links).filter(([, e]) => !!e.archived === archived));
+// A restored entry: dropping expires keeps it from being re-archived right away.
+export const unarchived = ({ archived: _a, expires: _e, ...entry }) => entry;
 
 // Active shortcuts not opened in `days`: [{ name, entry, since }], never-opened first, then oldest.
 // `since` is lastUsed, else added, else null.
