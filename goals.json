@@ -1171,10 +1171,11 @@
       "title": "Settings: regroup sections",
       "body": "Split the 12-row Appearance into List (Sort, Recent on top, Pinned, Groups, Max rows, Density), Rows (Paths, Row details) and Look (Accent, Glyphs, Web theme, Key hints, Messages, Full screen). Sort and Recent on top move out of General.",
       "phase": "next",
-      "status": "planned",
+      "status": "done",
       "size": "S",
       "created": "2026-11-08",
-      "updated": "2026-11-08"
+      "updated": "2026-11-09",
+      "note": "Appearance split into List, Rows, Look; Sort and Recent on top moved to List"
     },
     {
       "id": "settings-changed-dot-and-per-row-reset",
@@ -1193,10 +1194,11 @@
       "title": "Settings: scope tag per row",
       "body": "Dim tui / tui+web / all on the right of each row, so notes drop the repeated 'here and in upex ui'.",
       "phase": "next",
-      "status": "planned",
+      "status": "done",
       "size": "S",
       "created": "2026-11-08",
-      "updated": "2026-11-08"
+      "updated": "2026-11-09",
+      "note": "Dim tui/web/cli/tui+web/tui+cli/all tag right of each row (from 60 columns), notes drop the repeated scope"
     },
     {
       "id": "settings-type-to-filter-and-clearer-labels",
@@ -1204,10 +1206,11 @@
       "title": "Settings: type to filter and clearer labels",
       "body": "Typing filters settings by label and note. Labels: Enter -> After open, Messages -> Message time, Narrow screens -> Pane on narrow, Tabs options named by what shows, not what is hidden.",
       "phase": "next",
-      "status": "planned",
+      "status": "done",
       "size": "M",
       "created": "2026-11-08",
-      "updated": "2026-11-08"
+      "updated": "2026-11-09",
+      "note": "Typing filters rows by section, label, options and note (extras and archived too), Esc clears; After open, Message time, Pane on narrow, Tabs options name what shows"
     },
     {
       "id": "cd-support-via-wrapper-hidden-resolve-public-go",

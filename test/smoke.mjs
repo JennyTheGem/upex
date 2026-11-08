@@ -22,7 +22,7 @@ import { applyShortcut, applyOpener, cleanEntries, startServer } from '../src/co
 import { COMMAND_NAMES } from '../src/fast.js';
 import { createProgram } from '../src/index.js';
 import { readScripts, detectPm } from '../src/commands/run.js';
-import { renderInteractiveView, nextView, backTo, accentOf, pathLook, inView, tidyPath, byOrder, optionRow, listRows, readMouse, hitTest, rowClick, undoFlash, clipName, prefill, editLine, kindOf, retyped, setField, fieldWords, completeTag, expiryOptions, formRows, formLines, statLines, doctorLines, inputLine, missingFlash, staysOpen, expandHome, underlineHits, movePinned, sameGroup, withRecent, withGroups, filterChoices, maxListOf, jumpIndex, isAlt, detailLines, rowOptions, pickedOf, goalSummary, goalsOf, goalText, oneLine, scriptLines, markLines, paneShown, paneToggles, paneWidthOf, withSamePath, archivedList, dotLines, lr, wrapHint, splice, overlayMenu } from '../src/interactive.js';
+import { renderInteractiveView, nextView, backTo, accentOf, pathLook, inView, tidyPath, byOrder, optionRow, listRows, readMouse, hitTest, rowClick, undoFlash, clipName, prefill, editLine, kindOf, retyped, setField, fieldWords, completeTag, expiryOptions, formRows, formLines, statLines, doctorLines, inputLine, missingFlash, staysOpen, expandHome, underlineHits, movePinned, sameGroup, withRecent, withGroups, filterChoices, maxListOf, jumpIndex, isAlt, detailLines, rowOptions, pickedOf, settingsList, goalSummary, goalsOf, goalText, oneLine, scriptLines, markLines, paneShown, paneToggles, paneWidthOf, withSamePath, archivedList, dotLines, lr, wrapHint, splice, overlayMenu } from '../src/interactive.js';
 import { parseStatus, parseDiff, parseLog, gitOf, stopGit } from '../src/git.js';
 import chalk from 'chalk';
 import { resolveTarget, resolveName, suggestNames } from '../src/fuzzy.js';
@@ -422,7 +422,7 @@ assert.ok(!wsView.includes('Explorer'), 'no opener row in workspace view');
 assert.ok(strip(renderInteractiveView(viewArgs)).includes('tab apps'), 'shortcut view is the default');
 const appsView = strip(renderInteractiveView({ ...viewArgs, view: 'apps', choices: [{ name: 'g', path: 'x.dev', isUrl: true, exists: true }] }));
 assert.ok(appsView.includes('tab workspaces') && appsView.includes('open in browser') && !appsView.includes('Explorer'), 'apps view: no opener row');
-const setArgs = { ...viewArgs, view: 'settings', settings: { startView: 'apps', sort: 'name', terminalLayout: 'tabs', paneSplit: 'auto', terminalShell: 'pwsh', defaultOpener: 'explorer' }, settingIndex: 8, wt: false, height: 40 };
+const setArgs = { ...viewArgs, view: 'settings', settings: { startView: 'apps', sort: 'name', terminalLayout: 'tabs', paneSplit: 'auto', terminalShell: 'pwsh', defaultOpener: 'explorer' }, settingIndex: 6, wt: false, height: 40 };
 const setView = strip(renderInteractiveView(setArgs));
 if (os.platform() === 'win32') assert.ok(setView.includes('‹ Tabs ›') && setView.includes('‹ PowerShell 7 ›') && setView.includes('‹ Explorer ›') && setView.includes('not found'), 'settings view: all rows + missing-wt note');
 assert.ok(!setView.includes('Pane split'), 'pane split hidden unless split panes');
@@ -430,7 +430,7 @@ if (os.platform() === 'win32') assert.ok(strip(renderInteractiveView({ ...setArg
 assert.ok(setView.includes('‹ A to Z ›'), 'sort row shows the saved sort');
 // The Shell row shows on Windows only, so later rows sit one lower elsewhere.
 const win = os.platform() === 'win32' ? 1 : 0;
-assert.ok(strip(renderInteractiveView({ ...setArgs, settingIndex: 9 + win })).includes('no opener of their own'), 'note follows the picked row');
+assert.ok(strip(renderInteractiveView({ ...setArgs, settingIndex: 7 + win })).includes('no opener of their own'), 'note follows the picked row');
 assert.ok(setView.indexOf('Workspaces') < setView.indexOf('Settings'), 'settings tab is last');
 // archived shortcuts sit under the settings, Enter restores the picked one
 assert.deepEqual(archivedList({ b: { path: '/b', archived: true }, a: { app: 'x.exe', archived: true }, c: { path: '/c' } }), [{ name: 'a', path: 'x.exe' }, { name: 'b', path: '/b' }], 'archived list: only archived, A to Z');
@@ -474,7 +474,7 @@ const wideOpeners = { ...viewArgs, width: 40, appChoices: labels.map(label => ({
 assert.ok(strip(renderInteractiveView(wideOpeners)).split('\n').some(l => l.includes('open with') && l.includes('‹ Custom ›') && l.length <= 40), 'opener row keeps the selection in width');
 assert.equal(setting('fullScreen', {}), 'on', 'full screen on by default');
 assert.equal(setting('fullScreen', { fullScreen: 'off' }), 'off', 'full screen can be turned off');
-assert.ok(strip(renderInteractiveView({ ...setArgs, settings: { ...setArgs.settings, fullScreen: 'off' } })).includes('Full screen     On  ‹ Off ›'), 'full screen row');
+assert.ok(strip(renderInteractiveView({ ...setArgs, settings: { ...setArgs.settings, fullScreen: 'off' }, height: 80 })).includes('Full screen     On  ‹ Off ›'), 'full screen row');
 // key hints: full = rows that wrap, short = one row cut to the width, off = none; the list takes the freed rows
 const withHints = (keyHints, extra = {}) => strip(renderInteractiveView({ ...many, height: 30, settings: { keyHints }, ...extra })).split('\n');
 for (const k of ['full', 'short', 'off']) assert.equal(withHints(k).length, 30, `hints ${k}: fills the height`);
@@ -595,7 +595,7 @@ assert.equal(at(narrow, 16, openRow), undefined, 'gap between options is nothing
 assert.equal(at({ ...many, height: 30, settings: { keyHints: 'off' } }, 14, off.findIndex(l => l.includes('open with')) + 1)?.opener, 0, 'key hints off: opener row stays clickable');
 const setLines = strip(renderInteractiveView(setArgs)).split('\n');
 const sortLine = setLines.findIndex(l => l.includes('Sort')) + 1;
-assert.deepEqual([at(setArgs, setLines[sortLine - 1].indexOf('Most used') + 1, sortLine)].map(t => [t.setting, t.option]), [[1, 0]], 'click a settings option');
+assert.deepEqual([at(setArgs, setLines[sortLine - 1].indexOf('Most used') + 1, sortLine)].map(t => [t.setting, t.option]), [[8 + win, 0]], 'click a settings option');
 assert.equal(at(setArgs, 5, sortLine)?.option, undefined, 'click a settings label just picks the row');
 
 // -- appearance: paths, compact density, accent, the appearance rows --
@@ -607,12 +607,21 @@ const tight = rowsOf({ ...many, height: 20, settings: { density: 'compact' } });
 assert.ok(tight.length === 20 && tight.filter(l => / p\d+ /.test(l)).length > roomy.filter(l => / p\d+ /.test(l)).length, 'compact fits more rows in the same height');
 assert.equal(at({ ...tabArgs, settings: { density: 'compact' } }, rowsOf({ ...tabArgs, settings: { density: 'compact' } })[0].indexOf('Apps') + 1, 1)?.tab, 'apps', 'compact header still clickable');
 assert.ok(renderInteractiveView({ ...setArgs, settings: { ...setArgs.settings, accent: 'blue' } }).includes(chalk.blueBright('‹ A to Z ›')), 'accent colors the picked option');
-const tall = strip(renderInteractiveView({ ...setArgs, height: 40, settings: { ...setArgs.settings, theme: 'light' } }));
+const tall = strip(renderInteractiveView({ ...setArgs, height: 80, settings: { ...setArgs.settings, theme: 'light' } }));
 assert.ok(tall.includes('Web theme       System  Dark  ‹ Light ›'), 'web theme row');
-assert.ok(['General', 'Search', 'Terminals', 'Opening', 'Appearance'].every(s => tall.includes(`\n  ${s}\n`)), 'settings grouped in sections');
-const short = rowsOf({ ...setArgs, height: 14, settingIndex: 21 + win });
+assert.ok(['General', 'Search', 'Terminals', 'Opening', 'List', 'Rows', 'Look', 'Detail pane'].every(s => tall.includes(`\n  ${s}\n`)), 'settings grouped in sections');
+// scope tag right of each row, inside the width; type to filter by label, option or note
+assert.ok(/Web theme {7}System {2}Dark {2}‹ Light › +web$/.test(tall.split('\n').find(l => l.includes('Web theme'))) && tall.split('\n').every(l => l.length <= 80), 'scope tag at the row end');
+assert.ok(tall.includes('Shortcuts, Apps') && tall.includes('After open') && tall.includes('Message time') && tall.includes('Pane on narrow'), 'clearer labels');
+assert.deepEqual([settingsList({}, 'ascii').rows.map(r => r.key), settingsList({}, ' AFTER open').rows.map(r => r.key)], [['glyphs'], ['enter']], 'filter by option and label, any case');
+assert.deepEqual(settingsList({ terminalLayout: 'windows' }, 'exit comes back').rows.map(r => r.key), ['terminalLayout'], 'a note of another value still matches');
+assert.deepEqual([settingsList({}, 'old', [], [{ name: 'old', path: '/o' }]).more.length, settingsList({}, 'zzz', [{ section: 'Maintenance', kind: 'doctor', name: 'Doctor' }]).more.length], [1, 0], 'filter archived and extras');
+const themeOnly = strip(renderInteractiveView({ ...setArgs, query: 'web theme', settingIndex: 0 }));
+assert.ok(themeOnly.includes('› web theme') && themeOnly.includes('› Web theme') && !themeOnly.includes('Sort') && themeOnly.includes('esc clear'), 'filtered settings view');
+assert.ok(strip(renderInteractiveView({ ...setArgs, query: 'zzz', settingIndex: 0 })).includes('No settings match.'), 'no match');
+const short = rowsOf({ ...setArgs, height: 14, settingIndex: 18 + win });
 assert.ok(short.length <= 14 && short.some(l => l.startsWith('  › Web theme')) && short.at(-1).includes('setting'), 'short terminal scrolls settings, keeps the footer');
-assert.equal(at({ ...setArgs, height: 14, settingIndex: 20 + win }, 3, short.findIndex(l => l.startsWith('  › Web theme')) + 1)?.setting, 20 + win, 'scrolled settings stay clickable');
+assert.equal(at({ ...setArgs, height: 14, settingIndex: 17 + win }, 3, short.findIndex(l => l.startsWith('  › Web theme')) + 1)?.setting, 17 + win, 'scrolled settings stay clickable');
 const arcShort = { ...setArgs, archived: [{ name: 'old', path: '/old/dir' }], height: 14, settingIndex: 26 + win };
 assert.equal(at(arcShort, 3, rowsOf(arcShort).findIndex(l => l.startsWith('  › old')) + 1)?.setting, 26 + win, 'last archived row scrolls into view, stays clickable');
 assert.equal(checkSettings({ accent: 'red' }).error, 'accent must be one of: default, green, blue, purple, orange, or a hex color like #ff66aa.', 'bad accent refused');
@@ -799,6 +808,27 @@ await send('\x03'); await run;
   const r = spawnSync(process.execPath, [drive], { encoding: 'utf-8', env: { ...process.env, USERPROFILE: shome, HOME: shome } });
   const left = JSON.parse(fs.readFileSync(file, 'utf-8'));
   assert.deepEqual([r.stderr, !!left.two.pinned, !!left.one.archived], ['', true, true], 'right-click menu pins by click, archives by keys');
+}
+// -- Settings filter on fake streams: a Shortcuts filter doesn't move the picked setting; a change that hides a row above keeps the picked one --
+{
+  const shome = fs.mkdtempSync(path.join(os.tmpdir(), 'upex-setf-'));
+  fs.mkdirSync(path.join(shome, '.upex'), { recursive: true });
+  fs.writeFileSync(path.join(shome, '.upex', 'links.json'), JSON.stringify({ one: { path: shome } }));
+  const drive = path.join(shome, 'drive.mjs');
+  fs.writeFileSync(drive, String.raw`
+import { PassThrough } from 'node:stream';
+import { runInteractiveMode } from '${new URL('../src/interactive.js', import.meta.url).href}';
+const stdin = Object.assign(new PassThrough(), { isTTY: true, setRawMode() {} });
+const stdout = Object.assign(new PassThrough(), { isTTY: true, columns: 100, rows: 40 });
+stdout.resume();
+const send = async s => { stdin.write(s); await new Promise(r => setTimeout(r, 30)); };
+const run = runInteractiveMode({ stdin, stdout });
+for (const k of ['\x1b[Z', '\x1b[B', '\x1b[B', '\x1b[B', '\x1b[Z', 'zzz', '\x1b[Z', '\x1b[C', 'screen', '\x1b[B', '\x1b[C', '\x1b[C', '\x03']) await send(k);
+await run;
+`);
+  const r = spawnSync(process.execPath, [drive], { encoding: 'utf-8', env: { ...process.env, USERPROFILE: shome, HOME: shome } });
+  const cfg = JSON.parse(fs.readFileSync(path.join(shome, '.upex', 'config.json'), 'utf-8'));
+  assert.deepEqual([r.stderr, cfg.updateCheck, cfg.fullScreen, cfg.startView, cfg.narrowPane], ['', 'off', 'on', undefined, undefined], 'settings filter keeps the picked row');
 }
 const zs = new PassThrough();
 readline.emitKeypressEvents(zs);
@@ -999,7 +1029,7 @@ const paneV = strip(renderInteractiveView({ ...viewArgs, choices: [det], full: t
 assert.ok(paneV.some(l => l.includes('┬')) && paneV.some(l => l.includes('┴')) && paneV.every(l => l.length <= 150), 'pane joins the rules and stays in width');
 assert.ok(paneV.some(l => /│ ★ web +3 opens · 2h ago · Explorer$/.test(l)), 'pane shows the selected details');
 assert.ok(!paneV.some(l => l.includes('aliases')) && !strip(renderInteractiveView({ ...viewArgs, choices: [det], width: 150 })).includes('│'), 'no empty rows, no pane inline');
-// Narrow: Shift+Right opens the pane (or Narrow screens Always), never under 60 or inline.
+// Narrow: Shift+Right opens the pane (or Pane on narrow Always), never under 60 or inline.
 assert.deepEqual([paneShown(150, true), paneShown(100, true), paneShown(100, true, true), paneShown(59, true, true), paneShown(150, false)], [true, false, true, false, false], 'pane: wide, or opened on narrow');
 assert.deepEqual([paneToggles(100, true), paneToggles(150, true), paneToggles(100, false), paneToggles(100, true, { narrowPane: 'always' })], [true, false, false, false], 'Shift+Right/Left toggle only narrow, full screen, not Always');
 assert.deepEqual([paneWidthOf(150, 'narrow'), paneWidthOf(150), paneWidthOf(150, 'wide'), paneWidthOf(300, 'wide'), paneWidthOf(150, 'junk')], [42, 57, 75, 110, 57], 'pane width: narrow / normal / wide, capped, unknown = normal');

@@ -29,7 +29,7 @@ const VERSION_WIDTH = 100;
 const MAX_VISIBLE_CHOICES = 8;
 // Full screen in a terminal at least this wide: detail pane right of the list.
 const PANE_MIN = 140;
-// Narrower: only once opened (Shift+Right, or Narrow screens Always), and never under this.
+// Narrower: only once opened (Shift+Right, or Pane on narrow Always), and never under this.
 const PANE_FLOOR = 60;
 // Is the detail pane shown? `open` = opened on a narrow screen.
 export const paneShown = (columns, full, open) => !!full && (columns >= PANE_MIN || (!!open && columns >= PANE_FLOOR));
@@ -615,38 +615,52 @@ const VIEWS = { shortcuts: 'Shortcuts', apps: 'Apps', workspaces: 'Workspaces', 
 export const nextView = (view, views) => { const c = shownTabs(views); return c[(c.indexOf(view) + 1) % c.length]; };
 // Shift+Tab back from Settings: a tab hidden meanwhile goes to Shortcuts.
 export const backTo = (view, views) => (shownTabs(views).includes(view) ? view : 'shortcuts');
+// scope: where a setting applies (tui = this selector, web = upex ui, cli = commands), dim right of its row.
 const SETTING_ROWS = [
-  { section: 'General', key: 'startView', label: 'Start view', names: { shortcuts: 'Shortcuts', apps: 'Apps', workspaces: 'Workspaces', last: 'Last used' } },
-  { section: 'General', key: 'sort', label: 'Sort', names: { recent: 'Most used', name: 'A to Z', opened: 'Last opened', added: 'Recently added' } },
-  { section: 'General', key: 'recentStrip', label: 'Recent on top', names: { off: 'Off', on: 'On' } },
-  { section: 'General', key: 'views', label: 'Tabs', names: { all: 'All', 'no-workspaces': 'No Workspaces', 'no-apps': 'No Apps', shortcuts: 'Shortcuts only' } },
-  { section: 'General', key: 'enter', label: 'Enter', names: { quit: 'Open and quit', stay: 'Open and stay' } },
-  { section: 'General', key: 'updateCheck', label: 'Update check', names: { on: 'On', off: 'Off' } },
-  { section: 'Search', key: 'fuzzy', label: 'Fuzzy', names: { normal: 'Normal', exact: 'Exact', loose: 'Loose' } },
-  { section: 'Search', key: 'searchIn', label: 'Search in', names: { all: 'Names, paths, tags', names: 'Names only' } },
-  { section: 'Terminals', key: 'terminalLayout', label: 'Layout', names: { here: 'This window', windows: 'Separate windows', tabs: 'Tabs', panes: 'Split panes' } },
-  { section: 'Terminals', key: 'paneSplit', label: 'Pane split', names: { auto: 'Auto', vertical: 'Side by side', horizontal: 'Stacked' } },
-  { section: 'Terminals', key: 'terminalShell', label: 'Shell', names: { cmd: 'cmd', powershell: 'PowerShell', pwsh: 'PowerShell 7', profile: 'WT profile' } },
-  { section: 'Opening', key: 'defaultOpener', label: 'Default opener' },
-  { section: 'Appearance', key: 'fullScreen', label: 'Full screen', names: { on: 'On', off: 'Off' } },
-  { section: 'Appearance', key: 'keyHints', label: 'Key hints', names: { full: 'Full', short: 'Short', off: 'Off' } },
-  { section: 'Appearance', key: 'maxRows', label: 'Max rows', names: { auto: 'Auto', 8: '8', 12: '12', 16: '16' } },
-  { section: 'Appearance', key: 'accent', label: 'Accent', names: { default: 'Default', green: 'Green', blue: 'Blue', purple: 'Purple', orange: 'Orange' } },
-  { section: 'Appearance', key: 'density', label: 'Density', names: { comfortable: 'Comfortable', compact: 'Compact' } },
-  { section: 'Appearance', key: 'paths', label: 'Paths', names: { dim: 'Dim folders', full: 'Full', hidden: 'Hidden' } },
-  { section: 'Appearance', key: 'rowDetails', label: 'Row details', names: { both: 'Both', tags: 'Tags', badges: 'Badges', none: 'None' } },
-  { section: 'Appearance', key: 'pinned', label: 'Pinned', names: { top: 'On top', section: 'Own section' } },
-  { section: 'Appearance', key: 'groups', label: 'Groups', names: { off: 'Off', tags: 'By tag' } },
-  { section: 'Appearance', key: 'flash', label: 'Messages', names: { 3: '3 s', 6: '6 s', key: 'Until a key' } },
-  { section: 'Appearance', key: 'glyphs', label: 'Glyphs', names: { unicode: 'Unicode', ascii: 'ASCII' } },
-  { section: 'Appearance', key: 'theme', label: 'Web theme', names: { system: 'System', dark: 'Dark', light: 'Light' } },
-  { section: 'Detail pane', key: 'narrowPane', label: 'Narrow screens', names: { toggle: 'Shift+→ / ←', always: 'Always' } },
-  { section: 'Detail pane', key: 'paneWidth', label: 'Width', names: { normal: 'Normal', narrow: 'Narrow', wide: 'Wide' } },
-  { section: 'Detail pane', key: 'goals', label: 'Open goals', names: { off: 'Off', 3: '3', 5: '5', 10: '10' } },
-  { section: 'Detail pane', key: 'git', label: 'Git status', names: { off: 'Off', on: 'On' } },
+  { section: 'General', key: 'startView', label: 'Start view', scope: 'tui+web', names: { shortcuts: 'Shortcuts', apps: 'Apps', workspaces: 'Workspaces', last: 'Last used' } },
+  { section: 'General', key: 'views', label: 'Tabs', scope: 'tui+web', names: { all: 'All', 'no-workspaces': 'Shortcuts, Apps', 'no-apps': 'Shortcuts, Workspaces', shortcuts: 'Shortcuts only' } },
+  { section: 'General', key: 'enter', label: 'After open', scope: 'tui', names: { quit: 'Quit', stay: 'Stay open' } },
+  { section: 'General', key: 'updateCheck', label: 'Update check', scope: 'cli', names: { on: 'On', off: 'Off' } },
+  { section: 'Search', key: 'fuzzy', label: 'Fuzzy', scope: 'tui+cli', names: { normal: 'Normal', exact: 'Exact', loose: 'Loose' } },
+  { section: 'Search', key: 'searchIn', label: 'Search in', scope: 'tui+web', names: { all: 'Names, paths, tags', names: 'Names only' } },
+  { section: 'Terminals', key: 'terminalLayout', label: 'Layout', scope: 'all', names: { here: 'This window', windows: 'Separate windows', tabs: 'Tabs', panes: 'Split panes' } },
+  { section: 'Terminals', key: 'paneSplit', label: 'Pane split', scope: 'all', names: { auto: 'Auto', vertical: 'Side by side', horizontal: 'Stacked' } },
+  { section: 'Terminals', key: 'terminalShell', label: 'Shell', scope: 'all', names: { cmd: 'cmd', powershell: 'PowerShell', pwsh: 'PowerShell 7', profile: 'WT profile' } },
+  { section: 'Opening', key: 'defaultOpener', label: 'Default opener', scope: 'all' },
+  { section: 'List', key: 'sort', label: 'Sort', scope: 'tui+web', names: { recent: 'Most used', name: 'A to Z', opened: 'Last opened', added: 'Recently added' } },
+  { section: 'List', key: 'recentStrip', label: 'Recent on top', scope: 'tui', names: { off: 'Off', on: 'On' } },
+  { section: 'List', key: 'pinned', label: 'Pinned', scope: 'tui+web', names: { top: 'On top', section: 'Own section' } },
+  { section: 'List', key: 'groups', label: 'Groups', scope: 'tui+web', names: { off: 'Off', tags: 'By tag' } },
+  { section: 'List', key: 'maxRows', label: 'Max rows', scope: 'tui', names: { auto: 'Auto', 8: '8', 12: '12', 16: '16' } },
+  { section: 'List', key: 'density', label: 'Density', scope: 'tui+web', names: { comfortable: 'Comfortable', compact: 'Compact' } },
+  { section: 'Rows', key: 'paths', label: 'Paths', scope: 'all', names: { dim: 'Dim folders', full: 'Full', hidden: 'Hidden' } },
+  { section: 'Rows', key: 'rowDetails', label: 'Row details', scope: 'all', names: { both: 'Both', tags: 'Tags', badges: 'Badges', none: 'None' } },
+  { section: 'Look', key: 'accent', label: 'Accent', scope: 'tui+web', names: { default: 'Default', green: 'Green', blue: 'Blue', purple: 'Purple', orange: 'Orange' } },
+  { section: 'Look', key: 'glyphs', label: 'Glyphs', scope: 'tui', names: { unicode: 'Unicode', ascii: 'ASCII' } },
+  { section: 'Look', key: 'theme', label: 'Web theme', scope: 'web', names: { system: 'System', dark: 'Dark', light: 'Light' } },
+  { section: 'Look', key: 'keyHints', label: 'Key hints', scope: 'tui', names: { full: 'Full', short: 'Short', off: 'Off' } },
+  { section: 'Look', key: 'flash', label: 'Message time', scope: 'tui', names: { 3: '3 s', 6: '6 s', key: 'Until a key' } },
+  { section: 'Look', key: 'fullScreen', label: 'Full screen', scope: 'tui', names: { on: 'On', off: 'Off' } },
+  { section: 'Detail pane', key: 'narrowPane', label: 'Pane on narrow', scope: 'tui', names: { toggle: 'Shift+→ / ←', always: 'Always' } },
+  { section: 'Detail pane', key: 'paneWidth', label: 'Width', scope: 'tui', names: { normal: 'Normal', narrow: 'Narrow', wide: 'Wide' } },
+  { section: 'Detail pane', key: 'goals', label: 'Open goals', scope: 'tui', names: { off: 'Off', 3: '3', 5: '5', 10: '10' } },
+  { section: 'Detail pane', key: 'git', label: 'Git status', scope: 'tui', names: { off: 'Off', on: 'On' } },
 ];
 // Pane split only matters for split panes; Windows-only rows hide elsewhere.
 const visibleRows = s => SETTING_ROWS.filter(r => settingShown(r.key) && (r.key !== 'paneSplit' || s.terminalLayout === 'panes'));
+// Settings rows and the openers, maintenance and archived rows under them, narrowed by the typed filter
+// (section, label, options and note; extras by name and note, archived by name and path).
+export function settingsList(s, q = '', extras = [], archived = [], wt = null) {
+  const has = text => text.toLowerCase().includes(q.trim().toLowerCase());
+  // The note of every value, so changing a row never hides it.
+  const notes = r => (settingValues(r.key) || [s[r.key]]).map(v => settingNote(r.key, { ...s, [r.key]: v }, wt)).join(' ');
+  const rows = visibleRows(s).filter(r => has(`${r.section} ${r.label} ${Object.values(r.names || {}).join(' ')} ${notes(r)}`));
+  const more = [...extras, ...archived.map(a => ({ section: 'Archived', kind: 'archived', ...a }))]
+    .filter(x => has(`${x.section} ${x.name} ${x.kind === 'archived' ? x.path : EXTRA_NOTES[x.kind] ?? ''}`));
+  return { rows, more };
+}
+// Key of a settings item, to keep it picked while the filter changes.
+const itemId = x => x && (x.key ?? `${x.kind}:${x.name}`);
 // Inline, Max rows Auto is 8: one "8" option that keeps auto, so going full screen still fills.
 const inlineRows = (row, s) => row.key === 'maxRows' && s.fullScreen === 'off';
 // [key, label] options of a settings row, in SETTINGS order (object keys put "8" before "auto"); copy is no way
@@ -658,33 +672,33 @@ export const rowOptions = (row, appChoices, s = {}) => (inlineRows(row, s) ? [['
 export const pickedOf = (row, s) => (inlineRows(row, s) && s.maxRows === '8' ? 'auto' : s[row.key]);
 
 function settingNote(key, s, wt) {
-  if (key === 'startView') return 'The tab upex and upex ui open on. Last used: where you left off, opener included.';
-  if (key === 'sort') return 'Shortcut order here and in upex ui.';
+  if (key === 'startView') return 'The tab to open on. Last used: where you left off, opener included.';
+  if (key === 'sort') return 'Shortcut order.';
   if (key === 'recentStrip') return 'The last 3 opened again above the list, under a Recent heading, whatever the sort.';
-  if (key === 'views') return 'Which tabs show and Tab cycles through, here and in upex ui.';
-  if (key === 'enter') return 'Selector only. Open and stay keeps upex open after Enter, to open more.';
+  if (key === 'views') return 'Which tabs show and Tab cycles through.';
+  if (key === 'enter') return 'What Enter does after opening. Stay open keeps upex open, to open more.';
   if (key === 'fuzzy') return 'How close a typed name must be, in this filter and for upex <name> / go. Exact: the letters in a row, no typos. Loose: more typos.';
-  if (key === 'searchIn') return 'What the filter looks at, here and in upex ui. Names only: names and aliases. #tag, @opener and is:pinned, is:missing, is:stale, is:app filter either way.';
+  if (key === 'searchIn') return 'What the filter looks at. Names only: names and aliases. #tag, @opener and is:pinned, is:missing, is:stale, is:app filter either way.';
   if (key === 'updateCheck') return `Checks npm once a day in the background; after a command, one dim line when a newer upex is out. This is v${VERSION}.`;
   if (key === 'flash') return 'How long a success message (bottom right) stays. Warnings always stay until the next key.';
   if (key === 'maxRows') return s.fullScreen === 'off' ? 'List rows here.' : 'List rows here. Auto: as many as the screen fits.';
   if (key === 'defaultOpener') return 'Opens folder shortcuts that have no opener of their own.';
   if (key === 'fullScreen') return 'Whole terminal plus mouse, restored on exit. Off: inline, no mouse.';
-  if (key === 'accent') return 'Color of the › pointer and the picked option, here and in upex ui. Any color: upex config set accent ff66aa';
-  if (key === 'density') return 'Compact drops the spacer lines, here and in upex ui.';
-  if (key === 'paths') return 'Paths in the lists here, in upex ls / stale and in upex ui.';
-  if (key === 'rowDetails') return 'Right side of a row: #tags, badges (pinned, app, missing), both or none. Here, in upex ls and upex ui.';
-  if (key === 'pinned') return 'Pinned shortcuts first, or first under their own Pinned heading. Here and in upex ui. ^p pins, Alt+↑↓ moves one.';
-  if (key === 'groups') return 'By tag: Pinned on top, then a #tag heading per tag in the sort order, like folders; two tags show under both, untagged last. Here and in upex ui. Type #tag to filter.';
+  if (key === 'accent') return 'Color of the › pointer and the picked option. Any color: upex config set accent ff66aa';
+  if (key === 'density') return 'Compact drops the spacer lines.';
+  if (key === 'paths') return 'Dim folders dims the parent folders. Hidden drops paths, commands and URLs. Also upex ls / stale.';
+  if (key === 'rowDetails') return 'Right side of a row: #tags, badges (pinned, app, missing), both or none. Also upex ls.';
+  if (key === 'pinned') return 'Pinned shortcuts first, or first under their own Pinned heading. ^p pins, Alt+↑↓ moves one.';
+  if (key === 'groups') return 'By tag: Pinned on top, then a #tag heading per tag in the sort order, like folders; two tags show under both, untagged last. Type #tag to filter.';
   if (key === 'narrowPane') return 'Under 140 columns (full screen): Shift+→ opens the pane, Shift+← or Esc closes it, or it always shows. Not under 60.';
   if (key === 'paneWidth') return 'How much of the screen the pane takes: Narrow leaves the list more room, Wide shows more details.';
   if (key === 'goals') return 'Pane right of the list (full screen): open upgo goals of a folder, up to this many. S-→ picks one to copy, a click copies it.';
   if (key === 'git') return 'Pane right of the list (full screen): branch, ahead/behind, changes and last commit of a folder in git. ^g opens its web page.';
   if (key === 'keyHints') return 'Key rows under the list. Short: one row of the main keys, ^k shows them all. Off: more room for the list. Settings keeps its keys.';
-  if (key === 'glyphs') return 'Selector only. ASCII swaps arrows, pointers, lines and the ellipsis for plain characters, for fonts that show boxes.';
-  if (key === 'theme') return 'upex ui only. The terminal keeps its own colors.';
+  if (key === 'glyphs') return 'ASCII swaps arrows, pointers, lines and the ellipsis for plain characters, for fonts that show boxes.';
+  if (key === 'theme') return 'Colors of upex ui. The terminal keeps its own.';
   if (key === 'terminalLayout') {
-    if (s.terminalLayout === 'here') return 'Terminal openers run in this terminal: upex quits (even with Open and stay), a shell starts at the folder, exit comes back. Several at once and workspaces get windows.';
+    if (s.terminalLayout === 'here') return 'Terminal openers run in this terminal: upex quits (even with Stay open), a shell starts at the folder, exit comes back. Several at once and workspaces get windows.';
     if (wt === null) return 'Several terminals at once each get their own window.';
     return !wt && s.terminalLayout !== 'windows'
       ? 'Windows Terminal (wt) not found, so terminals open as separate windows.'
@@ -1011,9 +1025,9 @@ export function renderInteractiveView({
     lines.push(`  ${chalk.bold(pick('›'))} ${chalk.dim('run a script of')} ${chalk.bold(name)} ${chalk.dim(`(${scripts.pm})`)}`);
   } else if (isGoals) {
     lines.push(`  ${chalk.bold(pick('›'))} ${chalk.dim('copy a goal of')} ${chalk.bold(clipName(currentChoice.name, 24).text)}`);
-  } else if (!isSettings) {
+  } else {
     const left = `  ${chalk.bold(pick('›'))} ${query ? `${query}${chalk.dim('▏')}` : chalk.dim('▏type to filter')}`;
-    const right = !isWs && marks.size ? pick(`● ${marks.size} marked`) : '';
+    const right = !isWs && !isSettings && marks.size ? pick(`● ${marks.size} marked`) : '';
     lines.push(right ? left + ' '.repeat(Math.max(2, w - vis(left) - vis(right))) + right : left);
   }
   lines.push(isSettings ? ruleOf('┴') : ruleOf('┬'));
@@ -1042,9 +1056,12 @@ export function renderInteractiveView({
   const webRows = webUrl ? [...gap, webStatus(webUrl, w)] : [];
 
   if (isSettings) {
-    const rows = visibleRows(settings);
+    // Openers and maintenance, then archived shortcuts last, their index after the setting rows; Enter acts on one.
+    const { rows, more } = settingsList(settings, query, extras, archived, wt);
     // Body lines { text, hits, i }: a bold heading where the section changes, then its rows.
     const body = [];
+    // Scope tags right of the rows, when there is room for them.
+    const tagW = w >= 60 ? 9 : 0;
     rows.forEach((row, i) => {
       if (row.section !== rows[i - 1]?.section) {
         if (i) body.push(...gap.map(text => ({ text })));
@@ -1053,20 +1070,21 @@ export function renderInteractiveView({
       const opts = rowOptions(row, appChoices, settings);
       const sel = i === settingIndex;
       const spans = [];
-      const picker = optionRow(opts.map(([, l]) => l), opts.findIndex(([k]) => k === pickedOf(row, settings)), w - 20, spans, pick);
+      const picker = optionRow(opts.map(([, l]) => l), opts.findIndex(([k]) => k === pickedOf(row, settings)), w - 20 - tagW, spans, pick);
       const hits = [...spans.map(s => [20 + s.from, 20 + s.to, { setting: i, option: s.index }]), [0, w, { setting: i }]];
-      body.push({ text: `  ${sel ? pick('›') : ' '} ${(sel ? chalk.bold : chalk.dim)(row.label.padEnd(16))}${picker}`, hits, i });
+      const tag = tagW ? ' '.repeat(Math.max(1, w - 20 - vis(picker) - row.scope.length)) + chalk.dim(row.scope) : '';
+      body.push({ text: `  ${sel ? pick('›') : ' '} ${(sel ? chalk.bold : chalk.dim)(row.label.padEnd(16))}${picker}${tag}`, hits, i });
     });
-    // Openers and maintenance, then archived shortcuts last, their index after the setting rows; Enter acts on one.
-    const more = [...extras, ...archived.map(a => ({ section: 'Archived', kind: 'archived', name: a.name, text: chalk.dim(tidyPath(a.path)) }))];
+    if (!rows.length && !more.length) body.push({ text: chalk.dim('    No settings match.') });
     more.forEach((x, k) => {
       if (x.section !== more[k - 1]?.section) {
-        body.push(...gap.map(text => ({ text })), { text: `  ${chalk.bold(x.section)}${x.kind === 'archived' ? ` ${chalk.dim(archived.length)}` : ''}` });
+        const n = x.kind === 'archived' ? ` ${chalk.dim(more.filter(m => m.kind === 'archived').length)}` : '';
+        body.push(...gap.map(text => ({ text })), { text: `  ${chalk.bold(x.section)}${n}` });
       }
       const i = rows.length + k;
       const sel = i === settingIndex;
       const name = clipName(x.name, 15).text;
-      const text = `  ${sel ? pick('›') : ' '} ${(sel ? chalk.bold : chalk.dim)(name)}${' '.repeat(16 - vis(name))}${ui.truncate(x.text, w - 20)}`;
+      const text = `  ${sel ? pick('›') : ' '} ${(sel ? chalk.bold : chalk.dim)(name)}${' '.repeat(16 - vis(name))}${ui.truncate(x.kind === 'archived' ? chalk.dim(tidyPath(x.path)) : x.text, w - 20)}`;
       body.push({ text, hits: [[0, w, { setting: i }]], i });
       if (expanded?.kind === x.kind) body.push(...expanded.lines.map(l => ({ text: `      ${ui.truncate(l, w - 8)}` })));
     });
@@ -1080,11 +1098,11 @@ export function renderInteractiveView({
       lines.push(b.text);
     }
     const note = onArchived ? `Enter or a second click brings it back to its tab, like upex restore ${onExtra.name}. ^d deletes it for good.`
-      : onExtra ? EXTRA_NOTES[onExtra.kind] : settingNote(rows[settingIndex].key, settings, wt);
+      : onExtra ? EXTRA_NOTES[onExtra.kind] : rows[settingIndex] ? settingNote(rows[settingIndex].key, settings, wt) : '';
     lines.push(...gap, chalk.dim(`    ${note}`));
     const enter = onExtra && ['↵', expanded && expanded.kind === onExtra.kind ? 'hide' : EXTRA_KEYS[onExtra.kind]];
     const keys = mode === 'input' ? inputRow
-      : keyHint([['↑↓', 'setting'], enter || ['←→', 'change (saved)'], onExtra?.kind === 'opener' && ['^d', 'remove'], onArchived && ['^d', 'delete'], undoKey, tabKey, ['S-Tab', 'back'], ['esc', 'quit'], uiKey]);
+      : keyHint([['↑↓', 'setting'], enter || (rows[settingIndex] && ['←→', 'change (saved)']), onExtra?.kind === 'opener' && ['^d', 'remove'], onArchived && ['^d', 'delete'], undoKey, tabKey, ['S-Tab', 'back'], escKey, uiKey]);
     return footer([keys, ...webRows]);
   }
 
@@ -1485,7 +1503,7 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
       }), fail);
     };
     const tabsOn = appKey => staysOpen(appKey, setting('terminalLayout'), hasWindowsTerminal);
-    // Layout 'here' hands this terminal over, so the selector has to quit even with Open and stay.
+    // Layout 'here' hands this terminal over, so the selector has to quit even with Stay open.
     const stay = (appKey, n = 1) => settings.enter === 'stay' && !(isTerminalApp(appKey) && n === 1 && setting('terminalLayout') === 'here');
 
     // Safety net: a crash must not leave the terminal on the alt screen or without a cursor.
@@ -1938,6 +1956,8 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
     };
 
     const switchTo = (to) => {
+      // Before refreshSettings, which counts the rows this filter leaves.
+      query = '';
       if (to === 'settings') {
         backView = view;
         settings = readSettings();
@@ -1947,7 +1967,6 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
         wt = hasWindowsTerminal();
       }
       view = to;
-      query = '';
       choices = allChoices.filter(inView(view));
       selectedIndex = 0;
       updateFilter();
@@ -1964,13 +1983,19 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
     };
 
     const clamp = (i, n) => Math.max(0, Math.min(i, n - 1));
-    // Settings rows plus the openers, maintenance and archived shortcuts under them.
-    const settingCount = () => visibleRows(settings).length + extras.length + archived.length;
+    // Settings rows plus the openers, maintenance and archived shortcuts under them, as the filter leaves them.
+    const settingList = () => settingsList(settings, query, extras, archived, wt);
+    const settingItems = () => { const { rows, more } = settingList(); return [...rows, ...more]; };
+    const settingCount = () => settingItems().length;
     // The picked row past the settings ({ kind, name }), or null.
-    const extraAt = () => {
-      const k = settingIndex - visibleRows(settings).length;
-      return k < 0 ? null : extras[k] || (archived[k - extras.length] && { kind: 'archived', ...archived[k - extras.length] });
+    const extraAt = () => settingItems()[settingIndex]?.kind ? settingItems()[settingIndex] : null;
+    // A new Settings filter or setting keeps the picked row when it still shows, else picks the first.
+    const keepPicked = (change) => {
+      const id = itemId(settingItems()[settingIndex]);
+      change();
+      settingIndex = Math.max(0, settingItems().findIndex(x => itemId(x) === id));
     };
+    const filterSettings = (q) => keepPicked(() => { query = q; });
     // Maintenance rows with their counts now; doctor keeps its last result.
     let doctorSummary = '';
     const buildExtras = () => {
@@ -2119,7 +2144,7 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
       const t = hitTest(targets, x, y);
       const ws = view === 'workspaces';
       // Archived rows in Settings click like list rows.
-      const arc = t?.setting >= visibleRows(settings).length;
+      const arc = t?.setting >= settingList().rows.length;
       // The web, copy and archive lines act on any click, so a double-click must not act twice.
       const once = !!(t?.web || t?.copy || t?.archive);
       const now = Date.now();
@@ -2151,8 +2176,8 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
         selectedAppIndex = t.opener;
       } else if (t?.setting != null) {
         settingIndex = t.setting;
-        const row = visibleRows(settings)[t.setting];
-        if (t.option != null) chooseSetting(row, rowOptions(row, appChoices, settings)[t.option][0]);
+        const row = settingList().rows[t.setting];
+        if (t.option != null) keepPicked(() => chooseSetting(row, rowOptions(row, appChoices, settings)[t.option][0]));
       }
       redraw();
     };
@@ -2290,7 +2315,8 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
       // ── Browse mode ──
       // Esc clears a typed filter first, then the marks, then closes a Shift+Right pane, then quits.
       if (key.name === 'escape' && query) {
-        clearQuery();
+        if (view === 'settings') filterSettings('');
+        else clearQuery();
         redraw();
         return;
       }
@@ -2366,14 +2392,14 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
       const jump = (i, n) => jumpIndex(key.name, i, n, new Set(targets.map(t => t.row ?? t.setting).filter(x => x != null)).size);
 
       // Settings: Up/Down picks a row, Left/Right changes and saves it, Enter acts on an opener, maintenance or archived row,
-      // ^d removes a custom opener or deletes an archived shortcut; everything else is ignored.
+      // ^d removes a custom opener or deletes an archived shortcut; typing filters the rows.
       if (view === 'settings') {
-        const rows = visibleRows(settings);
+        const { rows } = settingList();
         const x = extraAt();
         const j = jump(settingIndex, settingCount());
         if (j != null) {
           settingIndex = j;
-        } else if (key.name === 'up' || key.name === 'down') {
+        } else if ((key.name === 'up' || key.name === 'down') && settingCount()) {
           const n = settingCount();
           settingIndex = (settingIndex + (key.name === 'up' ? n - 1 : 1)) % n;
         } else if (key.name === 'return' && x) {
@@ -2385,11 +2411,14 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
           inputName = x.name;
           confirmAsk('deleteArchived', `delete "${x.name}" for good?`);
         } else if ((key.name === 'left' || key.name === 'right') && settingIndex < rows.length) {
-          // Only the layout row changes which rows show, and pane split comes after it, so the index stays put.
+          // A change can show or hide rows above it (pane split, a filtered note), so the row is kept by key.
           const row = rows[settingIndex];
           const keys = rowOptions(row, appChoices, settings).map(([k]) => k);
           const at = Math.max(0, keys.indexOf(pickedOf(row, settings)));
-          chooseSetting(row, keys[(at + (key.name === 'left' ? keys.length - 1 : 1)) % keys.length]);
+          keepPicked(() => chooseSetting(row, keys[(at + (key.name === 'left' ? keys.length - 1 : 1)) % keys.length]));
+        } else if (!key.ctrl || key.name === 'w' || key.name === 'backspace') {
+          const edit = !['left', 'right', 'delete', 'return', 'tab'].includes(key.name) && editLine({ text: query, cur: query.length }, str, key);
+          if (edit && edit.text !== query) filterSettings(edit.text);
         }
         redraw();
         return;

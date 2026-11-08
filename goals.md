@@ -21,10 +21,7 @@ Closed sections: §5 Platform support · §7 Web UI · §9 Detail pane · §10 T
 - `mouse-setting` Mouse setting (later)
 - `stale-after-setting` Stale after setting (later)
 - `recent-count-setting` Recent count setting (later)
-- `settings-regroup-sections` Settings: regroup sections (next)
 - `settings-changed-dot-and-per-row-reset` Settings: changed dot and per-row reset (next)
-- `settings-scope-tag-per-row` Settings: scope tag per row (next)
-- `settings-type-to-filter-and-clearer-labels` Settings: type to filter and clearer labels (next)
 - Plus 1 maybe: `upgo list --section 3 --phase maybe`
 
 ## 4. Shell integration
