@@ -95,6 +95,7 @@ export const loadLinks = () => normalizeLinks(readJson(LINKS_FILE));
 // Only our own names, so a hand-saved file in backups/ is never touched.
 const BACKUP_RE = /^links-[\dTZ-]+\.json$/;
 const backupFiles = () => (fs.existsSync(BACKUP_DIR) ? fs.readdirSync(BACKUP_DIR).filter(f => BACKUP_RE.test(f)).sort() : []);
+export const hasBackups = () => backupFiles().length > 0;
 
 // Copy the current links.json to backups/ and keep only the newest KEEP_BACKUPS.
 function backupLinks(next) {

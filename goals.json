@@ -2008,10 +2008,11 @@
       "title": "Multi-step undo in the selector",
       "body": "^z only undoes the last archive/delete/prune in this session. Pressing it again could step back through the links.json backups like upex undo, with a flash saying what came back.",
       "phase": "next",
-      "status": "planned",
+      "status": "done",
       "size": "M",
       "created": "2026-11-08",
-      "updated": "2026-11-08"
+      "updated": "2026-11-08",
+      "note": "^z steps back through links.json backups like upex undo, flash lists what came back; deleted workspace comes back first"
     },
     {
       "id": "bulk-edit-marked-shortcuts",

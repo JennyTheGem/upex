@@ -219,6 +219,7 @@ Run `upex` with no arguments to open the interactive selector. Pinned shortcuts 
 - `Ctrl+P` -- pin or unpin the selected shortcut; `Alt+Up` / `Alt+Down` moves a pinned one among the pinned (saved, `upex ui` uses the same order)
 - `Ctrl+X` -- archive the selected shortcut, or all marked ones (confirm with `y`, `Ctrl+Z` undoes it, `upex restore <name>` later); a click on the detail pane's stale row archives the selected one. The selector never deletes a shortcut from its tab: delete an archived one in Settings > Archived
 - `Ctrl+Y` -- copy the selected shortcut's path (or app / URL) to the clipboard
+- `Ctrl+Z` -- step back one change to your shortcuts, like `upex undo` (again to go further back, up to 10); a flash says what came back. Workspaces deleted in this session come back first, newest first
 - `Ctrl+S` -- list the selected folder's package.json scripts (in the detail pane when it shows, else in place of the list); Enter runs one in a terminal (like `upex run`), Esc or Left goes back
 - While typing a path or name: `Left` / `Right` move the cursor, `Ctrl+Left` / `Ctrl+Right` jump a word, `Home` / `End`, `Ctrl+Backspace` (or `Ctrl+W`) deletes a word, `Del` deletes forward. `Ctrl+Backspace` also works in the filter
 - `Ctrl+K` -- show every key over the list (handy with `keyHints` short), any key or a click closes it

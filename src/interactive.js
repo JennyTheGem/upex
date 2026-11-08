@@ -11,7 +11,7 @@ import Fuse from 'fuse.js';
 import { getInteractiveAppChoices, getAppMap, isTerminalApp, hasWindowsTerminal, defaultOpener, readSettings, setting, startTab, shownTabs, isHex, copyToClipboard, launchUrl, configApps, SETTINGS, settingValues, settingShown } from './launcher.js';
 import { gitOf, stopGit } from './git.js';
 import { fuseOpts } from './fuzzy.js';
-import { loadLinks, activeLinks, unarchived, aliasesOf, takenError, checkAliases, frecency, removeLinks, saveLinks, setLink, renameLink, loadWorkspaces, saveWorkspaces, removeWorkspace, nameError, loadConfig, saveConfig, withPinned, setPinOrder, StoreError, undoLast, pruneBroken, staleLinks, loadHistory, statsFrom, diffLinks, keepUsage } from './store.js';
+import { loadLinks, activeLinks, unarchived, aliasesOf, takenError, checkAliases, frecency, removeLinks, saveLinks, setLink, renameLink, loadWorkspaces, saveWorkspaces, removeWorkspace, nameError, loadConfig, saveConfig, withPinned, setPinOrder, StoreError, undoLast, hasBackups, pruneBroken, staleLinks, loadHistory, statsFrom } from './store.js';
 import { describeEntry } from './commands/workspace.js';
 import { handleOpen } from './commands/open.js';
 import { startServer, applyOpener } from './commands/web.js';
@@ -446,25 +446,10 @@ export function readMouse(state, key = {}) {
   return { state: null, pass: true };
 }
 
-// Why a deleted { name, entry, ws? } (or a list of them) can't come back, or null: its name or an alias was taken since.
-export function undoError(u, links, workspaces) {
-  if (Array.isArray(u)) return u.map(x => undoError(x, links, workspaces)).find(Boolean) || null;
-  const { name, entry, ws, archived } = u;
-  if (ws) return Object.hasOwn(workspaces, name) ? `workspace "${name}" already exists.` : null;
-  // Archived: still there under its name, so only check it wasn't restored or removed since.
-  if (archived) return links[name]?.archived ? null : `"${name}" is no longer archived.`;
-  return takenError(links, name) || checkAliases(links, name, aliasesOf(entry)).error || null;
-}
-
-// Same shortcuts in both? A prune's ^z checks nothing changed since it.
-export const sameLinks = (a, b) => Object.values(diffLinks(a, b)).every(names => !names.length);
-
-// links after ^z: deleted ones come back as they were, archived ones only lose the flag (edits made since stay).
-export const undoneLinks = (undo, links) => ({ ...links, ...Object.fromEntries(undo.map(({ name, entry, archived }) => {
-  if (!archived) return [name, entry];
-  const { archived: _a, ...rest } = links[name];
-  return [name, rest];
-})) });
+// Flash for a ^z that stepped back one links.json backup (undoLast's result).
+export const undoFlash = (r, now = Date.now()) => [`undid the change from ${ui.span(now - r.at)} ago`,
+  ...[['brought back', r.added], ['removed', r.removed], ['reverted', r.changed]].filter(([, n]) => n.length).map(([l, n]) => `${l} ${n.join(', ')}`),
+  r.left && `${r.left} more`].filter(Boolean).join(' · ');
 
 function scrollHint(start, end, total) {
   const parts = [start > 0 && `↑ ${start} more`, end < total && `↓ ${total - end} more`].filter(Boolean);
@@ -1295,7 +1280,8 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
     let inputBuffer = '';
     let inputCursor = 0;
     let flash = '';
-    let undo = null; // last delete or archive: [{ name, entry, ws?, archived? }]; prune: { before, after } links
+    const wsUndo = []; // workspaces deleted this session { name, entry }, newest last: not in the links.json backups
+    let canUndo = hasBackups();
     const marks = new Set(); // Space-marked shortcut names, across filtering and tabs
     let backView = view; // where Shift+Tab returns from Settings
     let settings = readSettings(); // appearance applies on every tab
@@ -1374,7 +1360,7 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
         inputBuffer,
         inputCursor,
         flash,
-        undo: !!undo,
+        undo: wsUndo.length > 0 || canUndo,
         settings,
         settingIndex,
         archived,
@@ -1454,6 +1440,7 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
       for (const n of marks) if (!allChoices.some(c => c.name === n)) marks.delete(n);
       updateFilter();
       reselect(name, wsName, like);
+      canUndo = hasBackups();
     };
 
     const clearQuery = () => {
@@ -1626,7 +1613,6 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
       const names = (action === 'archiveMarked' ? [...marks] : [filteredChoices[selectedIndex]?.name]).filter(n => links[n] && !links[n].archived);
       if (!names.length) return;
       // All in one save, so one ^z restores them.
-      undo = names.map(name => ({ name, entry: links[name], archived: true }));
       for (const name of names) links[name] = { ...links[name], archived: true };
       saveLinks(links);
       if (action === 'archiveMarked') marks.clear();
@@ -2023,8 +2009,6 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
       const entry = a?.kind === 'archived' && loadLinks()[a.name];
       if (!entry?.archived) return;
       setLink(a.name, unarchived(entry));
-      // A ^z for its archive would only be refused now.
-      if (Array.isArray(undo) && undo.some(u => u.archived && u.name === a.name)) undo = null;
       rebuild();
       refreshSettings();
       done(`restored "${a.name}"`);
@@ -2208,25 +2192,20 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
           const before = loadLinks();
           const { kept, removed } = pruneBroken(before);
           saveLinks(kept);
-          // Some only lost their path, so ^z puts the whole set back, not a re-add.
-          undo = { before, after: kept };
           rebuild();
           done(removed.length ? `removed ${howMany(removed)} (^z undo)` : 'no broken paths');
         } else if (yes && action === 'stale') {
           const links = loadLinks();
-          const gone = staleLinks(links, STALE_DAYS).map(({ name, entry }) => ({ name, entry, archived: true }));
-          for (const { name } of gone) links[name] = { ...links[name], archived: true };
+          const gone = staleLinks(links, STALE_DAYS).map(({ name }) => name);
+          for (const name of gone) links[name] = { ...links[name], archived: true };
           saveLinks(links);
-          // An empty list would crash ^z.
-          if (gone.length) undo = gone;
           rebuild();
-          done(gone.length ? `archived ${howMany(gone.map(g => g.name))} (^z undo)` : 'nothing stale');
+          done(gone.length ? `archived ${howMany(gone)} (^z undo)` : 'nothing stale');
         } else if (yes && action === 'deleteArchived') {
           // ^z puts it back, still archived.
-          const gone = Object.entries(removeLinks([inputName])).map(([name, entry]) => ({ name, entry }));
-          if (gone.length) undo = gone;
+          const gone = Object.keys(removeLinks([inputName])).length;
           rebuild();
-          done(gone.length ? `deleted "${inputName}" (^z undo)` : `"${inputName}" is gone already`);
+          done(gone ? `deleted "${inputName}" (^z undo)` : `"${inputName}" is gone already`);
         } else if (yes && action === 'removeOpener') {
           const { [inputName]: _gone, ...apps } = configApps();
           saveConfig({ ...loadConfig(), apps });
@@ -2247,7 +2226,7 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
           const entry = victim && loadWorkspaces()[victim.name];
           if (entry) {
             removeWorkspace(victim.name);
-            undo = [{ name: victim.name, entry, ws: true }];
+            wsUndo.push({ name: victim.name, entry });
             done(`deleted workspace "${victim.name}" (^z undo)`);
           }
           rebuild();
@@ -2353,36 +2332,25 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
         return;
       }
 
-      // Undo the last delete (either kind), archive or prune, unless its name was taken since.
+      // ^z: deleted workspaces first, else one step back through the links.json backups, like upex undo.
       if (key.ctrl && key.name === 'z') {
-        if (!undo) return;
-        if (!Array.isArray(undo)) {
-          // Prune: the links before it, only while nothing else changed since (opens don't count).
+        const ws = wsUndo.pop();
+        const r = !ws && undoLast();
+        if (ws && Object.hasOwn(loadWorkspaces(), ws.name)) {
+          flash = `can't undo, workspace "${ws.name}" exists again`;
+        } else if (ws) {
+          saveWorkspaces({ ...loadWorkspaces(), [ws.name]: ws.entry });
+          rebuild(null, ws.name);
+          done(`restored workspace "${ws.name}"`);
+        } else if (r) {
+          // Archived ones have no row to select.
           const links = loadLinks();
-          if (!sameLinks(keepUsage(undo.after, links), links)) flash = "can't undo, shortcuts changed since";
-          else {
-            saveLinks(keepUsage(undo.before, links));
-            undo = null;
-            rebuild();
-            if (view === 'settings') refreshSettings();
-            done('undone');
-          }
-          redraw();
-          return;
-        }
-        const links = loadLinks();
-        const err = undoError(undo, links, loadWorkspaces());
-        if (err) {
-          flash = `can't undo, ${err.replace(/\.$/, '')}`;
-        } else {
-          const [{ name, entry, ws }] = undo;
-          if (ws) saveWorkspaces({ ...loadWorkspaces(), [name]: entry });
-          // All in one save, like the delete.
-          else saveLinks(undoneLinks(undo, links));
-          rebuild(ws ? null : name, ws ? name : null);
+          rebuild([...r.added, ...r.changed].find(n => !links[n]?.archived));
           if (view === 'settings') refreshSettings();
-          done(`restored ${howMany(undo.map(u => u.name))}`);
-          undo = null;
+          done(undoFlash(r));
+        } else {
+          canUndo = false;
+          flash = 'nothing to undo';
         }
         redraw();
         return;

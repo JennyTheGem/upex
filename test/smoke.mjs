@@ -22,7 +22,7 @@ import { applyShortcut, applyOpener, cleanEntries, startServer } from '../src/co
 import { COMMAND_NAMES } from '../src/fast.js';
 import { createProgram } from '../src/index.js';
 import { readScripts, detectPm } from '../src/commands/run.js';
-import { renderInteractiveView, nextView, backTo, accentOf, pathLook, inView, tidyPath, byOrder, optionRow, listRows, readMouse, hitTest, rowClick, undoError, undoneLinks, clipName, prefill, editLine, sameLinks, kindOf, retyped, setField, fieldWords, completeTag, expiryOptions, formRows, formLines, statLines, doctorLines, inputLine, missingFlash, staysOpen, expandHome, underlineHits, movePinned, sameGroup, withRecent, withGroups, filterChoices, maxListOf, jumpIndex, isAlt, detailLines, rowOptions, pickedOf, goalSummary, goalsOf, goalText, oneLine, scriptLines, markLines, paneShown, paneToggles, paneWidthOf, withSamePath, archivedList, dotLines, lr, wrapHint, splice, overlayMenu } from '../src/interactive.js';
+import { renderInteractiveView, nextView, backTo, accentOf, pathLook, inView, tidyPath, byOrder, optionRow, listRows, readMouse, hitTest, rowClick, undoFlash, clipName, prefill, editLine, kindOf, retyped, setField, fieldWords, completeTag, expiryOptions, formRows, formLines, statLines, doctorLines, inputLine, missingFlash, staysOpen, expandHome, underlineHits, movePinned, sameGroup, withRecent, withGroups, filterChoices, maxListOf, jumpIndex, isAlt, detailLines, rowOptions, pickedOf, goalSummary, goalsOf, goalText, oneLine, scriptLines, markLines, paneShown, paneToggles, paneWidthOf, withSamePath, archivedList, dotLines, lr, wrapHint, splice, overlayMenu } from '../src/interactive.js';
 import { parseStatus, parseDiff, parseLog, gitOf, stopGit } from '../src/git.js';
 import chalk from 'chalk';
 import { resolveTarget, resolveName, suggestNames } from '../src/fuzzy.js';
@@ -706,20 +706,8 @@ chalk.level = 1;
 assert.ok(renderInteractiveView({ ...viewArgs, flash: { text: 'added "x"', ok: true } }).includes(chalk.green(' added "x" ')), 'success flash is green');
 assert.ok(renderInteractiveView({ ...viewArgs, flash: 'path not found' }).includes(chalk.yellow(' path not found ')), 'plain flash stays yellow');
 chalk.level = lvl;
-const gone = { name: 'old', entry: { path: 'P', aliases: ['o'] } };
-assert.equal(undoError(gone, { other: { path: 'Q' } }, {}), null, 'free name restores');
-assert.match(undoError(gone, { old: { path: 'Q' } }, {}), /already exists/, 'refused when the name was reused');
-assert.match(undoError(gone, { x: { path: 'Q', aliases: ['old'] } }, {}), /alias of x/, 'refused when the name became an alias');
-assert.match(undoError(gone, { x: { path: 'Q', aliases: ['o'] } }, {}), /alias of x/, 'refused when its alias was taken');
-assert.equal(undoError({ name: 'dev', entry: [], ws: true }, { dev: {} }, {}), null, 'workspace names are their own namespace');
-assert.match(undoError({ name: 'dev', entry: [], ws: true }, {}, { dev: [] }), /already exists/, 'workspace refused when reused');
-assert.equal(undoError([{ name: 'a', entry: { path: 'P' }, archived: true }], { a: { path: 'P', archived: true } }, {}), null, 'an archived one restores');
-assert.match(undoError({ name: 'a', entry: { path: 'P' }, archived: true }, { a: { path: 'P' } }, {}), /no longer archived/, 'archive undo refused once restored');
-assert.deepEqual(undoneLinks([{ name: 'a', entry: { path: 'P' }, archived: true }], { a: { path: 'P', tags: ['t'], archived: true }, b: { path: 'B' } }), { a: { path: 'P', tags: ['t'] }, b: { path: 'B' } }, 'archive undo drops only the flag, edits since stay');
-assert.deepEqual(undoneLinks([{ name: 'a', entry: { path: 'P' } }], { b: { path: 'B' } }), { a: { path: 'P' }, b: { path: 'B' } }, 'delete undo puts the entry back');
-const two = [{ name: 'a', entry: { path: 'A' } }, { name: 'b', entry: { path: 'B' } }];
-assert.equal(undoError(two, { c: { path: 'C' } }, {}), null, 'a deleted list restores when all names are free');
-assert.match(undoError(two, { b: { path: 'Q' } }, {}), /already exists/, 'a list is refused when any name was taken');
+assert.equal(undoFlash({ at: 0, added: ['a', 'b'], removed: [], changed: ['c'], left: 3 }, 120000), 'undid the change from 2m ago · brought back a, b · reverted c · 3 more', 'selector ^z flash says what came back');
+assert.equal(undoFlash({ at: 0, added: [], removed: ['x'], changed: [], left: 0 }, 0), 'undid the change from 0m ago · removed x', 'no steps left: no count');
 
 // -- views setting: Tab cycle, header, start tab fallback --
 assert.deepEqual([nextView('shortcuts'), nextView('apps', 'no-workspaces'), nextView('shortcuts', 'no-apps'), nextView('shortcuts', 'shortcuts'), nextView('settings', 'shortcuts')],
@@ -1139,13 +1127,6 @@ assert.ok(v({}).includes('^y copy') && !v({}).includes('move pin') && v({ choice
 assert.deepEqual([{ name: 'up', meta: true, sequence: '\x1b[1;3A' }, { name: 'up', meta: false, sequence: '\x1b\x1b[A' }, { name: 'up', sequence: '\x1b[A' }].map(isAlt), [true, true, false], 'Alt+arrow: modifier code or Esc prefix');
 assert.deepEqual(diffLinks({ a: { path: 'A' }, b: { path: 'B' } }, { b: { path: 'X' }, c: { path: 'C' } }), { added: ['c'], removed: ['a'], changed: ['b'] }, 'diffLinks');
 assert.deepEqual(keepUsage({ a: { path: 'A', uses: 1 }, b: { path: 'B' } }, { a: { path: 'Z', uses: 3, lastUsed: 9 } }), { a: { path: 'A', uses: 3, lastUsed: 9 }, b: { path: 'B' } }, 'keepUsage takes current stats');
-// Prune ^z (selector): only while nothing but usage changed since the prune.
-{
-  const after = { a: { path: 'A' }, b: { app: 'x' } };
-  const since = now => sameLinks(keepUsage(after, now), now);
-  assert.deepEqual([since({ a: { path: 'A', uses: 2, lastUsed: 5 }, b: { app: 'x' } }), since({ a: { path: 'A', pinned: true }, b: { app: 'x' } }), since({ a: { path: 'A' } })],
-    [true, false, false], 'prune undo: an open since is fine, an edit or delete is not');
-}
 assert.equal(defaultName('/x/My Cool  App/'), 'My-Cool-App', 'defaultName: basename, spaces to dashes');
 assert.equal(defaultOpener({ defaultOpener: 'Code' }), 'vscode', 'default opener alias normalized');
 assert.equal(defaultOpener({ defaultOpener: 'nope' }), 'explorer', 'unknown default opener falls back to explorer');
