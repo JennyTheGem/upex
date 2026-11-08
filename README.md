@@ -209,7 +209,7 @@ Run `upex` with no arguments to open the interactive selector. Pinned shortcuts 
 - `Shift+Tab` -- jump to Settings (Left/Right changes a setting, saved right away), again to go back
 - `Enter` -- open the selected shortcut in the selected app, then quit (or stay open with the `enter` setting on `stay`)
 - `Space` -- mark or unmark the selected shortcut (Shortcuts and Apps tabs) and move down; `Enter` then opens every marked one (folders in the picked opener, else their own) and `Ctrl+D` deletes them all (one `Ctrl+Z` or `upex undo` brings them back)
-- Type -- fuzzy-filter the list (Space marks instead of typing)
+- Type -- fuzzy-filter the list (Space marks instead of typing); `#vel` keeps shortcuts with a tag starting with vel, `#vel#web` needs both tags, `api#vel` also searches api fuzzy
 - `Ctrl+A` -- add a shortcut for the current directory
 - `Ctrl+E` -- edit the selected shortcut's path (starts filled in, `Ctrl+U` clears it)
 - `Ctrl+R` -- rename the selected shortcut (starts filled in)
@@ -345,6 +345,7 @@ Appearance:
 - `"paths"`: `"dim"` (default, parent folders dimmed), `"full"` or `"hidden"` (no paths, commands or URLs) in the selector, `upex ls`, `upex stale` and `upex ui`. Piped output always shows paths.
 - `"rowDetails"`: what shows on the right of a row in the selector, `upex ls` and `upex ui`. `"both"` (default), `"tags"` (#tags), `"badges"` (★ pinned, app, cmd, url, missing) or `"none"`. Piped `upex ls` always shows both.
 - `"pinned"`: `"top"` (default, pinned shortcuts first) or `"section"` (first, under a Pinned heading, the rest under All) in the selector and `upex ui`. A search in the selector sorts by match, so it drops the headings.
+- `"groups"`: `"off"` (default) or `"tags"` (pinned ones under Pinned on top, then a #tag heading with its count per tag in the selector and `upex ui`, in the sort order, a shortcut with two tags under both, untagged ones last). Not while searching or filtering by a tag.
 
 Detail pane (selector only, full screen, 140+ columns, or narrower with `narrowPane`):
 

@@ -95,11 +95,25 @@ export function movePinned(pins, name, dir, same = () => true) {
   [names[i], names[j]] = [names[j], names[i]];
   return names;
 }
+// Groups setting: the pins a row's Alt+Up/Down passes, those in its #tag or untagged group (any elsewhere).
+export const sameGroup = ({ group }) => x => (group?.startsWith('#') ? !!x.tags?.includes(group.slice(1)) : group !== 'untagged' || !x.tags?.length);
 
-// Recent strip: the last `n` opened again on top, marked `recent`. Not for a list that short.
-export function withRecent(list, n = 3) {
+// Recent strip: the last `n` opened again on top of `rest` (the shown list), marked `recent`. Not for a list that short.
+export function withRecent(list, n = 3, rest = list) {
   const recent = list.filter(c => c.lastUsed).sort((a, b) => b.lastUsed - a.lastUsed).slice(0, n);
-  return list.length > n && recent.length ? [...recent.map(c => ({ ...c, recent: true })), ...list] : list;
+  return list.length > n && recent.length ? [...recent.map(c => ({ ...c, recent: true })), ...rest] : rest;
+}
+
+// Groups setting on a sorted list: pinned ones under Pinned on top, then a copy per tag under `group` "#tag",
+// untagged ones last. Groups follow the list order (the sort), A to Z when `byName`.
+export function withGroups(list, byName = false) {
+  if (!list.some(c => c.tags?.length)) return list;
+  const tags = [...new Set(list.flatMap(c => c.tags || []))];
+  if (byName) tags.sort((a, b) => a.localeCompare(b));
+  const as = (cs, group) => cs.map(c => ({ ...c, group }));
+  return [...as(list.filter(c => c.pinned), 'Pinned'),
+    ...tags.flatMap(t => as(list.filter(c => c.tags?.includes(t)), `#${t}`)),
+    ...as(list.filter(c => !c.tags?.length), 'untagged')];
 }
 
 // Max rows setting -> list rows. Auto: fill in full screen, else 8.
@@ -121,10 +135,16 @@ function buildWorkspaceChoices() {
 }
 
 export function filterChoices(choices, query) {
-  const trimmed = query.trim();
-  if (!trimmed) return choices;
+  // "#we" words keep shortcuts with a tag starting with "we" (a lone # none); the other words search fuzzy.
+  // Also split before each #: Space marks, so "#we#ui" or "api#we".
+  const words = query.trim().split(/\s+|(?=#)/);
+  const isTag = w => w.startsWith('#');
+  const tags = words.filter(isTag).map(w => w.slice(1).toLowerCase()).filter(Boolean);
+  const pool = tags.length ? choices.filter(c => tags.every(t => c.tags?.some(x => x.toLowerCase().startsWith(t)))) : choices;
+  const trimmed = words.filter(w => !isTag(w)).join(' ');
+  if (!trimmed) return pool;
 
-  const fuse = new Fuse(choices, {
+  const fuse = new Fuse(pool, {
     keys: ['name', 'path', 'searchText'],
     threshold: 0.35,
     includeMatches: true,
@@ -406,6 +426,7 @@ const SETTING_ROWS = [
   { section: 'Appearance', key: 'paths', label: 'Paths', names: { dim: 'Dim folders', full: 'Full', hidden: 'Hidden' } },
   { section: 'Appearance', key: 'rowDetails', label: 'Row details', names: { both: 'Both', tags: 'Tags', badges: 'Badges', none: 'None' } },
   { section: 'Appearance', key: 'pinned', label: 'Pinned', names: { top: 'On top', section: 'Own section' } },
+  { section: 'Appearance', key: 'groups', label: 'Groups', names: { off: 'Off', tags: 'By tag' } },
   { section: 'Appearance', key: 'glyphs', label: 'Glyphs', names: { unicode: 'Unicode', ascii: 'ASCII' } },
   { section: 'Appearance', key: 'theme', label: 'Web theme', names: { system: 'System', dark: 'Dark', light: 'Light' } },
   { section: 'Detail pane', key: 'narrowPane', label: 'Narrow screens', names: { toggle: 'Shift+→ / ←', always: 'Always' } },
@@ -439,6 +460,7 @@ function settingNote(key, s, wt) {
   if (key === 'paths') return 'Paths in the lists here, in upex ls / stale and in upex ui.';
   if (key === 'rowDetails') return 'Right side of a row: #tags, badges (pinned, app, missing), both or none. Here, in upex ls and upex ui.';
   if (key === 'pinned') return 'Pinned shortcuts first, or first under their own Pinned heading. Here and in upex ui. ^p pins, Alt+↑↓ moves one.';
+  if (key === 'groups') return 'By tag: Pinned on top, then a #tag heading per tag in the sort order, like folders; two tags show under both, untagged last. Here and in upex ui. Type #tag to filter.';
   if (key === 'narrowPane') return 'Under 140 columns (full screen): Shift+→ opens the pane, Shift+← or Esc closes it, or it always shows. Not under 60.';
   if (key === 'paneWidth') return 'How much of the screen the pane takes: Narrow leaves the list more room, Wide shows more details.';
   if (key === 'goals') return 'Pane right of the list (full screen): open upgo goals of a folder, up to this many. S-→ picks one to copy, a click copies it.';
@@ -827,9 +849,12 @@ export function renderInteractiveView({
     // Pinned setting 'section': Pinned / All headings, unless a search reorders the list.
     // Recent strip rows (withRecent) go under their own Recent heading.
     const heads = settings.pinned === 'section' && !plain && !query?.trim() && list.find(c => !c.recent)?.pinned;
-    const group = c => (c.recent ? 'Recent' : heads && c.pinned ? 'Pinned' : 'All');
+    // Groups setting (withGroups): each row's `group` heading, with its count.
+    const group = c => (c.recent ? 'Recent' : c.group || (heads && c.pinned ? 'Pinned' : 'All'));
+    const grouped = list.some(c => c.group);
     const items = list.flatMap((c, i) => [
-      ...((heads || list[0]?.recent) && (i === 0 || group(c) !== group(list[i - 1])) ? [{ head: group(c) }] : []),
+      ...((heads || grouped || list[0]?.recent) && (i === 0 || group(c) !== group(list[i - 1]))
+        ? [{ head: group(c) + (c.group ? `  ${list.filter(x => !x.recent && x.group === c.group).length}` : '') }] : []),
       { i },
     ]);
     const { start, end } = getVisibleWindow(items, items.findIndex(x => x.i === index), Math.min(maxList, listRows(items.length, room)));
@@ -1043,7 +1068,11 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
       filteredWs = filterChoices(wsChoices, query);
       wsIndex = Math.max(0, Math.min(wsIndex, filteredWs.length - 1));
       filteredChoices = filterChoices(choices, query);
-      if (!query.trim() && settings.recentStrip === 'on') filteredChoices = withRecent(filteredChoices);
+      if (!query.trim()) {
+        const base = filteredChoices;
+        if (settings.groups === 'tags') filteredChoices = withGroups(base, settings.sort === 'name');
+        if (settings.recentStrip === 'on') filteredChoices = withRecent(base, 3, filteredChoices);
+      }
       if (filteredChoices.length === 0) {
         selectedIndex = 0;
         return;
@@ -1053,9 +1082,9 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
       }
     };
 
-    // Select these again when they're still in the filtered lists; `recent` prefers the Recent strip copy.
-    const reselect = (name, wsName, recent = false) => {
-      const same = filteredChoices.findIndex(c => c.name === name && !!c.recent === recent);
+    // Select these again when they're still in the filtered lists; `like` prefers the copy in the same Recent strip or group.
+    const reselect = (name, wsName, like = {}) => {
+      const same = filteredChoices.findIndex(c => c.name === name && !!c.recent === !!like.recent && c.group === like.group);
       const i = same >= 0 ? same : filteredChoices.findIndex(c => c.name === name);
       if (i >= 0) selectedIndex = i;
       const j = filteredWs.findIndex(c => c.name === wsName);
@@ -1064,13 +1093,13 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
 
     // Reload from disk after a mutation and try to keep `name` / `wsName` selected.
     const rebuild = (name, wsName) => {
-      const recent = !!filteredChoices[selectedIndex]?.recent;
+      const like = filteredChoices[selectedIndex];
       allChoices = buildChoices();
       choices = allChoices.filter(inView(view));
       wsChoices = buildWorkspaceChoices();
       for (const n of marks) if (!allChoices.some(c => c.name === n)) marks.delete(n);
       updateFilter();
-      reselect(name, wsName, recent);
+      reselect(name, wsName, like);
     };
 
     const clearQuery = () => {
@@ -1648,7 +1677,7 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
         // A search sorts by match, so the move wouldn't show.
         else if (query.trim()) flash = 'clear the search to move a pin';
         else {
-          const order = movePinned(allChoices.filter(x => x.pinned), c.name, key.name === 'up' ? -1 : 1, inView(view));
+          const order = movePinned(allChoices.filter(x => x.pinned), c.name, key.name === 'up' ? -1 : 1, x => inView(view)(x) && sameGroup(c)(x));
           if (order) { setPinOrder(order); rebuild(c.name); }
         }
         redraw();

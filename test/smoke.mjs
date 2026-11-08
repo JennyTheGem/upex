@@ -22,7 +22,7 @@ import { applyShortcut, applyOpener, cleanEntries, startServer } from '../src/co
 import { COMMAND_NAMES } from '../src/fast.js';
 import { createProgram } from '../src/index.js';
 import { readScripts, detectPm } from '../src/commands/run.js';
-import { renderInteractiveView, nextView, backTo, accentOf, pathLook, inView, tidyPath, byOrder, optionRow, listRows, readMouse, hitTest, rowClick, undoError, undoneLinks, clipName, prefill, editLine, inputLine, missingFlash, staysOpen, expandHome, underlineHits, movePinned, withRecent, maxListOf, isAlt, detailLines, rowOptions, pickedOf, goalSummary, goalsOf, goalText, oneLine, scriptLines, markLines, paneShown, paneToggles, paneWidthOf, withSamePath, archivedList } from '../src/interactive.js';
+import { renderInteractiveView, nextView, backTo, accentOf, pathLook, inView, tidyPath, byOrder, optionRow, listRows, readMouse, hitTest, rowClick, undoError, undoneLinks, clipName, prefill, editLine, inputLine, missingFlash, staysOpen, expandHome, underlineHits, movePinned, sameGroup, withRecent, withGroups, filterChoices, maxListOf, isAlt, detailLines, rowOptions, pickedOf, goalSummary, goalsOf, goalText, oneLine, scriptLines, markLines, paneShown, paneToggles, paneWidthOf, withSamePath, archivedList } from '../src/interactive.js';
 import { parseStatus, parseDiff, parseLog, gitOf, stopGit } from '../src/git.js';
 import chalk from 'chalk';
 import { resolveTarget, resolveName, suggestNames } from '../src/fuzzy.js';
@@ -437,8 +437,8 @@ assert.ok(!setView.includes('Archived'), 'no archived section when none');
 const arcArgs = { ...setArgs, archived: [{ name: 'old', path: '/old/dir' }], height: 80 };
 const arcView = strip(renderInteractiveView({ ...arcArgs, settingIndex: 0 }));
 assert.ok(arcView.includes('Archived 1') && arcView.includes('/old/dir') && arcView.includes('change (saved)'), 'archived section lists them');
-// 22 setting rows (pane split hidden), so index 22 is the first archived one.
-const arcSel = strip(renderInteractiveView({ ...arcArgs, settingIndex: 22 }));
+// 23 setting rows (pane split hidden), so index 23 is the first archived one.
+const arcSel = strip(renderInteractiveView({ ...arcArgs, settingIndex: 23 }));
 assert.ok(arcSel.includes('› old') && arcSel.includes('↵ restore') && arcSel.includes('upex restore old'), 'picked archived row: restore key and note');
 
 // rows stay inside the given width, the missing badge survives a long path
@@ -576,11 +576,11 @@ assert.ok(renderInteractiveView({ ...setArgs, settings: { ...setArgs.settings, a
 const tall = strip(renderInteractiveView({ ...setArgs, height: 40, settings: { ...setArgs.settings, theme: 'light' } }));
 assert.ok(tall.includes('Web theme       System  Dark  ‹ Light ›'), 'web theme row');
 assert.ok(['General', 'Terminals', 'Opening', 'Appearance'].every(s => tall.includes(`\n  ${s}\n`)), 'settings grouped in sections');
-const short = rowsOf({ ...setArgs, height: 14, settingIndex: 17 });
+const short = rowsOf({ ...setArgs, height: 14, settingIndex: 18 });
 assert.ok(short.length <= 14 && short.some(l => l.startsWith('  › Web theme')) && short.at(-1).includes('setting'), 'short terminal scrolls settings, keeps the footer');
-assert.equal(at({ ...setArgs, height: 14, settingIndex: 16 }, 3, short.findIndex(l => l.startsWith('  › Web theme')) + 1)?.setting, 16, 'scrolled settings stay clickable');
-const arcShort = { ...setArgs, archived: [{ name: 'old', path: '/old/dir' }], height: 14, settingIndex: 22 };
-assert.equal(at(arcShort, 3, rowsOf(arcShort).findIndex(l => l.startsWith('  › old')) + 1)?.setting, 22, 'last archived row scrolls into view, stays clickable');
+assert.equal(at({ ...setArgs, height: 14, settingIndex: 17 }, 3, short.findIndex(l => l.startsWith('  › Web theme')) + 1)?.setting, 17, 'scrolled settings stay clickable');
+const arcShort = { ...setArgs, archived: [{ name: 'old', path: '/old/dir' }], height: 14, settingIndex: 23 };
+assert.equal(at(arcShort, 3, rowsOf(arcShort).findIndex(l => l.startsWith('  › old')) + 1)?.setting, 23, 'last archived row scrolls into view, stays clickable');
 assert.equal(checkSettings({ accent: 'red' }).error, 'accent must be one of: default, green, blue, purple, orange, or a hex color like #ff66aa.', 'bad accent refused');
 assert.deepEqual([checkSettings({ accent: '#FF66aa' }).next.accent, checkSettings({ accent: 'ff66aa' }).next.accent, checkSettings({ sort: '#ff66aa' }).error?.slice(0, 4)], ['#ff66aa', '#ff66aa', 'sort'], 'hex only for accent, normalized');
 assert.deepEqual([setting('accent', { accent: '#ff66aa' }), setting('accent', { accent: '#ff66a' }), setting('accent', { accent: '"><x' })], ['#ff66aa', 'default', 'default'], 'stored hex read back, junk falls back');
@@ -845,6 +845,20 @@ assert.equal(rec.map(c => c.name + (c.recent ? '*' : '')).join(' '), 'c* e* d* a
 assert.equal(withRecent(dated).length, 3, 'no recent strip for a short list');
 const recView = strip(renderInteractiveView({ ...viewArgs, height: 30, choices: rec, settings: { recentStrip: 'on' } }));
 assert.ok(/ {4}Recent\n {2}› c/.test(recView) && /\n {4}All\n {4}a/.test(recView), 'recent strip: Recent and All headings');
+// Groups by tag: pinned on top, a copy per tag in the sort order (A to Z by name), untagged last.
+const tagged = [{ name: 'a', tags: ['web', 'velora'], path: 'A', exists: true }, { name: 'b', pinned: true, tags: ['velora'], path: 'B', exists: true }, { name: 'c', path: 'C', exists: true }];
+const label = l => l.map(c => `${c.group}:${c.name}`).join(' ');
+assert.equal(label(withGroups(tagged)), 'Pinned:b #web:a #velora:a #velora:b untagged:c', 'groups: pinned on top, also in their tag; tags in list order');
+assert.equal(label(withGroups(tagged, true)), 'Pinned:b #velora:a #velora:b #web:a untagged:c', 'groups: A to Z by name');
+assert.equal(withGroups([{ name: 'c' }]).length, 1, 'groups: no tags, no headings');
+const grpView = strip(renderInteractiveView({ ...viewArgs, height: 30, choices: withRecent(tagged, 3, withGroups(tagged)) }));
+assert.ok(/ {4}Pinned {2}1\n {2}› b/.test(grpView) && / {4}#velora {2}2\n {4}a/.test(grpView) && grpView.includes('#web  1') && grpView.includes('untagged  1'), 'groups: #tag headings with counts');
+assert.deepEqual(filterChoices(tagged, '#vel').map(c => c.name), ['a', 'b'], '#tag filters by tag prefix');
+assert.deepEqual(filterChoices(tagged, '#VEL #web').map(c => c.name), ['a'], 'every #tag must match, any case');
+assert.deepEqual(filterChoices(tagged, '#velora b').map(c => c.name), ['b'], '#tag plus fuzzy words');
+assert.equal(filterChoices(tagged, '#').length, 3, 'a lone # is no tag filter');
+assert.deepEqual([filterChoices(tagged, '#vel#web'), filterChoices(tagged, 'b#vel')].map(l => l.map(c => c.name).join()), ['a', 'b'], '#tags chain without a space (Space marks)');
+assert.deepEqual(movePinned([{ name: 'a', tags: ['web'] }, { name: 'b', tags: ['vel'] }, { name: 'c', tags: ['web'] }], 'a', 1, sameGroup({ group: '#web' })), ['c', 'b', 'a'], 'groups: a pin moves past the next pin of its tag group');
 assert.deepEqual([maxListOf('12'), maxListOf(undefined)], [12, 8], 'max rows setting');
 assert.equal(setting('maxRows', { maxRows: 'fill' }), 'auto', 'a dropped fill reads as auto');
 // Inline, Auto is 8: no separate Auto option, 8 or auto shows as the picked "8".
@@ -1080,7 +1094,7 @@ try {
   assert.equal(cfg2.paneSplit, 'horizontal', 'refused request saved nothing, later one did');
   assert.equal(cfg2.defaultOpener, 'vscode', 'default opener stored as its key');
   const st2 = await (await fetch(base + '/api/state', { headers: { 'x-upex-token': token } })).json();
-  assert.deepEqual(st2.settings, { startView: 'apps', sort: 'name', terminalLayout: 'panes', paneSplit: 'horizontal', terminalShell: 'powershell', fullScreen: 'on', theme: 'system', accent: 'default', density: 'comfortable', paths: 'dim', keyHints: 'full', maxRows: 'auto', recentStrip: 'off', views: 'all', enter: 'quit', rowDetails: 'both', pinned: 'top', narrowPane: 'toggle', paneWidth: 'normal', goals: 'off', git: 'off', glyphs: 'unicode', defaultOpener: 'vscode' }, 'state reports settings');
+  assert.deepEqual(st2.settings, { startView: 'apps', sort: 'name', terminalLayout: 'panes', paneSplit: 'horizontal', terminalShell: 'powershell', fullScreen: 'on', theme: 'system', accent: 'default', density: 'comfortable', paths: 'dim', keyHints: 'full', maxRows: 'auto', recentStrip: 'off', views: 'all', enter: 'quit', rowDetails: 'both', pinned: 'top', groups: 'off', narrowPane: 'toggle', paneWidth: 'normal', goals: 'off', git: 'off', glyphs: 'unicode', defaultOpener: 'vscode' }, 'state reports settings');
   assert.deepEqual(Object.keys(cfg2.workspaces), ['work'], 'settings save keeps workspaces');
   const note = path.join(webHome, 'note.txt');
   fs.writeFileSync(note, '');

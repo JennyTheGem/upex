@@ -153,6 +153,7 @@ h1 { font-size: 20px; letter-spacing: -.015em; margin: 8px 0 4px; }
   align-items: center; gap: 14px; padding: var(--pad) 12px; border-top: 1px solid var(--line);
 }
 .item:first-child, .group:first-child { border-top: 0; }
+.group .n { margin-left: 8px; opacity: .7; font-variant-numeric: tabular-nums; }
 .group { padding: 6px 12px; font-size: 12px; color: var(--muted); border-top: 1px solid var(--line); background: var(--raise); }
 .item:hover { background: color-mix(in srgb, var(--raise) 55%, transparent); }
 .item > .kind { display: flex; color: var(--muted); }
@@ -297,6 +298,7 @@ const SETTING_OPTS = {
   paths: { dim: 'Dim folders', full: 'Full', hidden: 'Hidden' },
   rowDetails: { both: 'Both', tags: 'Tags', badges: 'Badges', none: 'None' },
   pinned: { top: 'On top', section: 'Own section' },
+  groups: { off: 'Off', tags: 'By tag' },
 };
 // Row details setting: does `what` ('tags' | 'badges') show?
 const shows = what => [undefined, 'both', what].includes(S.settings.rowDetails);
@@ -452,6 +454,15 @@ function visibleLinks() {
     .sort((a, b) => { const f = SORT_FIELD[S.settings.sort]; return b.pinned - a.pinned || Math.sign(pinRank(a) - pinRank(b)) || (f ? b[f] - a[f] : 0) || a.name.localeCompare(b.name); });
 }
 
+// Groups setting on a sorted list: [heading, links] with pinned on top, then per tag in list order (A to Z when `byName`),
+// a link with two tags under both, untagged last.
+function groupLinks(list, byName) {
+  const tags = [...new Set(list.flatMap(l => l.tags))];
+  if (byName) tags.sort((a, b) => a.localeCompare(b));
+  return [['Pinned', list.filter(l => l.pinned)], ...tags.map(t => ['#' + t, list.filter(l => l.tags.includes(t))]),
+    ['untagged', list.filter(l => !l.tags.length)]].filter(g => g[1].length);
+}
+
 // Pin order from the selector (Alt+Up/Down); unordered pins after.
 function pinRank(l) {
   return l.pinOrder ?? Infinity;
@@ -540,8 +551,9 @@ function splitLeaf(l) {
   return [t.slice(0, cut), h('span', { class: l.kind === 'url' ? null : 'leaf' }, t.slice(cut))];
 }
 
-function row(l) {
-  if (S.editing === l.name) return editRow(l);
+// `again`: a second copy (Groups by tag), which never turns into the edit form.
+function row(l, again) {
+  if (S.editing === l.name && !again) return editRow(l);
 
   let actions;
   const archive = (on) => act(() => api('PUT', 'archive', { name: l.name, archived: on }), `${on ? 'Archived' : 'Restored'} ${l.name}`);
@@ -650,6 +662,12 @@ function linksView() {
       h('strong', null, 'Nothing matches'),
       `No shortcut has "${S.q || '#' + S.tag}" in its name, alias, target or tags.`,
       h('div', null, btn('Clear filters', '', () => { S.q = ''; S.tag = null; document.getElementById('q').value = ''; render(); })))));
+  } else if (S.settings.groups === 'tags' && !S.q.trim() && !S.tag && list.some(l => l.tags.length)) {
+    const seen = new Set();
+    out.push(h('div', { class: 'list' }, groupLinks(list, S.settings.sort === 'name').map(([g, ls]) => [
+      h('div', { class: 'group', role: 'heading', 'aria-level': '2' }, g, h('span', { class: 'n' }, String(ls.length))),
+      ls.map((l) => { const again = seen.has(l.name); seen.add(l.name); return row(l, again); }),
+    ])));
   } else {
     // Pinned setting 'section': Pinned / All headings.
     const heads = S.settings.pinned === 'section' && list[0].pinned;
@@ -856,14 +874,15 @@ function settingsView() {
           S.apps.filter(a => a.key !== 'copy').map(a => h('option', { value: a.key, selected: s.defaultOpener === a.key }, a.label)),
           !S.apps.some(a => a.key === s.defaultOpener) && h('option', { value: s.defaultOpener, selected: true }, s.defaultOpener)))),
     h('section', { class: 'form', 'aria-labelledby': 'set-look' },
-      head('set-look', 'Appearance', ['theme', 'accent', 'density', 'paths', 'rowDetails', 'pinned']),
+      head('set-look', 'Appearance', ['theme', 'accent', 'density', 'paths', 'rowDetails', 'pinned', 'groups']),
       h('p', { class: 'lede', style: 'margin:0' }, 'All but theme also apply to the upex selector. Theme is this page only, the terminal keeps its own colors.'),
       seg('theme', 'Theme', l => `Theme: ${l}`),
       seg('accent', 'Accent', l => `Accent: ${l}`, k => h('span', { class: 'swatch ac-' + k, 'aria-hidden': 'true' }), customAccent),
       seg('density', 'Density', l => `Density: ${l}`),
       seg('paths', 'Paths', l => `Paths: ${l}`),
       seg('rowDetails', 'Row details', l => `Row details: ${l}`),
-      seg('pinned', 'Pinned', l => `Pinned: ${l}`)),
+      seg('pinned', 'Pinned', l => `Pinned: ${l}`),
+      seg('groups', 'Groups', l => `Groups: ${l}`)),
     h('section', { class: 'form', 'aria-labelledby': 'set-apps' },
       h('h2', { id: 'set-apps', style: 'font-size:15px;margin:0' }, 'Custom openers'),
       h('p', { class: 'lede', style: 'margin:0' }, 'More apps to open folders in, like Cursor or Sublime. upex runs the command with the folder path after it. Same list as upex app in the terminal.'),

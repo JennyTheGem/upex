@@ -92,7 +92,7 @@ const INTERACTIVE_APP_KEYS = [
 // Openers that open terminal windows (and so take a window count).
 export const isTerminalApp = key => key === 'cmd' || key === 'claude';
 
-// Settings in config.json; the first value is the default. Start view, views, sort and pinned are shared by the selector and upex ui; fullScreen, keyHints, maxRows, recentStrip, enter, narrowPane, paneWidth, goals, git and glyphs are selector only.
+// Settings in config.json; the first value is the default. Start view, views, sort, pinned and groups are shared by the selector and upex ui; fullScreen, keyHints, maxRows, recentStrip, enter, narrowPane, paneWidth, goals, git and glyphs are selector only.
 // Layout: separate windows, or tabs/panes in one Windows Terminal window. Shell 'profile' = wt default profile.
 export const SETTINGS = {
   // last = the tab (and opener) the selector or upex ui was left on.
@@ -122,6 +122,8 @@ export const SETTINGS = {
   rowDetails: ['both', 'tags', 'badges', 'none'],
   // Pinned shortcuts first, or first under their own Pinned heading (selector, upex ui).
   pinned: ['top', 'section'],
+  // Shortcuts under a #tag heading per tag, untagged last (selector, upex ui).
+  groups: ['off', 'tags'],
   // Detail pane (selector) under 140 columns: Shift+Right opens it, Shift+Left closes it, or it always shows.
   narrowPane: ['toggle', 'always'],
   // Detail pane (selector) width: share of the screen.
