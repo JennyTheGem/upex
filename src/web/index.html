@@ -289,6 +289,7 @@ const SETTING_OPTS = {
   startView: { shortcuts: 'Shortcuts', apps: 'Apps', workspaces: 'Workspaces', last: 'Last used' },
   sort: { recent: 'Most used', name: 'A to Z', opened: 'Last opened', added: 'Recently added' },
   views: { all: 'All', 'no-workspaces': 'No Workspaces', 'no-apps': 'No Apps', shortcuts: 'Shortcuts only' },
+  searchIn: { all: 'Names, paths, tags', names: 'Names only' },
   terminalLayout: { windows: 'Separate windows', tabs: 'Tabs', panes: 'Split panes' },
   paneSplit: { auto: 'Auto', vertical: 'Side by side', horizontal: 'Stacked' },
   terminalShell: { cmd: 'cmd', powershell: 'PowerShell', pwsh: 'PowerShell 7', profile: 'WT default profile' },
@@ -450,7 +451,7 @@ function visibleLinks() {
   const q = S.q.trim().toLowerCase();
   return tabLinks()
     .filter(l => !S.tag || l.tags.includes(S.tag))
-    .filter(l => !q || [l.name, l.target, ...l.tags, ...l.aliases].some(s => s.toLowerCase().includes(q)))
+    .filter(l => !q || [l.name, ...l.aliases, ...(S.settings.searchIn === 'names' ? [] : [l.target, ...l.tags])].some(s => s.toLowerCase().includes(q)))
     .sort((a, b) => { const f = SORT_FIELD[S.settings.sort]; return b.pinned - a.pinned || Math.sign(pinRank(a) - pinRank(b)) || (f ? b[f] - a[f] : 0) || a.name.localeCompare(b.name); });
 }
 
@@ -853,11 +854,12 @@ function settingsView() {
     .then(() => document.getElementById('set-opener')?.focus());
   return [
     h('section', { class: 'form', 'aria-labelledby': 'set-gen' },
-      head('set-gen', 'General', ['startView', 'views', 'sort']),
+      head('set-gen', 'General', ['startView', 'views', 'sort', 'searchIn']),
       h('p', { class: 'lede', style: 'margin:0' }, 'Shared with the upex selector in the terminal.'),
       seg('startView', 'Start view', l => `upex opens on ${l}`),
       seg('views', 'Tabs', l => `Tabs: ${l}`),
-      seg('sort', 'Sort', l => `Sorted: ${l}`)),
+      seg('sort', 'Sort', l => `Sorted: ${l}`),
+      seg('searchIn', 'Search in', l => `Search: ${l.toLowerCase()}`)),
     h('section', { class: 'form', 'aria-labelledby': 'set-term' },
       head('set-term', 'Terminals', ['terminalLayout', 'paneSplit', 'terminalShell']),
       h('p', { class: 'lede', style: 'margin:0' }, 'The shell terminal openers start, and whether several of them go into your current Windows Terminal window as tabs or split panes.'),
@@ -977,7 +979,7 @@ function render() {
     t.hidden = hide.includes(t.dataset.view);
     t.dataset.view === S.view ? t.setAttribute('aria-current', 'page') : t.removeAttribute('aria-current');
   });
-  document.getElementById('q').placeholder = S.view === 'ws' ? 'Search workspaces' : 'Search names, paths, tags';
+  document.getElementById('q').placeholder = S.view === 'ws' ? 'Search workspaces' : S.settings.searchIn === 'names' ? 'Search names' : 'Search names, paths, tags';
   document.querySelector('.search').hidden = S.view === 'settings';
 
   const main = document.getElementById('main');

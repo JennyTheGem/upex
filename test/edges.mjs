@@ -38,6 +38,14 @@ assert.deepEqual(resolveTarget('my app/x', links), { name: 'my app', exact: true
 assert.deepEqual(resolveTarget('notes\\\\x', links), { name: 'notes', exact: true, sub: 'x' }, 'repeated backslashes');
 assert.equal(resolveTarget('zz/src', links), null, 'unknown head -> null');
 assert.equal(resolveTarget('toString/x', links), null, 'prototype head is not a shortcut');
+// Fuzzy setting from config.json; an unreadable one falls back to normal.
+fs.writeFileSync(CONFIG_FILE, JSON.stringify({ fuzzy: 'exact' }));
+assert.equal(resolveName('wbe', links), null, 'exact: no typos');
+assert.deepEqual(resolveName('ote', links), { name: 'notes', exact: false }, 'exact: letters in a row still resolve');
+assert.deepEqual(resolveName('app', { 'myapp-old': {}, app2: {} }), { name: 'app2', exact: false }, 'exact: the earliest match wins');
+fs.writeFileSync(CONFIG_FILE, '{ broken');
+assert.deepEqual(resolveName('wbe', links), { name: 'web', exact: false }, 'unreadable config: normal');
+fs.writeFileSync(CONFIG_FILE, '{}');
 
 // -- launcher setup: fake child_process --
 fs.mkdirSync(path.join(home, '.upex'), { recursive: true });

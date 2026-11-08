@@ -92,7 +92,7 @@ const INTERACTIVE_APP_KEYS = [
 // Openers that open terminal windows (and so take a window count).
 export const isTerminalApp = key => key === 'cmd' || key === 'claude';
 
-// Settings in config.json; the first value is the default. Start view, views, sort, pinned and groups are shared by the selector and upex ui; fullScreen, keyHints, maxRows, recentStrip, enter, narrowPane, paneWidth, goals, git and glyphs are selector only.
+// Settings in config.json; the first value is the default. Start view, views, sort, searchIn, pinned and groups are shared by the selector and upex ui; fullScreen, keyHints, maxRows, recentStrip, enter, flash, narrowPane, paneWidth, goals, git and glyphs are selector only.
 // Layout: separate windows, or tabs/panes in one Windows Terminal window. Shell 'profile' = wt default profile.
 export const SETTINGS = {
   // last = the tab (and opener) the selector or upex ui was left on.
@@ -105,6 +105,12 @@ export const SETTINGS = {
   views: ['all', 'no-workspaces', 'no-apps', 'shortcuts'],
   // Selector Enter: open and quit, or open and keep the selector.
   enter: ['quit', 'stay'],
+  // Fuzzy matching of the selector filter and of names (upex <name>, go). Exact: the typed letters in a row, no typos.
+  fuzzy: ['normal', 'exact', 'loose'],
+  // What the filter searches (selector, upex ui): names, aliases, paths and tags, or names and aliases only.
+  searchIn: ['all', 'names'],
+  // Selector success message: fades after 3 or 6 seconds, or stays until the next key.
+  flash: ['3', '6', 'key'],
   terminalLayout: ['windows', 'tabs', 'panes'],
   paneSplit: ['auto', 'vertical', 'horizontal'],
   terminalShell: ['cmd', 'powershell', 'pwsh', 'profile'],

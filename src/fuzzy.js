@@ -3,27 +3,40 @@
  */
 
 import { createRequire } from 'node:module';
-import { activeLinks, aliasesOf, nameOwner } from './store.js';
+import { activeLinks, aliasesOf, nameOwner, loadConfig } from './store.js';
 
 // Loaded on first fuzzy search: exact hits (the cd hot path) never pay for it.
 const require = createRequire(import.meta.url);
 const Fuse = (...args) => new (require('fuse.js'))(...args);
 
+// Fuzzy setting -> Fuse options, `base` = the normal threshold. Exact: the typed letters in a row, anywhere in the text.
+export const fuseOpts = (strict, base) => (strict === 'exact' ? { threshold: 0, ignoreLocation: true } : { threshold: strict === 'loose' ? base + 0.2 : base });
+
+// Fuzzy setting; normal when config.json is unreadable, so go still works.
+function strictness() {
+  try { return loadConfig().fuzzy; } catch { return undefined; }
+}
+
 /**
  * Find the best fuzzy match for `query` in a list of shortcut names.
  * Returns { match, score } or null.
  */
-export function fuzzyMatch(query, names) {
+export function fuzzyMatch(query, names, strict = strictness()) {
   if (!names.length) return null;
 
   const fuse = Fuse(names.map(n => ({ name: n })), {
     keys: ['name'],
-    threshold: 0.4,
     includeScore: true,
+    ...fuseOpts(strict, 0.4),
   });
 
   const results = fuse.search(query);
   if (results.length === 0) return null;
+  // Exact scores every hit alike: the earliest match wins, like normal (-1 sorts last).
+  if (strict === 'exact') {
+    const at = r => r.item.name.toLowerCase().indexOf(query.toLowerCase()) >>> 0;
+    results.sort((a, b) => at(a) - at(b));
+  }
 
   return {
     match: results[0].item.name,

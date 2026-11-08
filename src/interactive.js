@@ -10,6 +10,7 @@ import chalk from 'chalk';
 import Fuse from 'fuse.js';
 import { getInteractiveAppChoices, getAppMap, isTerminalApp, hasWindowsTerminal, defaultOpener, readSettings, setting, startTab, shownTabs, isHex, copyToClipboard, launchUrl, configApps, SETTINGS } from './launcher.js';
 import { gitOf, stopGit } from './git.js';
+import { fuseOpts } from './fuzzy.js';
 import { loadLinks, activeLinks, unarchived, aliasesOf, takenError, checkAliases, frecency, removeLinks, saveLinks, setLink, renameLink, loadWorkspaces, saveWorkspaces, removeWorkspace, nameError, loadConfig, saveConfig, withPinned, setPinOrder, StoreError, undoLast, pruneBroken, staleLinks, loadHistory, statsFrom, diffLinks, keepUsage } from './store.js';
 import { describeEntry } from './commands/workspace.js';
 import { handleOpen } from './commands/open.js';
@@ -138,7 +139,8 @@ function buildWorkspaceChoices() {
   });
 }
 
-export function filterChoices(choices, query) {
+// `fuzzy` and `searchIn` are the settings of the same name.
+export function filterChoices(choices, query, { fuzzy, searchIn } = {}) {
   // "#we" words keep shortcuts with a tag starting with "we" (a lone # none); the other words search fuzzy.
   // Also split before each #: Space marks, so "#we#ui" or "api#we".
   const words = query.trim().split(/\s+|(?=#)/);
@@ -149,9 +151,9 @@ export function filterChoices(choices, query) {
   if (!trimmed) return pool;
 
   const fuse = new Fuse(pool, {
-    keys: ['name', 'path', 'searchText'],
-    threshold: 0.35,
+    keys: searchIn === 'names' ? ['name', 'aliases'] : ['name', 'path', 'searchText'],
     includeMatches: true,
+    ...fuseOpts(fuzzy, 0.35),
   });
 
   // `hits` = matched char ranges in the name, for highlighting.
@@ -557,6 +559,8 @@ const SETTING_ROWS = [
   { section: 'General', key: 'recentStrip', label: 'Recent on top', names: { off: 'Off', on: 'On' } },
   { section: 'General', key: 'views', label: 'Tabs', names: { all: 'All', 'no-workspaces': 'No Workspaces', 'no-apps': 'No Apps', shortcuts: 'Shortcuts only' } },
   { section: 'General', key: 'enter', label: 'Enter', names: { quit: 'Open and quit', stay: 'Open and stay' } },
+  { section: 'Search', key: 'fuzzy', label: 'Fuzzy', names: { normal: 'Normal', exact: 'Exact', loose: 'Loose' } },
+  { section: 'Search', key: 'searchIn', label: 'Search in', names: { all: 'Names, paths, tags', names: 'Names only' } },
   { section: 'Terminals', key: 'terminalLayout', label: 'Layout', names: { windows: 'Separate windows', tabs: 'Tabs', panes: 'Split panes' } },
   { section: 'Terminals', key: 'paneSplit', label: 'Pane split', names: { auto: 'Auto', vertical: 'Side by side', horizontal: 'Stacked' } },
   { section: 'Terminals', key: 'terminalShell', label: 'Shell', names: { cmd: 'cmd', powershell: 'PowerShell', pwsh: 'PowerShell 7', profile: 'WT profile' } },
@@ -570,6 +574,7 @@ const SETTING_ROWS = [
   { section: 'Appearance', key: 'rowDetails', label: 'Row details', names: { both: 'Both', tags: 'Tags', badges: 'Badges', none: 'None' } },
   { section: 'Appearance', key: 'pinned', label: 'Pinned', names: { top: 'On top', section: 'Own section' } },
   { section: 'Appearance', key: 'groups', label: 'Groups', names: { off: 'Off', tags: 'By tag' } },
+  { section: 'Appearance', key: 'flash', label: 'Messages', names: { 3: '3 s', 6: '6 s', key: 'Until a key' } },
   { section: 'Appearance', key: 'glyphs', label: 'Glyphs', names: { unicode: 'Unicode', ascii: 'ASCII' } },
   { section: 'Appearance', key: 'theme', label: 'Web theme', names: { system: 'System', dark: 'Dark', light: 'Light' } },
   { section: 'Detail pane', key: 'narrowPane', label: 'Narrow screens', names: { toggle: 'Shift+→ / ←', always: 'Always' } },
@@ -595,6 +600,9 @@ function settingNote(key, s, wt) {
   if (key === 'recentStrip') return 'The last 3 opened again above the list, under a Recent heading, whatever the sort.';
   if (key === 'views') return 'Which tabs show and Tab cycles through, here and in upex ui.';
   if (key === 'enter') return 'Selector only. Open and stay keeps upex open after Enter, to open more.';
+  if (key === 'fuzzy') return 'How close a typed name must be, in this filter and for upex <name> / go. Exact: the letters in a row, no typos. Loose: more typos.';
+  if (key === 'searchIn') return 'What the filter looks at, here and in upex ui. Names only: names and aliases. #tag filters by tag either way.';
+  if (key === 'flash') return 'How long a success message (bottom right) stays. Warnings always stay until the next key.';
   if (key === 'maxRows') return s.fullScreen === 'off' ? 'List rows here.' : 'List rows here. Auto: as many as the screen fits.';
   if (key === 'defaultOpener') return 'Opens folder shortcuts that have no opener of their own.';
   if (key === 'fullScreen') return 'Whole terminal plus mouse, restored on exit. Off: inline, no mouse.';
@@ -1325,9 +1333,9 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
     };
 
     const updateFilter = () => {
-      filteredWs = filterChoices(wsChoices, query);
+      filteredWs = filterChoices(wsChoices, query, settings);
       wsIndex = Math.max(0, Math.min(wsIndex, filteredWs.length - 1));
-      filteredChoices = filterChoices(choices, query);
+      filteredChoices = filterChoices(choices, query, settings);
       if (!query.trim()) {
         const base = filteredChoices;
         if (settings.groups === 'tags') filteredChoices = withGroups(base, settings.sort === 'name');
@@ -1369,12 +1377,13 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
       reselect(...keep);
     };
 
-    // Success messages fade after 3s; warnings stay until the next key.
+    // Success messages fade after the flash setting (3s, 6s, or never); warnings stay until the next key.
     let flashTimer = null;
     const done = (text) => {
       const f = flash = { text, ok: true };
       clearTimeout(flashTimer);
-      flashTimer = setTimeout(guard(() => { if (flash === f) { flash = ''; redraw(); } }), 3000);
+      const ms = Number(settings.flash) * 1000;
+      if (ms) flashTimer = setTimeout(guard(() => { if (flash === f) { flash = ''; redraw(); } }), ms);
     };
     const howMany = names => (names.length > 1 ? `${names.length} shortcuts` : `"${names[0]}"`);
 

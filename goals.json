@@ -1017,10 +1017,11 @@
       "title": "Fuzzy strictness setting",
       "body": "Exact, normal or loose: sets the Fuse threshold for the filter and name resolution.",
       "phase": "next",
-      "status": "planned",
+      "status": "done",
       "size": "S",
       "created": "2026-11-08",
-      "updated": "2026-11-08"
+      "updated": "2026-11-08",
+      "note": "fuzzy setting normal/exact/loose: selector filter + resolveName (fuseOpts in fuzzy.js)"
     },
     {
       "id": "search-scope-setting",
@@ -1028,10 +1029,11 @@
       "title": "Search scope setting",
       "body": "Filter matches the name only, or name + path + tags.",
       "phase": "next",
-      "status": "planned",
+      "status": "done",
       "size": "S",
       "created": "2026-11-08",
-      "updated": "2026-11-08"
+      "updated": "2026-11-08",
+      "note": "searchIn all/names: selector filter + upex ui search"
     },
     {
       "id": "flash-duration-setting",
@@ -1039,10 +1041,11 @@
       "title": "Flash duration setting",
       "body": "Success flash fades after 3s, 6s, or stays until the next key.",
       "phase": "next",
-      "status": "planned",
+      "status": "done",
       "size": "S",
       "created": "2026-11-08",
-      "updated": "2026-11-08"
+      "updated": "2026-11-08",
+      "note": "flash 3/6/key, Settings > Appearance > Messages"
     },
     {
       "id": "tag-filter-in-selector",
