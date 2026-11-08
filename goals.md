@@ -36,6 +36,5 @@ Closed sections: §5 Platform support · §7 Web UI
 ## 9. Detail pane
 
 - `shortcut-note-in-the-detail-pane` Shortcut note in the detail pane (next)
-- `goal-progress-bar-in-the-detail-pane` Goal progress bar in the detail pane (next)
 - `folder-size-in-the-detail-pane` Folder size in the detail pane (next)
 - Plus 1 maybe: `upgo list --section 9 --phase maybe`

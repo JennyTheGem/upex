@@ -463,13 +463,14 @@ function webStatus(url, w) {
   return gap >= 2 ? left + ' '.repeat(gap) + note : left;
 }
 
-// upgo goals.json: open items (planned, partial), soonest phase first, then file order.
+// upgo goals.json: open items (planned, partial), soonest phase first, then file order; done and total (dropped left out) for the bar.
 const PHASE_ORDER = ['now', 'next', 'later', 'wayLater', 'maybe'];
 export function goalSummary(file) {
   if (!Array.isArray(file?.items)) return null;
   const open = file.items.filter(i => ['planned', 'partial'].includes(i?.status));
   const rank = i => (PHASE_ORDER.indexOf(i.phase) + PHASE_ORDER.length + 1) % (PHASE_ORDER.length + 1);
-  return { open: open.length, next: [...open].sort((a, b) => rank(a) - rank(b)) };
+  const done = file.items.filter(i => i?.status === 'done').length;
+  return { open: open.length, done, total: done + open.length, next: [...open].sort((a, b) => rank(a) - rank(b)) };
 }
 // Per goals.json, read again only when it changes. Missing or broken: null.
 const goalCache = new Map();
@@ -488,7 +489,7 @@ const isFolder = c => !!(c && !c.entries && !c.isApp && !c.isUrl && c.path && c.
 // Goals the detail pane shows for a row, `max` from the goals setting ('off' = none): folder shortcuts only.
 function folderGoals(c, max) {
   const g = Number(max) > 0 && isFolder(c) && goalsOf(c.path);
-  return g ? { open: g.open, next: g.next.slice(0, Number(max)) } : null;
+  return g ? { ...g, next: g.next.slice(0, Number(max)) } : null;
 }
 // Git status the pane shows for a row (git setting on, folder shortcuts only); `gitFor(dir)` never blocks.
 const folderGit = (c, on, gitFor) => (on === 'on' && isFolder(c) ? gitFor(c.path) : null);
@@ -548,7 +549,9 @@ export function detailLines(c, pw, appChoices = [], now = Date.now(), { goals = 
   if (git) out.push(...gitLines(git, pw, now));
   // Title clipped, so its phase stays in view. A click copies it, like Enter in the picker.
   if (goals) {
-    out.push('', row('goals', `${goals.open} open`), ...goals.next.map((g, i) => {
+    const fill = goals.total ? Math.round((goals.done / goals.total) * 10) : 0;
+    const bar = goals.total ? `${chalk.green('▰'.repeat(fill))}${chalk.dim('▱'.repeat(10 - fill))}  ${goals.done}/${goals.total} done  ` : '';
+    out.push('', row('goals', `${bar}${goals.open} open`), ...goals.next.map((g, i) => {
       const phase = chalk.dim(` ${oneLine(g.phase)}`);
       const title = ui.truncate(oneLine(g.title ?? g.id), Math.max(1, pw - 10 - vis(phase)));
       const text = (i === sel ? `${' '.repeat(8)}${pick('›')} ${chalk.bold(title)}` : ' '.repeat(10) + title) + phase;

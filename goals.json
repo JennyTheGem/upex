@@ -1570,10 +1570,11 @@
       "title": "Goal progress bar in the detail pane",
       "body": "A done/total bar for the project's goals. only if it dosent impact performance\n",
       "phase": "next",
-      "status": "planned",
+      "status": "done",
       "size": "S",
       "created": "2026-11-08",
-      "updated": "2026-11-08"
+      "updated": "2026-11-08",
+      "note": "Pane goals row: green done/total bar, N/M done, open count; dropped excluded; ASCII # -"
     },
     {
       "id": "partial-goals-mark-in-the-detail-pane",

@@ -839,10 +839,10 @@ assert.deepEqual([staleRow({ lastUsed: Date.now() - 31 * day }), staleRow({ last
 }
 // Open goals: planned/partial count, by phase then file order; the pane shows up to the setting's count.
 const gs = goalSummary({ items: [{ id: 'a', title: 'A', phase: 'later', status: 'planned' }, { id: 'b', title: 'B', phase: 'maybe', status: 'partial' },
-  { id: 'c', title: 'C', phase: 'now', status: 'done' }, { id: 'd', title: 'D', phase: 'next', status: 'planned' }, { id: 'e', title: 'E', phase: 'odd', status: 'planned' }, { id: 'f', title: 'F', phase: 'later', status: 'planned' }] });
-assert.deepEqual([gs.open, gs.next.map(g => g.id)], [5, ['d', 'a', 'f', 'b', 'e']], 'goalSummary counts open, next by phase');
+  { id: 'c', title: 'C', phase: 'now', status: 'done' }, { id: 'd', title: 'D', phase: 'next', status: 'planned' }, { id: 'e', title: 'E', phase: 'odd', status: 'planned' }, { id: 'f', title: 'F', phase: 'later', status: 'planned' }, { id: 'g', status: 'dropped' }] });
+assert.deepEqual([gs.open, gs.done, gs.total, gs.next.map(g => g.id)], [5, 1, 6, ['d', 'a', 'f', 'b', 'e']], 'goalSummary counts open, done, total without dropped, next by phase');
 assert.deepEqual([goalText({ id: 'i', title: 'T', body: 'B' }), goalText({ id: 'i', title: 'T' })], ['i: T\nB', 'i: T'], 'goalText: id: title, body below');
-assert.deepEqual([goalSummary({}), goalSummary(null), goalSummary({ items: [null] })], [null, null, { open: 0, next: [] }], 'goalSummary: not a goals file');
+assert.deepEqual([goalSummary({}), goalSummary(null), goalSummary({ items: [null] })], [null, null, { open: 0, done: 0, total: 0, next: [] }], 'goalSummary: not a goals file');
 const gdir = fs.mkdtempSync(path.join(os.tmpdir(), 'upex-goals-'));
 assert.equal(goalsOf(gdir), null, 'no goals.json: nothing');
 fs.writeFileSync(path.join(gdir, 'goals.json'), '{ broken');
@@ -852,7 +852,13 @@ fs.utimesSync(path.join(gdir, 'goals.json'), new Date(), new Date(Date.now() + 5
 assert.equal(goalsOf(gdir)?.open, 4, 'changed goals.json is read again');
 const gdet = { ...det, path: gdir };
 const goalPane = (goals, extra) => strip(renderInteractiveView({ ...viewArgs, choices: [gdet], full: true, width: 150, height: 30, settings: { goals }, ...extra }));
-assert.ok(goalPane('3').includes('│ goals     4 open') && goalPane('3').includes('Ship it now') && !goalPane('3').includes('four') && goalPane('5').includes('four') && !goalPane('off').includes('goals     '), 'pane goals: up to the setting, off hides them');
+assert.ok(goalPane('3').includes('│ goals     ▱▱▱▱▱▱▱▱▱▱  0/4 done  4 open') && goalPane('3').includes('Ship it now') && !goalPane('3').includes('four') && goalPane('5').includes('four') && !goalPane('off').includes('goals     '), 'pane goals: up to the setting, off hides them');
+{
+  const bdir = fs.mkdtempSync(path.join(os.tmpdir(), 'upex-goals-'));
+  fs.writeFileSync(path.join(bdir, 'goals.json'), JSON.stringify({ items: ['done', 'done', 'done', 'planned'].map((status, i) => ({ id: `b${i}`, phase: 'now', status })) }));
+  const bp = strip(renderInteractiveView({ ...viewArgs, choices: [{ ...det, path: bdir }], full: true, width: 150, height: 30, settings: { goals: '3' } }));
+  assert.ok(bp.includes('│ goals     ▰▰▰▰▰▰▰▰▱▱  3/4 done  1 open'), 'goal bar fills by done/total');
+}
 assert.ok(goalPane('3').includes('S-→ goals') && goalPane('3', { mode: 'goals', goalIndex: 1 }).includes('│         › two now') && goalPane('3', { mode: 'goals' }).includes('↵ copy'), 'S-→ goal picker marks the picked goal');
 const shortPane = goalPane('5', { mode: 'goals', goalIndex: 3, height: 14 }).split('\n');
 assert.ok(shortPane.some(l => l.includes('› four')) && shortPane.length === 14, 'short pane scrolls to the picked goal');
