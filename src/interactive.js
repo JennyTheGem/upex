@@ -60,6 +60,7 @@ function buildChoices() {
       isUrl: !!entry.url,
       isDir: !!entry.path,
       tags: entry.tags || [],
+      note: entry.note,
       pinned: !!entry.pinned,
       pinOrder: entry.pinned && Number.isFinite(entry.pinOrder) ? entry.pinOrder : undefined,
       opener: entry.opener ? String(entry.opener).toLowerCase() : null,
@@ -535,7 +536,16 @@ export function detailLines(c, pw, appChoices = [], now = Date.now(), { goals = 
   const added = new Date(c.added || NaN);
   // Not opened (or added, if never opened) in 30+ days, like upex stale.
   const stale = now - (c.lastUsed || c.added || 0) >= 30 * 86400000;
+  // The note, wrapped at spaces (3 lines at most, the last one clipped).
+  const note = [];
+  for (let s = oneLine(c.note), w = Math.max(1, pw - 10); s; s = s.slice(note.at(-1).length).trimStart()) {
+    const fit = ui.fit(s, w) || s[0];
+    const cut = fit.length < s.length && fit.lastIndexOf(' ') > 0 ? fit.slice(0, fit.lastIndexOf(' ')) : fit;
+    note.push(note.length === 2 ? ui.truncate(s, w) : cut);
+    if (note.length === 3) break;
+  }
   out.push('',
+    ...note.map((l, i) => (i ? ' '.repeat(10) + l : row('note', l))),
     row('same path', c.same?.length && chalk.yellow(c.same.join(' '))),
     row('type', c.isCmd ? 'command' : c.isApp ? 'app' : c.isUrl ? 'url' : 'folder'),
     row('opens in', opener),

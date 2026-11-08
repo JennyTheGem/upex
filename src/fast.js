@@ -11,7 +11,7 @@ import { resolveTarget } from './fuzzy.js';
 // Every sub-command name and alias. __resolve must not cd into a shortcut that shadows one; smoke.mjs checks this list.
 export const COMMAND_NAMES = ['add', 'list', 'ls', 'remove', 'rm', 'restore', 'rename', 'edit', 'check', '__resolve', 'go',
   'setup', 'help', 'copy', 'cmd', 'app', '__names', 'completion', 'tag', 'alias', 'open', 'ws', 'workspace', 'run',
-  'export', 'import', 'last', 'ui', 'web', 'doctor', 'stale', 'stats', 'config', 'pin', 'unpin', 'undo'];
+  'export', 'import', 'last', 'ui', 'web', 'doctor', 'stale', 'stats', 'config', 'pin', 'unpin', 'undo', 'note'];
 
 // Folder path of a shortcut plus an optional subpath ("web/src").
 export const withSub = (entry, sub) => (entry.path && sub ? path.join(entry.path, sub) : entry.path);

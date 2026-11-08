@@ -1404,10 +1404,11 @@
       "title": "Folder preview in the detail pane",
       "body": "Top-level files and folders, or the 5 most recently changed files, of the selected folder.",
       "phase": "maybe",
-      "status": "planned",
+      "status": "dropped",
       "size": "M",
       "created": "2026-11-07",
-      "updated": "2026-11-07"
+      "updated": "2026-11-08",
+      "note": "Not wanted for now"
     },
     {
       "id": "readme-excerpt-in-the-detail-pane",
@@ -1499,10 +1500,11 @@
       "title": "Shortcut note in the detail pane",
       "body": "A short free-text note per shortcut (upex note web \"...\"), shown in the pane.",
       "phase": "next",
-      "status": "planned",
+      "status": "done",
       "size": "S",
       "created": "2026-11-08",
-      "updated": "2026-11-08"
+      "updated": "2026-11-08",
+      "note": "upex note <name> [text] [--clear]; wrapped note row (3 lines max) at the top of the detail pane"
     },
     {
       "id": "last-touched-in-the-detail-pane",
@@ -1618,10 +1620,11 @@
       "title": "Folder size in the detail pane",
       "body": "Size and file count, computed in the background and cached. only if it dosent impact performance\n",
       "phase": "next",
-      "status": "planned",
+      "status": "dropped",
       "size": "M",
       "created": "2026-11-08",
-      "updated": "2026-11-08"
+      "updated": "2026-11-08",
+      "note": "Walking big folders on Windows takes minutes (200k entries took 2+ min), too costly for the pane"
     },
     {
       "id": "detail-pane-width",

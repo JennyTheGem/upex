@@ -313,6 +313,15 @@ upexIn('undo'); upexIn('undo'); upexIn('undo');
 assert.deepEqual(stored(), {}, 'undo all the way back to empty');
 assert.match(upexIn('undo').stdout, /Nothing to undo/, 'nothing left to undo');
 
+// -- note: set (words joined), show, clear --
+upexIn('add', 'n1', proj);
+assert.equal(upexIn('note', 'n1', 'react', ' app').status, 0, 'note sets');
+assert.equal(stored().n1.note, 'react app', 'note joins words, one line');
+assert.match(upexIn('note', 'n1').stdout, /react app/, 'note shows');
+upexIn('note', 'n1', '--clear');
+assert.equal(stored().n1.note, undefined, 'note --clear drops it');
+assert.equal(upexIn('note', 'nope', 'x').status, 1, 'note on unknown fails');
+
 fs.rmSync(home, { recursive: true, force: true });
 
 // -- mergeLinks: merge overwrites on clash, replace swaps the set --
@@ -828,6 +837,9 @@ assert.ok(!detailLines({ name: 'x', path: 'P', added: 'garbage' }, 60).join().in
   assert.deepEqual(sp.map(c => c.same), [['b'], ['a'], [], undefined], 'withSamePath');
   assert.ok(strip(detailLines({ ...det, same: ['b'] }, 60).join('|')).includes('same path b') && !strip(detailLines(det, 60).join('|')).includes('same path'), 'same path row');
 }
+// Note: wrapped at spaces, 3 lines at most, the last clipped.
+assert.ok(strip(detailLines({ ...det, note: 'one two three four five six seven' }, 22).join('|')).includes('note      one two|          three four|          five six se…'), 'note wraps');
+assert.ok(!strip(detailLines(det, 60).join('|')).includes('note'), 'no note, no row');
 const day = 86400000;
 const staleRow = c => detailLines({ name: 'x', path: 'P', ...c }, 80).some(l => l.archive && strip(l.text).includes('stale     30+ days  ^x archive'));
 assert.deepEqual([staleRow({ lastUsed: Date.now() - 31 * day }), staleRow({ lastUsed: Date.now() - day }), staleRow({ added: Date.now() - day }), staleRow({ added: Date.now() - 40 * day })], [true, false, false, true], 'stale hint after 30 days');
