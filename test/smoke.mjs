@@ -22,7 +22,7 @@ import { applyShortcut, applyOpener, cleanEntries, startServer } from '../src/co
 import { COMMAND_NAMES } from '../src/fast.js';
 import { createProgram } from '../src/index.js';
 import { readScripts, detectPm } from '../src/commands/run.js';
-import { renderInteractiveView, nextView, backTo, accentOf, pathLook, inView, tidyPath, byOrder, optionRow, listRows, readMouse, hitTest, rowClick, undoError, undoneLinks, clipName, prefill, editLine, inputLine, missingFlash, staysOpen, expandHome, underlineHits, movePinned, sameGroup, withRecent, withGroups, filterChoices, maxListOf, isAlt, detailLines, rowOptions, pickedOf, goalSummary, goalsOf, goalText, oneLine, scriptLines, markLines, paneShown, paneToggles, paneWidthOf, withSamePath, archivedList } from '../src/interactive.js';
+import { renderInteractiveView, nextView, backTo, accentOf, pathLook, inView, tidyPath, byOrder, optionRow, listRows, readMouse, hitTest, rowClick, undoError, undoneLinks, clipName, prefill, editLine, inputLine, missingFlash, staysOpen, expandHome, underlineHits, movePinned, sameGroup, withRecent, withGroups, filterChoices, maxListOf, isAlt, detailLines, rowOptions, pickedOf, goalSummary, goalsOf, goalText, oneLine, scriptLines, markLines, paneShown, paneToggles, paneWidthOf, withSamePath, archivedList, dotLines, lr } from '../src/interactive.js';
 import { parseStatus, parseDiff, parseLog, gitOf, stopGit } from '../src/git.js';
 import chalk from 'chalk';
 import { resolveTarget, resolveName, suggestNames } from '../src/fuzzy.js';
@@ -478,7 +478,7 @@ const withHints = (keyHints, extra = {}) => strip(renderInteractiveView({ ...man
 for (const k of ['full', 'short', 'off']) assert.equal(withHints(k).length, 30, `hints ${k}: fills the height`);
 const [full, short1, off] = ['full', 'short', 'off'].map(k => withHints(k));
 // glyphs ascii: one column per swapped glyph, hint keys spelled out
-assert.equal(toAscii('‹ a › ▏─│┬┴…↑↓←→●★×'), '< a > |-|++.^v<>**x', 'ascii glyphs');
+assert.equal(toAscii('‹ a › ▏▎─│┬┴…↑↓←→●★×'), '< a > ||-|++.^v<>**x', 'ascii glyphs');
 const asc = withHints('full', { settings: { glyphs: 'ascii' } }).join('\n');
 assert.ok(asc.includes('enter open') && asc.includes('up/down move') && !full.join('\n').includes('enter open'), 'ascii hint keys');
 assert.ok(full.some(l => l.includes('tab apps')) && full.some(l => l.includes('^a add')), 'full: both rows');
@@ -872,7 +872,7 @@ assert.ok(fullV.length === 30 && strip(fullV.at(-1)).includes('^d delete'), 'ful
 const det = { name: 'web', path: 'E:/code/web', exists: true, pinned: true, tags: ['node'], uses: 3, lastUsed: Date.now() - 7200000, opener: 'explorer', aliases: [] };
 const paneV = strip(renderInteractiveView({ ...viewArgs, choices: [det], full: true, width: 150, height: 30 })).split('\n');
 assert.ok(paneV.some(l => l.includes('┬')) && paneV.some(l => l.includes('┴')) && paneV.every(l => l.length <= 150), 'pane joins the rules and stays in width');
-assert.ok(paneV.some(l => /│ web +★ pinned$/.test(l)) && paneV.some(l => l.includes('│ opened    3×, last 2h ago')) && paneV.some(l => l.includes('│ opens in  Explorer')), 'pane shows the selected details');
+assert.ok(paneV.some(l => /│ ★ web +3 opens · 2h ago · Explorer$/.test(l)), 'pane shows the selected details');
 assert.ok(!paneV.some(l => l.includes('aliases')) && !strip(renderInteractiveView({ ...viewArgs, choices: [det], width: 150 })).includes('│'), 'no empty rows, no pane inline');
 // Narrow: Shift+Right opens the pane (or Narrow screens Always), never under 60 or inline.
 assert.deepEqual([paneShown(150, true), paneShown(100, true), paneShown(100, true, true), paneShown(59, true, true), paneShown(150, false)], [true, false, true, false, false], 'pane: wide, or opened on narrow');
@@ -880,27 +880,31 @@ assert.deepEqual([paneToggles(100, true), paneToggles(150, true), paneToggles(10
 assert.deepEqual([paneWidthOf(150, 'narrow'), paneWidthOf(150), paneWidthOf(150, 'wide'), paneWidthOf(300, 'wide'), paneWidthOf(150, 'junk')], [42, 57, 75, 110, 57], 'pane width: narrow / normal / wide, capped, unknown = normal');
 const thin = extra => strip(renderInteractiveView({ ...viewArgs, choices: [det], full: true, width: 99, height: 30, ...extra }));
 assert.ok(!thin().includes('│') && thin().includes('S-→ details'), 'narrow: no pane, Shift+Right hint');
-assert.ok(thin({ paneOpen: true }).includes('│ opens in') && thin({ paneOpen: true }).includes('esc hide details') && !thin({ paneOpen: true }).includes('S-←'), 'narrow opened: pane, Esc closes (one hint)');
+assert.ok(thin({ paneOpen: true }).includes('3 opens ·') && thin({ paneOpen: true }).includes('esc hide details') && !thin({ paneOpen: true }).includes('S-←'), 'narrow opened: pane, Esc closes (one hint)');
 assert.ok(thin({ paneOpen: true, query: 's' }).includes('esc clear') && thin({ paneOpen: true, query: 's' }).includes('S-← hide details'), 'filter typed: Esc clears, S-← hint shows');
-assert.ok(thin({ settings: { narrowPane: 'always' } }).includes('│ opens in') && !thin({ settings: { narrowPane: 'always' } }).includes('details'), 'Always: pane without the toggle');
+assert.ok(thin({ settings: { narrowPane: 'always' } }).includes('3 opens ·') && !thin({ settings: { narrowPane: 'always' } }).includes('details'), 'Always: pane without the toggle');
+assert.deepEqual(dotLines(['aa', 0, 'bb', 'cccc'], 7).map(strip), ['aa · bb', 'cccc'], 'dotLines: skips empty parts, wraps at the width');
+assert.deepEqual([lr('abc', 'xy', 8), lr('abcdefgh', 'xy', 8), lr('GIT', 'a-long-branch', 10, 3), lr('a', '', 5)].map(strip), ['abc   xy', 'abc…  xy', 'GIT  a-lo…', 'a'], 'lr: right-aligned, left clips first, right cut to keep the left');
+assert.ok([8, 10, 16].every(n => width(lr('日本語の名前', 'x'.repeat(30), n)) === n), 'lr stays in width');
+assert.ok(strip(detailLines({ name: 'averylongshortcutname', uses: 3, lastUsed: Date.now() - 7200000, opener: 'explorer' }, 30)[0]).startsWith('averylong…  3 opens'), 'pane title: the name keeps 10 columns');
 assert.deepEqual(strip(detailLines({ name: 'dev', entries: [{ shortcut: 's', app: 'vscode' }] }, 40).join('|')), 'dev||s:vscode', 'workspace pane lists entries');
 assert.ok(!detailLines({ name: 'x', path: 'P', added: 'garbage' }, 60).join().includes('added'), 'a bad added date is left out, not thrown');
 // Same path: other folder shortcuts on it (trailing slash ignored), shown as a pane row.
 {
   const sp = withSamePath([{ name: 'a', path: 'X/y', isDir: true }, { name: 'b', path: 'X/y/', isDir: true }, { name: 'c', path: 'X/z', isDir: true }, { name: 'u', path: 'X/y', isUrl: true }]);
   assert.deepEqual(sp.map(c => c.same), [['b'], ['a'], [], undefined], 'withSamePath');
-  assert.ok(strip(detailLines({ ...det, same: ['b'] }, 60).join('|')).includes('same path b') && !strip(detailLines(det, 60).join('|')).includes('same path'), 'same path row');
+  assert.ok(strip(detailLines({ ...det, same: ['b'] }, 60).join('|')).includes('same path as b') && !strip(detailLines(det, 60).join('|')).includes('same path'), 'same path row');
 }
 // Note: wrapped at spaces, 3 lines at most, the last clipped.
-assert.ok(strip(detailLines({ ...det, note: 'one two three four five six seven' }, 22).join('|')).includes('note      one two|          three four|          five six se…'), 'note wraps');
+assert.ok(strip(detailLines({ ...det, note: 'one two three four five six seven' }, 14).join('|')).includes('▎ one two|▎ three four|▎ five six se…'), 'note wraps');
 assert.ok(!strip(detailLines(det, 60).join('|')).includes('note'), 'no note, no row');
 const day = 86400000;
-const staleRow = c => detailLines({ name: 'x', path: 'P', ...c }, 80).some(l => l.archive && strip(l.text).includes('stale     30+ days  ^x archive'));
+const staleRow = c => detailLines({ name: 'x', path: 'P', ...c }, 80).some(l => l.archive && /^stale 30\+ days +\^x archive$/.test(strip(l.text)));
 assert.deepEqual([staleRow({ lastUsed: Date.now() - 31 * day }), staleRow({ lastUsed: Date.now() - day }), staleRow({ added: Date.now() - day }), staleRow({ added: Date.now() - 40 * day })], [true, false, false, true], 'stale hint after 30 days');
 {
   const targets = [];
   const sv = strip(renderInteractiveView({ ...viewArgs, choices: [{ ...det, lastUsed: Date.now() - 31 * day }], full: true, width: 150, height: 30, targets })).split('\n');
-  const y = sv.findIndex(l => l.includes('│ stale     30+ days  ^x archive'));
+  const y = sv.findIndex(l => l.includes('│ stale 30+ days '));
   assert.ok(y >= 0 && targets.some(t => t.archive && t.line === y), 'stale line clicks to archive');
 }
 // Open goals: planned/partial count, by phase then file order; the pane shows up to the setting's count.
@@ -918,21 +922,22 @@ fs.utimesSync(path.join(gdir, 'goals.json'), new Date(), new Date(Date.now() + 5
 assert.equal(goalsOf(gdir)?.open, 4, 'changed goals.json is read again');
 const gdet = { ...det, path: gdir };
 const goalPane = (goals, extra) => strip(renderInteractiveView({ ...viewArgs, choices: [gdet], full: true, width: 150, height: 30, settings: { goals }, ...extra }));
-assert.ok(goalPane('3').includes('│ goals     ▱▱▱▱▱▱▱▱▱▱  4 open') && goalPane('3').includes('│ now       Ship it') && !goalPane('3').includes('four') && goalPane('5').includes('four') && !goalPane('off').includes('goals     '), 'pane goals: up to the setting, off hides them');
+assert.ok(goalPane('3').includes('▱▱▱▱▱▱▱▱▱▱ 0/4') && goalPane('3').includes('│   now        Ship it') && !goalPane('3').includes('four') && goalPane('5').includes('four') && !goalPane('off').includes('GOALS'), 'pane goals: up to the setting, off hides them');
 {
   const bdir = fs.mkdtempSync(path.join(os.tmpdir(), 'upex-goals-'));
   fs.writeFileSync(path.join(bdir, 'goals.json'), JSON.stringify({ items: ['done', 'done', 'done', 'planned'].map((status, i) => ({ id: `b${i}`, phase: 'now', status })) }));
   const bp = strip(renderInteractiveView({ ...viewArgs, choices: [{ ...det, path: bdir }], full: true, width: 150, height: 30, settings: { goals: '3' } }));
-  assert.ok(bp.includes('│ goals     ▰▰▰▰▰▰▰▰▱▱  1 open'), 'goal bar fills by done/total');
+  assert.ok(bp.includes('▰▰▰▰▰▰▰▰▱▱ 3/4'), 'goal bar fills by done/total');
 }
-assert.ok(goalPane('3').includes('S-→ goals') && goalPane('3', { mode: 'goals', goalIndex: 1 }).includes('│         › two') && goalPane('3', { mode: 'goals' }).includes('↵ copy'), 'S-→ goal picker marks the picked goal');
+assert.ok(strip(detailLines(det, 40, [], Date.now(), { goals: { open: 1, done: 0, total: 1, next: [{ id: 'w', title: 'T', phase: 'wayLater' }] }, sel: 0 }).at(-1).text) === '  wayLater › T', 'goal phase column fits wayLater');
+assert.ok(goalPane('3').includes('S-→ goals') && goalPane('3', { mode: 'goals', goalIndex: 1 }).includes('│            › two') && goalPane('3', { mode: 'goals' }).includes('↵ copy'), 'S-→ goal picker marks the picked goal');
 const shortPane = goalPane('5', { mode: 'goals', goalIndex: 3, height: 14 }).split('\n');
 assert.ok(shortPane.some(l => l.includes('› four')) && shortPane.length === 14, 'short pane scrolls to the picked goal');
 {
   const targets = [];
   const lines = goalPane('3', { targets }).split('\n');
   const tOf = s => targets.find(t => t.line === lines.findIndex(l => l.includes(s)) && t.copy);
-  assert.deepEqual([tOf('│           two')?.copy, tOf('│           two')?.msg, tOf(`│ ${gdir.slice(0, 5)}`)?.copy], ['g1: two', 'copied "g1"', gdir], 'pane goal and path lines click to copy');
+  assert.deepEqual([tOf('│              two')?.copy, tOf('│              two')?.msg], ['g1: two', 'copied "g1"'], 'pane goal lines click to copy');
 }
 assert.equal(oneLine('a\x1b[2J\u009b1m\n b'), 'a [2J 1m b', 'goals.json text: no escapes, one line');
 fs.rmSync(gdir, { recursive: true, force: true });
@@ -945,11 +950,11 @@ assert.deepEqual([parseLog('1700000000 fix it'), parseLog(''), parseLog(null)], 
   const targets = [];
   const gargs = { ...viewArgs, choices: [det], full: true, width: 150, height: 30, gitFor: () => g, targets };
   const on = strip(renderInteractiveView({ ...gargs, settings: { git: 'on' } })).split('\n');
-  assert.ok(on.some(l => l.includes('│ git       dev  ↑1')) && on.some(l => l.includes('│ changes   3 files')) && on.some(l => l.includes('│ commit    2h ago  ship it')), 'pane shows git status');
-  const y = on.findIndex(l => l.includes('│ web       github.com/o/r  ^g'));
+  assert.ok(on.some(l => /│ GIT +dev  ↑1$/.test(l)) && on.some(l => l.includes('│   3 files changed')) && on.some(l => /│   ship it +2h ago$/.test(l)), 'pane shows git status');
+  const y = on.findIndex(l => /│   github\.com\/o\/r +\^g$/.test(l));
   assert.ok(y >= 0 && targets.some(t => t.web && t.line === y) && on.some(l => l.includes('^g github')), 'web line clickable, ^g hint');
-  assert.ok(!strip(renderInteractiveView({ ...gargs, settings: {} })).includes('│ git'), 'git off by default');
-  assert.ok(strip(detailLines(det, 60, [], Date.now(), { git: { branch: 'm', changed: 0 } }).join('|')).includes('changes   clean'), 'clean repo, no web line');
+  assert.ok(!strip(renderInteractiveView({ ...gargs, settings: {} })).includes('│ GIT'), 'git off by default');
+  assert.ok(strip(detailLines(det, 60, [], Date.now(), { git: { branch: 'm', changed: 0 } }).join('|')).includes('|  clean'), 'clean repo, no web line');
   const alias = strip(renderInteractiveView({ ...gargs, gitFor: () => ({ ...g, web: 'https://gh-work/o/r' }), settings: { git: 'on' } }));
   assert.ok(alias.includes('^g gh-work') && !alias.includes('undefined'), 'one-label host hint');
 }

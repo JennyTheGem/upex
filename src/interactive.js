@@ -528,16 +528,33 @@ export const goalText = g => [[g.id, g.title].filter(Boolean).join(': '), g.body
 // eslint-disable-next-line no-control-regex
 export const oneLine = v => String(v ?? '').replace(/[\s\x00-\x1f\x7f-\x9f]+/g, ' ').trim();
 
+// `left` and a right-aligned `right` in `pw` columns; `left` clips first, but `right` is cut before `left` drops under `keep` columns.
+export const lr = (left, right, pw, keep = 1) => {
+  const r = ui.truncate(right || '', pw - Math.min(vis(left), keep) - 2);
+  const l = ui.truncate(left, Math.max(1, pw - vis(r) - (r ? 2 : 0)));
+  return l + (r ? ' '.repeat(Math.max(2, pw - vis(l) - vis(r))) + r : '');
+};
+// Pane section: two blank lines, a bold header with its summary at the right edge, rows indented under it.
+const IND = '  ';
+const GAP = ['', ''];
+const section = (label, right, pw) => [...GAP, lr(chalk.bold(label), right, pw, label.length)];
+// Parts joined by a dim " · ", a new line when the next would pass `pw`.
+export const dotLines = (parts, pw) => parts.filter(Boolean).reduce((out, p) => {
+  if (out.length && vis(out.at(-1)) + 3 + vis(p) <= pw) out[out.length - 1] += chalk.dim(' · ') + p;
+  else out.push(p);
+  return out;
+}, []);
+
 // Pane lines of a git status from gitOf; the web line is { text, web } so a click opens it.
 export function gitLines(g, pw, now = Date.now()) {
-  const row = (k, v) => `${chalk.dim(k.padEnd(10))}${v}`;
+  const iw = pw - IND.length;
   const ab = [g.ahead && `↑${g.ahead}`, g.behind && `↓${g.behind}`].filter(Boolean).join(' ');
   const lines = [g.added && chalk.green(`+${g.added}`), g.deleted && chalk.red(`-${g.deleted}`)].filter(Boolean).join(' ');
-  const out = ['', row('git', `${oneLine(g.branch) || '?'}${ab ? `  ${ab}` : ''}`),
-    row('changes', g.changed ? `${g.changed} file${g.changed > 1 ? 's' : ''}${lines ? `  ${lines}` : ''}` : chalk.dim('clean'))];
-  // Age first, so a long subject clips and the age stays.
-  if (g.last) out.push(row('commit', `${chalk.dim(`${ui.span(now - g.last.time)} ago`)}  ${oneLine(g.last.subject)}`));
-  if (g.web) out.push({ text: ui.truncate(row('web', `${g.web.replace(/^https:\/\//, '')}  ${chalk.dim('^g')}`), pw), web: true });
+  const out = [...section('GIT', `${oneLine(g.branch) || '?'}${ab ? `  ${ab}` : ''}`, pw),
+    IND + (g.changed ? lr(`${g.changed} file${g.changed > 1 ? 's' : ''} changed`, lines, iw) : chalk.dim('clean'))];
+  // The subject clips first, so the age stays.
+  if (g.last) out.push(IND + lr(oneLine(g.last.subject), chalk.dim(`${ui.span(now - g.last.time)} ago`), iw));
+  if (g.web) out.push({ text: IND + lr(g.web.replace(/^https:\/\//, ''), chalk.dim('^g'), iw), web: true });
   return out;
 }
 
@@ -545,52 +562,46 @@ export function gitLines(g, pw, now = Date.now()) {
 // `goals` from goalSummary, `sel` the picked one.
 export function detailLines(c, pw, appChoices = [], now = Date.now(), { goals = null, sel = -1, pick = chalk.bold, git = null } = {}) {
   if (!c) return [];
-  const row = (k, v) => (v ? `${chalk.dim(k.padEnd(10))}${String(v)}` : null);
-  const badge = c.entries ? '' : c.exists === false ? chalk.red('missing') : c.pinned ? `${PIN} pinned` : '';
-  const head = clipName(c.name, Math.max(1, pw - vis(badge) - 2)).text;
-  const out = [chalk.bold(head) + (badge ? ' '.repeat(pw - vis(head) - vis(badge)) + badge : '')];
-  if (c.entries) return [...out, '', ...c.entries.map(describeEntry)].map(l => ui.truncate(l, pw));
-  // The full target, wrapped instead of clipped (4 lines at most).
-  // A click on it copies it, like ^y.
-  for (let p = c.path || '', n = 0; p && n < 4; n++) {
-    const part = ui.fit(p, pw) || p[0];
-    out.push({ text: c.isUrl || c.isApp ? part : ui.dimParent(part), copy: c.path, msg: `copied ${c.path}` });
-    p = p.slice(part.length);
-  }
+  if (c.entries) return [chalk.bold(clipName(c.name, pw).text), '', ...c.entries.map(describeEntry)].map(l => ui.truncate(l, pw));
   const opener = c.opener && (appChoices.find(a => a.key === c.opener)?.label || c.opener);
+  const stats = [c.uses ? `${c.uses} open${c.uses > 1 ? 's' : ''}` : 'never opened', c.lastUsed && `${ui.span(now - c.lastUsed)} ago`, opener];
+  const star = c.pinned ? `${PIN} ` : '';
+  // Stats right-aligned beside the name, cut before the name drops under 10 columns.
+  const out = [lr(star + chalk.bold(c.name), [c.exists === false && chalk.red('missing'), chalk.dim(stats.filter(Boolean).join(' · '))].filter(Boolean).join('  '),
+    pw, vis(star) + 10)];
   // Local day; a hand-edited bad value is left out (toISOString would throw).
   const added = new Date(c.added || NaN);
   // Not opened (or added, if never opened) in 30+ days, like upex stale.
   const stale = now - (c.lastUsed || c.added || 0) >= 30 * 86400000;
   // The note, wrapped at spaces (3 lines at most, the last one clipped).
   const note = [];
-  for (let s = oneLine(c.note), w = Math.max(1, pw - 10); s; s = s.slice(note.at(-1).length).trimStart()) {
+  for (let s = oneLine(c.note), w = Math.max(1, pw - 2); s; s = s.slice(note.at(-1).length).trimStart()) {
     const fit = ui.fit(s, w) || s[0];
     const cut = fit.length < s.length && fit.lastIndexOf(' ') > 0 ? fit.slice(0, fit.lastIndexOf(' ')) : fit;
     note.push(note.length === 2 ? ui.truncate(s, w) : cut);
     if (note.length === 3) break;
   }
-  out.push('',
-    ...note.map((l, i) => (i ? ' '.repeat(10) + l : row('note', l))),
-    row('same path', c.same?.length && chalk.yellow(c.same.join(' '))),
-    row('type', c.isCmd ? 'command' : c.isApp ? 'app' : c.isUrl ? 'url' : 'folder'),
-    row('opens in', opener),
-    row('aliases', c.aliases?.join(' ')),
-    row('tags', c.tags?.length && `#${c.tags.join(' #')}`),
-    row('opened', c.uses ? `${c.uses}×${c.lastUsed ? `, last ${ui.span(now - c.lastUsed)} ago` : ''}` : 'never'),
-    // A click on it archives, like ^x.
-    stale ? { text: row('stale', `${chalk.yellow('30+ days')}  ${chalk.dim('^x archive')}`), archive: true } : null,
-    row('added', !isNaN(added) && added.toLocaleDateString('sv-SE')),
-    row('expires', c.expires && `in ${ui.span(c.expires - now, Math.ceil)}`));
+  // A dim meta line under the title, then warnings and the note as their own block.
+  out.push(...dotLines([c.isCmd ? 'command' : c.isApp ? 'app' : c.isUrl ? 'url' : 'folder',
+    c.tags?.length && `#${c.tags.join(' #')}`,
+    c.aliases?.length && `aka ${c.aliases.join(' ')}`,
+    !isNaN(added) && `added ${added.toLocaleDateString('sv-SE')}`,
+    c.expires && `expires in ${ui.span(c.expires - now, Math.ceil)}`], pw).map(l => chalk.dim(l)));
+  if (c.same?.length || stale || note.length) out.push(...GAP);
+  if (c.same?.length) out.push(chalk.yellow(`same path as ${c.same.join(' ')}`));
+  // A click on it archives, like ^x.
+  if (stale) out.push({ text: lr(chalk.yellow('stale 30+ days'), chalk.dim('^x archive'), pw), archive: true });
+  out.push(...note.map(l => `${chalk.dim('▎')} ${l}`));
   if (git) out.push(...gitLines(git, pw, now));
-  // Phase in the label column, once per group. A click copies a goal, like Enter in the picker.
+  // Phase in its own column, once per group. A click copies a goal, like Enter in the picker.
   if (goals) {
     const fill = goals.total ? Math.round((goals.done / goals.total) * 10) : 0;
-    const bar = goals.total ? `${chalk.green('▰'.repeat(fill))}${chalk.dim('▱'.repeat(10 - fill))}  ` : '';
-    out.push('', row('goals', `${bar}${goals.open} open`), ...goals.next.map((g, i) => {
+    const bar = goals.total ? `${chalk.green('▰'.repeat(fill))}${chalk.dim('▱'.repeat(10 - fill))} ` : '';
+    out.push(...section('GOALS', `${bar}${goals.done}/${goals.total}`, pw), ...goals.next.map((g, i) => {
+      // 8 fits wayLater, plus a space before the › pointer.
       const phase = oneLine(g.phase) !== oneLine(goals.next[i - 1]?.phase) ? oneLine(g.phase).slice(0, 8) : '';
-      const title = ui.truncate(oneLine(g.title ?? g.id), Math.max(1, pw - 10));
-      const text = chalk.dim(phase.padEnd(8)) + (i === sel ? `${pick('›')} ${chalk.bold(title)}` : `  ${title}`);
+      const title = ui.truncate(oneLine(g.title ?? g.id), Math.max(1, pw - 13));
+      const text = IND + chalk.dim(phase.padEnd(9)) + (i === sel ? `${pick('›')} ${chalk.bold(title)}` : `  ${title}`);
       return { text, copy: goalText(g), msg: `copied "${oneLine(g.id ?? g.title)}"` };
     }));
   }

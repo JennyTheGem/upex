@@ -221,7 +221,7 @@ Run `upex` with no arguments to open the interactive selector. Pinned shortcuts 
 - `Ctrl+D` -- delete the selected shortcut (confirm with `y`), `Ctrl+Z` undoes the last delete
 - `Ctrl+U` -- start `upex ui` and open it in the browser; the selector stays open and shows the link. `Ctrl+U` again stops it, so does closing the selector
 - `Esc` -- clear the filter, then the marks, then close a detail pane opened with Shift+→ (see `narrowPane`), then quit
-- Mouse (full screen) -- click a tab, opener or setting; click a row to select it, again or double-click to open; the wheel moves the selection; in the detail pane a click on the path or a goal copies it
+- Mouse (full screen) -- click a tab, opener or setting; click a row to select it, again or double-click to open; the wheel moves the selection; in the detail pane a click on a goal copies it
 
 ## Web UI
 
@@ -340,8 +340,8 @@ Appearance:
 - `"accent"`: `"default"` (green in `upex ui`, uncolored in the selector), `"green"`, `"blue"`, `"purple"`, `"orange"`, or any hex color like `"#ff66aa"` (`upex config set accent ff66aa`, the `#` is optional; truecolor in the selector, nearest color on terminals with fewer colors). The `upex ui` accent and the selector's `›` pointer and picked option.
 - `"density"`: `"comfortable"` (default) or `"compact"` (no spacer lines in the selector, tighter rows in `upex ui`).
 - `"keyHints"` (selector only): the key rows under the list. `"full"` (default, two rows), `"short"` (one row of the main keys, without ↑↓, Tab and Esc) or `"off"` (none, the list gets the rows). The Settings tab always shows its keys.
-- `"glyphs"` (selector only): `"unicode"` (default) or `"ascii"`, for terminals or fonts that show boxes: `‹ ›` become `< >`, `▏ │` become `|`, `─` becomes `-`, `…` becomes `.`, arrows become `^ v < >`, `● ★` become `*`, and the key rows spell out `enter`, `up/down`, `left/right` and `bs`.
-- `"maxRows"` (selector only): list rows, `"auto"` (default: the whole screen in full screen, 8 inline), `"8"`, `"12"` or `"16"`. Inline, Settings shows Auto as its "8" option. In full screen the key rows sit at the bottom of the terminal, and a terminal 140+ columns wide gets a detail pane right of the list (full path, other shortcuts on the same path, opener, aliases, tags, times opened, a stale hint when not opened in 30+ days that a click archives after a y / n, added, expiry; a workspace lists its entries).
+- `"glyphs"` (selector only): `"unicode"` (default) or `"ascii"`, for terminals or fonts that show boxes: `‹ ›` become `< >`, `▏ ▎ │` become `|`, `─` becomes `-`, `…` becomes `.`, arrows become `^ v < >`, `● ★` become `*`, and the key rows spell out `enter`, `up/down`, `left/right` and `bs`.
+- `"maxRows"` (selector only): list rows, `"auto"` (default: the whole screen in full screen, 8 inline), `"8"`, `"12"` or `"16"`. Inline, Settings shows Auto as its "8" option. In full screen the key rows sit at the bottom of the terminal, and a terminal 140+ columns wide gets a detail pane right of the list (the name with times opened, last opened and opener beside it, a line with type, tags, aliases, added and expiry, then other shortcuts on the same path, a stale hint when not opened in 30+ days that a click archives after a y / n, and the note; a workspace lists its entries).
 - `"paths"`: `"dim"` (default, parent folders dimmed), `"full"` or `"hidden"` (no paths, commands or URLs) in the selector, `upex ls`, `upex stale` and `upex ui`. Piped output always shows paths.
 - `"rowDetails"`: what shows on the right of a row in the selector, `upex ls` and `upex ui`. `"both"` (default), `"tags"` (#tags), `"badges"` (★ pinned, app, cmd, url, missing) or `"none"`. Piped `upex ls` always shows both.
 - `"pinned"`: `"top"` (default, pinned shortcuts first) or `"section"` (first, under a Pinned heading, the rest under All) in the selector and `upex ui`. A search in the selector sorts by match, so it drops the headings.
@@ -351,7 +351,7 @@ Detail pane (selector only, full screen, 140+ columns, or narrower with `narrowP
 
 - `"narrowPane"`: `"toggle"` (default) or `"always"`. Under 140 columns, Shift+→ opens the pane anyway (the list gets narrower) and Shift+← or Esc closes it; `"always"` shows it there without asking. Never under 60 columns. Shift+↑↓ still sets the terminal count.
 - `"paneWidth"`: `"normal"` (default, about 38% of the screen), `"narrow"` (about 28%, more room for the list) or `"wide"` (half the screen).
-- `"goals"`: `"off"` (default), `"3"`, `"5"` or `"10"`. A folder shortcut with an [upgo](https://github.com/JennyTheGem/upgo) `goals.json` shows a progress bar of done/total goals (dropped ones left out), its open goal count and up to that many open goals, soonest phase first. Shift+→ picks one in the pane (↑↓ or the wheel move, Enter copies `id: title` and its body, Esc or ← goes back). A click on a goal copies it too.
+- `"goals"`: `"off"` (default), `"3"`, `"5"` or `"10"`. A folder shortcut with an [upgo](https://github.com/JennyTheGem/upgo) `goals.json` shows a progress bar and done/total of its goals (dropped ones left out) and up to that many open goals, soonest phase first. Shift+→ picks one in the pane (↑↓ or the wheel move, Enter copies `id: title` and its body, Esc or ← goes back). A click on a goal copies it too.
 - `"git"`: `"off"` (default) or `"on"`. A folder shortcut inside a git repo shows its branch, ahead/behind, changed file count and last commit (age and message), looked up in the background and cached per folder for a few seconds, so scrolling stays fast. With an `origin` remote it also shows the repo's web page: Ctrl+G or a click opens it in the browser.
 
 ### WebStorm on Windows (without `setx`)
