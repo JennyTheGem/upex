@@ -22,7 +22,7 @@ import { applyShortcut, applyOpener, cleanEntries, startServer } from '../src/co
 import { COMMAND_NAMES } from '../src/fast.js';
 import { createProgram } from '../src/index.js';
 import { readScripts, detectPm } from '../src/commands/run.js';
-import { renderInteractiveView, nextView, backTo, accentOf, pathLook, inView, tidyPath, byOrder, optionRow, listRows, readMouse, hitTest, rowClick, undoError, clipName, prefill, editLine, inputLine, missingFlash, staysOpen, expandHome, underlineHits, movePinned, withRecent, maxListOf, isAlt, detailLines, rowOptions, pickedOf, goalSummary, goalsOf, goalText, oneLine, scriptLines, markLines, paneShown, paneToggles, withSamePath } from '../src/interactive.js';
+import { renderInteractiveView, nextView, backTo, accentOf, pathLook, inView, tidyPath, byOrder, optionRow, listRows, readMouse, hitTest, rowClick, undoError, undoneLinks, clipName, prefill, editLine, inputLine, missingFlash, staysOpen, expandHome, underlineHits, movePinned, withRecent, maxListOf, isAlt, detailLines, rowOptions, pickedOf, goalSummary, goalsOf, goalText, oneLine, scriptLines, markLines, paneShown, paneToggles, withSamePath } from '../src/interactive.js';
 import { parseStatus, parseDiff, parseLog, gitOf, stopGit } from '../src/git.js';
 import chalk from 'chalk';
 import { resolveTarget, resolveName, suggestNames } from '../src/fuzzy.js';
@@ -604,6 +604,10 @@ assert.match(undoError(gone, { x: { path: 'Q', aliases: ['old'] } }, {}), /alias
 assert.match(undoError(gone, { x: { path: 'Q', aliases: ['o'] } }, {}), /alias of x/, 'refused when its alias was taken');
 assert.equal(undoError({ name: 'dev', entry: [], ws: true }, { dev: {} }, {}), null, 'workspace names are their own namespace');
 assert.match(undoError({ name: 'dev', entry: [], ws: true }, {}, { dev: [] }), /already exists/, 'workspace refused when reused');
+assert.equal(undoError([{ name: 'a', entry: { path: 'P' }, archived: true }], { a: { path: 'P', archived: true } }, {}), null, 'an archived one restores');
+assert.match(undoError({ name: 'a', entry: { path: 'P' }, archived: true }, { a: { path: 'P' } }, {}), /no longer archived/, 'archive undo refused once restored');
+assert.deepEqual(undoneLinks([{ name: 'a', entry: { path: 'P' }, archived: true }], { a: { path: 'P', tags: ['t'], archived: true }, b: { path: 'B' } }), { a: { path: 'P', tags: ['t'] }, b: { path: 'B' } }, 'archive undo drops only the flag, edits since stay');
+assert.deepEqual(undoneLinks([{ name: 'a', entry: { path: 'P' } }], { b: { path: 'B' } }), { a: { path: 'P' }, b: { path: 'B' } }, 'delete undo puts the entry back');
 const two = [{ name: 'a', entry: { path: 'A' } }, { name: 'b', entry: { path: 'B' } }];
 assert.equal(undoError(two, { c: { path: 'C' } }, {}), null, 'a deleted list restores when all names are free');
 assert.match(undoError(two, { b: { path: 'Q' } }, {}), /already exists/, 'a list is refused when any name was taken');
@@ -627,6 +631,7 @@ assert.equal(marked.find(l => l.startsWith('  ● s ')).indexOf('P'), marked.fin
 assert.ok(marked.join('\n').includes('● 1 marked') && marked.join('\n').includes('↵ open 1 marked') && marked.join('\n').includes('^d delete 1 marked') && marked.join('\n').includes('esc unmark'), 'marked count and hints');
 assert.ok(strip(renderInteractiveView(viewArgs)).includes('space mark'), 'space mark hint');
 assert.ok(strip(renderInteractiveView({ ...markArgs, mode: 'confirm', marks: new Set(['s', 't']) })).includes('? delete 2 marked?  y / n'), 'confirm names the marked count');
+assert.ok(strip(renderInteractiveView({ ...markArgs, mode: 'confirm', action: 'archive', marks: new Set(['s', 't']) })).includes('? archive "t"?  y / n'), 'archive confirm names the one row, not the marks');
 
 // -- removeLinks: one save, so one upex undo brings all of them back --
 {
@@ -823,8 +828,14 @@ assert.ok(!detailLines({ name: 'x', path: 'P', added: 'garbage' }, 60).join().in
   assert.ok(strip(detailLines({ ...det, same: ['b'] }, 60).join('|')).includes('same path b') && !strip(detailLines(det, 60).join('|')).includes('same path'), 'same path row');
 }
 const day = 86400000;
-const staleRow = c => strip(detailLines({ name: 'x', path: 'P', ...c }, 80).join('|')).includes('stale     30+ days archive: upex rm x --archive');
+const staleRow = c => detailLines({ name: 'x', path: 'P', ...c }, 80).some(l => l.archive && strip(l.text).includes('stale     30+ days  ^x archive'));
 assert.deepEqual([staleRow({ lastUsed: Date.now() - 31 * day }), staleRow({ lastUsed: Date.now() - day }), staleRow({ added: Date.now() - day }), staleRow({ added: Date.now() - 40 * day })], [true, false, false, true], 'stale hint after 30 days');
+{
+  const targets = [];
+  const sv = strip(renderInteractiveView({ ...viewArgs, choices: [{ ...det, lastUsed: Date.now() - 31 * day }], full: true, width: 150, height: 30, targets })).split('\n');
+  const y = sv.findIndex(l => l.includes('│ stale     30+ days  ^x archive'));
+  assert.ok(y >= 0 && targets.some(t => t.archive && t.line === y), 'stale line clicks to archive');
+}
 // Open goals: planned/partial count, by phase then file order; the pane shows up to the setting's count.
 const gs = goalSummary({ items: [{ id: 'a', title: 'A', phase: 'later', status: 'planned' }, { id: 'b', title: 'B', phase: 'maybe', status: 'partial' },
   { id: 'c', title: 'C', phase: 'now', status: 'done' }, { id: 'd', title: 'D', phase: 'next', status: 'planned' }, { id: 'e', title: 'E', phase: 'odd', status: 'planned' }, { id: 'f', title: 'F', phase: 'later', status: 'planned' }] });

@@ -321,10 +321,19 @@ export function readMouse(state, key = {}) {
 // Why a deleted { name, entry, ws? } (or a list of them) can't come back, or null: its name or an alias was taken since.
 export function undoError(u, links, workspaces) {
   if (Array.isArray(u)) return u.map(x => undoError(x, links, workspaces)).find(Boolean) || null;
-  const { name, entry, ws } = u;
+  const { name, entry, ws, archived } = u;
   if (ws) return Object.hasOwn(workspaces, name) ? `workspace "${name}" already exists.` : null;
+  // Archived: still there under its name, so only check it wasn't restored or removed since.
+  if (archived) return links[name]?.archived ? null : `"${name}" is no longer archived.`;
   return takenError(links, name) || checkAliases(links, name, aliasesOf(entry)).error || null;
 }
+
+// links after ^z: deleted ones come back as they were, archived ones only lose the flag (edits made since stay).
+export const undoneLinks = (undo, links) => ({ ...links, ...Object.fromEntries(undo.map(({ name, entry, archived }) => {
+  if (!archived) return [name, entry];
+  const { archived: _a, ...rest } = links[name];
+  return [name, rest];
+})) });
 
 function scrollHint(start, end, total) {
   const parts = [start > 0 && `↑ ${start} more`, end < total && `↓ ${total - end} more`].filter(Boolean);
@@ -527,7 +536,8 @@ export function detailLines(c, pw, appChoices = [], now = Date.now(), { goals = 
     row('aliases', c.aliases?.join(' ')),
     row('tags', c.tags?.length && `#${c.tags.join(' #')}`),
     row('opened', c.uses ? `${c.uses}×${c.lastUsed ? `, last ${ui.span(now - c.lastUsed)} ago` : ''}` : 'never'),
-    row('stale', stale && `${chalk.yellow('30+ days')} ${chalk.dim(`archive: upex rm ${c.name} --archive`)}`),
+    // A click on it archives, like ^x.
+    stale ? { text: row('stale', `${chalk.yellow('30+ days')}  ${chalk.dim('^x archive')}`), archive: true } : null,
     row('added', !isNaN(added) && added.toLocaleDateString('sv-SE')),
     row('expires', c.expires && `in ${ui.span(c.expires - now, Math.ceil)}`));
   if (git) out.push(...gitLines(git, pw, now));
@@ -674,10 +684,10 @@ export function renderInteractiveView({
     // Keep the end of a long value in view, where the cursor is.
     lines.push(`  ${chalk.bold(pick('›'))} ${label} ${inputLine(inputBuffer, inputCursor, Math.max(1, w - vis(label) - 5))}`);
   } else if (mode === 'confirm') {
-    const what = `  ? delete ${isWs ? 'workspace ' : ''}`;
+    const what = `  ? ${action === 'archive' ? 'archive' : 'delete'} ${isWs ? 'workspace ' : ''}`;
     // Clip the name, not the line, so "y / n" stays visible.
     const name = clipName(currentChoice?.name || '', Math.max(1, w - vis(what) - 10)).text;
-    lines.push(chalk.yellow(!isWs && marks.size ? `${what}${marks.size} marked?` : `${what}"${name}"?`) + chalk.dim('  y / n'));
+    lines.push(chalk.yellow(!isWs && marks.size && action !== 'archive' ? `${what}${marks.size} marked?` : `${what}"${name}"?`) + chalk.dim('  y / n'));
   } else if (isScripts) {
     const name = clipName(currentChoice?.name || '', 24).text;
     lines.push(`  ${chalk.bold(pick('›'))} ${chalk.dim('run a script of')} ${chalk.bold(name)} ${chalk.dim(`(${scripts.pm})`)}`);
@@ -833,6 +843,7 @@ export function renderInteractiveView({
       // A script row { text, i } is clickable right of the │.
       if (d?.i != null) hit(i, lw + 3, w, { row: d.i });
       if (d?.web) hit(i, lw + 3, w, { web: true });
+      if (d?.archive) hit(i, lw + 3, w, { archive: true });
       if (d?.copy) hit(i, lw + 3, w, { copy: d.copy, msg: d.msg });
       const l = ui.truncate(lines[i], lw);
       lines[i] = `${l}${' '.repeat(Math.max(0, lw - vis(l)))}${chalk.dim(' │ ')}${d?.text ?? d ?? ''}`;
@@ -888,11 +899,11 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
     let goalIndex = 0;     // goal picker
     let scripts = null;    // script picker: { pm, list }
     let scriptIndex = 0;
-    let action = null;     // 'edit' | 'rename' | 'add'
+    let action = null;     // 'edit' | 'rename' | 'add', confirm: 'delete' | 'archive'
     let inputBuffer = '';
     let inputCursor = 0;
     let flash = '';
-    let undo = null; // last delete: [{ name, entry, ws? }]
+    let undo = null; // last delete or archive: [{ name, entry, ws?, archived? }]
     const marks = new Set(); // Space-marked shortcut names, across filtering and tabs
     let backView = view; // where Shift+Tab returns from Settings
     let settings = readSettings(); // appearance applies on every tab
@@ -1181,6 +1192,20 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
       else flash = r.message.split('\n')[0];
     };
 
+    // ^x / a click on the pane's stale line: ask, then archive the selected shortcut; ^z brings it back.
+    const askArchive = () => {
+      if (view !== 'workspaces' && filteredChoices[selectedIndex]) { mode = 'confirm'; action = 'archive'; }
+    };
+    const archive = () => {
+      const c = filteredChoices[selectedIndex];
+      const entry = c && loadLinks()[c.name];
+      if (!entry) return;
+      setLink(c.name, { ...entry, archived: true });
+      undo = [{ name: c.name, entry, archived: true }];
+      rebuild();
+      done(`archived "${c.name}" (^z undo)`);
+    };
+
     const copy = (text, msg) => {
       try {
         copyToClipboard(text);
@@ -1284,8 +1309,8 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
       }
       const t = hitTest(targets, x, y);
       const ws = view === 'workspaces';
-      // The web and copy lines act on any click, so a double-click must not act twice.
-      const once = !!(t?.web || t?.copy);
+      // The web, copy and archive lines act on any click, so a double-click must not act twice.
+      const once = !!(t?.web || t?.copy || t?.archive);
       const act = (t?.row != null || once) && rowClick(lastClick, y, Date.now(), once || t.row === (picking ? scriptIndex : ws ? wsIndex : selectedIndex));
       // Second half of a double-click that already opened: keep its flash.
       if (act === 'skip') return;
@@ -1297,6 +1322,7 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
         if (t.tab !== view) switchTo(t.tab);
       } else if (once) {
         if (t.web) openWeb();
+        else if (t.archive) askArchive();
         else copy(t.copy, t.msg);
         lastClick = { y, at: Date.now(), opened: true };
       } else if (act) {
@@ -1329,7 +1355,9 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
 
       // ── Confirm-delete mode ──
       if (mode === 'confirm') {
-        if (key.name === 'y' && view === 'workspaces') {
+        if (key.name === 'y' && action === 'archive') {
+          archive();
+        } else if (key.name === 'y' && view === 'workspaces') {
           const victim = filteredWs[wsIndex];
           const entry = victim && loadWorkspaces()[victim.name];
           if (entry) {
@@ -1462,14 +1490,15 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
       // Undo the last delete (either kind) unless its name was taken since.
       if (key.ctrl && key.name === 'z') {
         if (!undo) return;
-        const err = undoError(undo, loadLinks(), loadWorkspaces());
+        const links = loadLinks();
+        const err = undoError(undo, links, loadWorkspaces());
         if (err) {
           flash = `can't undo, ${err.replace(/\.$/, '')}`;
         } else {
           const [{ name, entry, ws }] = undo;
           if (ws) saveWorkspaces({ ...loadWorkspaces(), [name]: entry });
           // All in one save, like the delete.
-          else saveLinks({ ...loadLinks(), ...Object.fromEntries(undo.map(u => [u.name, u.entry])) });
+          else saveLinks(undoneLinks(undo, links));
           rebuild(ws ? null : name, ws ? name : null);
           done(`restored ${howMany(undo.map(u => u.name))}`);
           undo = null;
@@ -1481,7 +1510,7 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
       if (view === 'workspaces') {
         const n = filteredWs.length;
         if (key.ctrl && key.name === 'd') {
-          if (n > 0) { mode = 'confirm'; redraw(); }
+          if (n > 0) { mode = 'confirm'; action = 'delete'; redraw(); }
           return;
         }
         if (key.name === 'return') {
@@ -1513,7 +1542,7 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
         return;
       }
       if (key.ctrl && key.name === 'd') {
-        if (filteredChoices.length > 0 || marks.size) { mode = 'confirm'; redraw(); }
+        if (filteredChoices.length > 0 || marks.size) { mode = 'confirm'; action = 'delete'; redraw(); }
         return;
       }
       if (key.ctrl && key.name === 'e') {
@@ -1532,6 +1561,11 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
         setLink(c.name, withPinned(entry, !entry.pinned));
         rebuild(c.name);
         done(`${entry.pinned ? 'unpinned' : 'pinned'} "${c.name}"`);
+        redraw();
+        return;
+      }
+      if (key.ctrl && key.name === 'x') {
+        askArchive();
         redraw();
         return;
       }

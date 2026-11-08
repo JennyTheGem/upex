@@ -10,6 +10,7 @@ Closed sections: §5 Platform support · §7 Web UI
 
 ## 1. Shortcut management
 
+- `archived-shortcuts-in-the-tui` Archived shortcuts in the TUI (next)
 - Plus 3 maybe: `upgo list --section 1 --phase maybe`
 
 ## 2. Opening

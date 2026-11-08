@@ -361,6 +361,17 @@
       "note": "upex undo restores newest backup (10 kept), steps back on repeat, keeps usage stats"
     },
     {
+      "id": "archived-shortcuts-in-the-tui",
+      "section": 1,
+      "title": "Archived shortcuts in the TUI",
+      "body": "The selector shows archived shortcuts somewhere (e.g. a tab or a toggle), so they can be seen and restored without upex ls --archived / upex restore.",
+      "phase": "next",
+      "status": "planned",
+      "size": "M",
+      "created": "2026-11-08",
+      "updated": "2026-11-08"
+    },
+    {
       "id": "open-in-explorer-default-app-vs-code-webstorm",
       "section": 2,
       "title": "Open in Explorer / default app / VS Code / WebStorm / terminal",
