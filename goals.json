@@ -263,7 +263,7 @@
       "title": "upex note <name> \"text\"",
       "body": "Short note per shortcut, shown in ls and the selector.",
       "phase": "maybe",
-      "status": "planned",
+      "status": "done",
       "size": "S",
       "scope": [
         "store",
@@ -272,7 +272,8 @@
         "web"
       ],
       "created": "2026-11-06",
-      "updated": "2026-11-06"
+      "updated": "2026-11-08",
+      "note": "CLI note command, selector detail pane + edit form, upex ui shows it under the name and edits it"
     },
     {
       "id": "ls-dirty",

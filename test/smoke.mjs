@@ -889,6 +889,9 @@ const ren = applyShortcut(base, 'a', { name: 'z', target: '/A', tags: 'p, q' }, 
 assert.deepEqual(Object.keys(ren), ['z', 'b'], 'rename keeps position, unchanged dead path allowed');
 assert.deepEqual(ren.z.tags, ['p', 'q'], 'tags parsed on edit');
 assert.equal(applyShortcut(base, 'b', { name: 'b', target: 'x.dev', tags: '' }, yes).links.b.tags, undefined, 'empty tags dropped');
+assert.equal(applyShortcut(base, 'b', { name: 'b', target: 'x.dev', note: ' hi\n there ' }, yes).links.b.note, 'hi there', 'note set, one line');
+assert.equal(applyShortcut({ b: { url: 'x', note: 'n' } }, 'b', { name: 'b', target: 'x' }, yes).links.b.note, 'n', 'note kept when not sent');
+assert.equal(applyShortcut({ b: { url: 'x', note: 'n' } }, 'b', { name: 'b', target: 'x', note: '' }, yes).links.b.note, undefined, 'empty note cleared');
 assert.match(applyShortcut(base, 'a', { name: 'b', target: '/A' }, yes).error, /exists/, 'rename clash rejected');
 assert.ok(applyShortcut({ 'Led start': { url: 'x' } }, 'Led start', { name: 'Led start', target: 'y' }, yes).links, 'CLI name with spaces stays editable');
 

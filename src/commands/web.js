@@ -13,6 +13,7 @@ import { getInteractiveAppChoices, launchUrl, openerKey, isTerminalApp, checkSet
 import { handleOpen, isFile } from './open.js';
 import { openEntries } from './workspace.js';
 import { parseTags } from './add.js';
+import { oneLine } from '../interactive.js';
 import * as ui from '../ui.js';
 
 const PAGE = new URL('../web/index.html', import.meta.url);
@@ -22,7 +23,7 @@ const DEFAULT_PORT = 4545;
  * Add (old undefined) or edit/rename (old = current name) one shortcut.
  * Pure: returns { links } with the new set, or { error }.
  */
-export function applyShortcut(links, old, { kind, name, target, tags, aliases, opener } = {}, exists = fs.existsSync) {
+export function applyShortcut(links, old, { kind, name, target, tags, aliases, opener, note } = {}, exists = fs.existsSync) {
   name = String(name ?? '').trim();
   target = String(target ?? '').trim();
   // Old CLI names may hold spaces; only new names are checked so those stay editable.
@@ -58,6 +59,11 @@ export function applyShortcut(links, old, { kind, name, target, tags, aliases, o
     if (!key) return { error: `Unknown opener "${opener}".` };
     entry.opener = key;
   } else if (opener !== undefined) delete entry.opener;
+  // undefined leaves the note alone, '' clears it.
+  if (note !== undefined) {
+    const n = oneLine(note);
+    if (n) entry.note = n; else delete entry.note;
+  }
 
   // Rebuild so a renamed shortcut keeps its position.
   const out = {};
@@ -123,6 +129,7 @@ function state() {
         pinned: Boolean(e.pinned),
         pinOrder: e.pinned && Number.isFinite(e.pinOrder) ? e.pinOrder : null,
         opener: e.opener || '',
+        note: e.note || '',
         lastUsed: e.lastUsed || 0,
         added: e.added || 0,
         score: frecency(e),

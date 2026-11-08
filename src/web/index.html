@@ -161,6 +161,7 @@ h1 { font-size: 20px; letter-spacing: -.015em; margin: 8px 0 4px; }
 .name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tags { display: flex; gap: 4px; margin-top: 2px; flex-wrap: wrap; }
 .tag { font-size: 12px; color: var(--muted); }
+.note { font-size: 12px; color: var(--muted); margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .target { color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; direction: ltr; }
 .target .miss { color: var(--warn); font-family: var(--sans); font-size: 12px; margin-right: 8px; }
 /* Paths setting: dim parent folders (default), full, or hidden */
@@ -537,6 +538,7 @@ function editRow(l) {
         field('target', { class: 'wide mono', 'aria-label': KINDS[l.kind] + ' target', placeholder: placeholder(l.kind) }),
         field('tags', { 'aria-label': 'Tags', placeholder: 'tags, comma separated' }),
         field('aliases', { 'aria-label': 'Aliases', placeholder: 'aliases, comma separated' }),
+        field('note', { class: 'wide', 'aria-label': 'Note', placeholder: 'note', spellcheck: 'true' }),
         // Opener is only sent once changed, so a stale one doesn't block saving other edits.
         l.kind === 'folder' && openerSelect(d.opener ?? l.opener, v => (d.opener = v))),
       h('div', { class: 'row' },
@@ -594,7 +596,7 @@ function row(l, again) {
       iconBtn('copy', `Copy ${COPY_WORD[l.kind]} of ${l.name}`, '', copy),
       iconBtn('edit', `Edit ${l.name}`, '', () => {
         S.editing = l.name; S.editErr = '';
-        S.draft = { name: l.name, target: l.target, tags: l.tags.join(', '), aliases: l.aliases.join(', ') };
+        S.draft = { name: l.name, target: l.target, tags: l.tags.join(', '), aliases: l.aliases.join(', '), note: l.note };
         render();
         document.getElementById('edit-name')?.focus();
       }),
@@ -608,7 +610,8 @@ function row(l, again) {
       h('div', { class: 'name', title: l.name }, l.name),
       ((shows('tags') && l.tags.length > 0) || l.aliases.length > 0) && h('div', { class: 'tags' },
         l.aliases.length > 0 && h('span', { class: 'tag', title: 'Aliases' }, 'aka ' + l.aliases.join(', ')),
-        shows('tags') && l.tags.map(t => h('span', { class: 'tag' }, '#' + t)))),
+        shows('tags') && l.tags.map(t => h('span', { class: 'tag' }, '#' + t))),
+      l.note && h('div', { class: 'note', title: l.note }, l.note)),
     h('div', { class: 'target mono', title: l.target }, l.broken && shows('badges') && h('span', { class: 'miss' }, 'missing'), ...splitLeaf(l)),
     h('div', { class: 'when', title: 'Last opened' }, ago(l.lastUsed)),
     actions);

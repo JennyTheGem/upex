@@ -34,7 +34,7 @@ Jenny's CLI for named shortcuts to folders, apps, command lines and URLs. Data: 
 | `upex pin [name]` / `unpin <name>` | Pin to the top of the selector and `upex ui` (no name: list pinned) |
 | `upex undo` | Roll shortcuts back to before the last change (from `~/.upex/backups`, up to 10 steps; keeps usage stats; not workspaces/config; no redo, so only when asked) |
 | `upex tag [name] [tags...] [--remove] [--clear]` | Manage tags; `upex open <tag>` opens all tagged |
-| `upex note <name> [text...] [--clear]` | Short free-text note on a shortcut, shown in the selector's detail pane (no text: print it) |
+| `upex note <name> [text...] [--clear]` | Short free-text note on a shortcut, shown in the selector's detail pane and under the name in `upex ui` (editable in both edit forms; no text: print it) |
 | `upex alias [name] [aliases...] [--remove] [--clear]` | Extra names for a shortcut |
 | `upex cmd <name> [count] [start...]` | Open N terminals there, optionally running a command |
 | `upex run <name> [script]` | Run a package.json script in a terminal |
