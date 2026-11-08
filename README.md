@@ -223,7 +223,7 @@ Run `upex` with no arguments to open the interactive selector. Pinned shortcuts 
 - `Ctrl+K` -- show every key over the list (handy with `keyHints` short), any key or a click closes it
 - `Ctrl+U` -- start `upex ui` and open it in the browser; the selector stays open and shows the link. `Ctrl+U` again stops it, so does closing the selector
 - `Esc` -- clear the filter, then the marks, then close a detail pane opened with Shift+→ (see `narrowPane`), then quit
-- Mouse (full screen) -- click a tab, opener or setting; click a row to select it, again or double-click to open; the wheel moves the selection; in the detail pane a click on a goal copies it
+- Mouse (full screen) -- click a tab, opener or setting; click a row to select it, again or double-click to open; right-click a row for a menu (open in each opener, edit, pin, copy path, archive; workspaces: open all, edit, delete), click an item or use ↑↓ Enter, any other click or key closes it; the wheel moves the selection; in the detail pane a click on a goal copies it
 
 ## Web UI
 

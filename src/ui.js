@@ -152,7 +152,7 @@ export function truncate(str, cols) {
 }
 
 // ASCII stand-ins for the selector's glyphs, one column each so layouts keep their widths.
-const ASCII = { '‹': '<', '›': '>', '▏': '|', '▎': '|', '│': '|', '─': '-', '┬': '+', '┴': '+', '…': '.', '↑': '^', '↓': 'v', '←': '<', '→': '>', '●': '*', '★': '*', '×': 'x', '▰': '#', '▱': '-' };
+const ASCII = { '‹': '<', '›': '>', '▏': '|', '▎': '|', '│': '|', '─': '-', '┬': '+', '┴': '+', '╭': '+', '╮': '+', '╰': '+', '╯': '+', '…': '.', '↑': '^', '↓': 'v', '←': '<', '→': '>', '●': '*', '★': '*', '×': 'x', '▰': '#', '▱': '-' };
 const ASCII_RE = new RegExp(`[${Object.keys(ASCII).join('')}]`, 'g');
 export const toAscii = s => s.replace(ASCII_RE, c => ASCII[c]);
 

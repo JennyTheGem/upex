@@ -1065,10 +1065,11 @@
       "title": "Inline row actions on right-click",
       "body": "Mouse already selects and double-clicks. A right-click could show a small menu (open in..., edit, pin, copy path, archive) next to the row, so mouse users don't need the keys.",
       "phase": "next",
-      "status": "planned",
+      "status": "done",
       "size": "M",
       "created": "2026-11-08",
-      "updated": "2026-11-08"
+      "updated": "2026-11-08",
+      "note": "Right-click a row in full screen: box menu with open in each opener, edit, pin, copy path, archive (workspaces: open all, edit, delete); click or arrows+Enter, any other click/key closes"
     },
     {
       "id": "remember-the-selected-row",

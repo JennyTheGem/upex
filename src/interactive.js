@@ -350,13 +350,62 @@ export function rowClick(last, y, now, onSelected) {
   return onSelected ? 'open' : 'select';
 }
 
-// "b;x;yM" press / "b;x;ym" release. click = left button released, wheel = -1 up / 1 down.
+// "b;x;yM" press / "b;x;ym" release. click / right = left / right button released, wheel = -1 up / 1 down.
 function parseSgr(s) {
   const m = /^(\d+);(\d+);(\d+)([Mm])$/.exec(s);
   if (!m) return null;
   const b = Number(m[1]);
   const wheel = m[4] === 'M' && (b & 0xc2) === 64 ? (b & 1 ? 1 : -1) : 0;
-  return { x: Number(m[2]), y: Number(m[3]), wheel, click: m[4] === 'm' && (b & 0xe3) === 0 };
+  const up = m[4] === 'm' && (b & 0xe0) === 0;
+  return { x: Number(m[2]), y: Number(m[3]), wheel, click: up && (b & 3) === 0, right: up && (b & 3) === 2 };
+}
+
+// `line` with `text` over its columns from `from`; its color codes are re-applied after, so styles carry on.
+export function splice(line, from, text) {
+  const to = from + vis(text);
+  const reset = chalk.level ? '\x1b[0m' : '';
+  let col = 0;
+  let head = '';
+  let tail = '';
+  let seen = '';
+  // eslint-disable-next-line no-control-regex
+  for (const part of line.split(/(\x1b\[[0-9;]*m)/)) {
+    if (part.startsWith('\x1b')) {
+      if (col >= to) tail += part;
+      else { seen += part; if (col < from) head += part; }
+      continue;
+    }
+    for (const g of ui.graphemes(part)) {
+      // A wide character cut by an edge leaves a space.
+      if (col + g.w <= from) head += g.segment;
+      else if (col < from) head += ' '.repeat(from - col);
+      else if (col >= to) tail += g.segment;
+      else if (col + g.w > to) tail += ' '.repeat(col + g.w - to);
+      col += g.w;
+    }
+  }
+  return `${head}${' '.repeat(Math.max(0, from - col))}${reset}${text}${reset}${seen}${tail}`;
+}
+
+// Right-click menu { items: [{ label }], index, line, col } over the frame: under the clicked line, above it when
+// there's no room, inside the width. Returns the lines and a { line, from, to, menu } target per item.
+export function overlayMenu(lines, { items, index, line, col }, width) {
+  // Labels clip so the box fits the width.
+  const n = Math.max(1, Math.min(width - 5, Math.max(...items.map(i => vis(i.label)))));
+  const box = [
+    chalk.dim(`╭${'─'.repeat(n + 3)}╮`),
+    ...items.map((item, i) => {
+      const label = clipName(item.label, n).text;
+      const t = `${i === index ? '›' : ' '} ${label}${' '.repeat(n - vis(label))} `;
+      return chalk.dim('│') + (i === index ? highlight(chalk.bold(t)) : t) + chalk.dim('│');
+    }),
+    chalk.dim(`╰${'─'.repeat(n + 3)}╯`),
+  ];
+  const top = line + 1 + box.length <= lines.length ? line + 1 : Math.max(0, line - box.length);
+  const left = Math.max(0, Math.min(col, width - n - 5));
+  const out = [...lines];
+  box.forEach((b, i) => { if (top + i < out.length) out[top + i] = splice(out[top + i], left, b); });
+  return { lines: out, hits: items.map((_, i) => ({ line: top + 1 + i, from: left, to: left + n + 5, menu: i })) };
 }
 
 // readline splits a mouse report into keypresses: '\x1b[<' then one per char of "b;x;yM" (SGR), or '\x1b[M' + 3 (X10).
@@ -1086,7 +1135,7 @@ export function renderInteractiveView({
     const groups = [
       ['Move', [openKey, ['↑↓', 'move'], opener, windows, tabKey, escKey, paneHint, markKey, !isWs && ['A-↑↓', 'move pin']]],
       ['Edit', [...editKeys, pinKey, dropKey, ['^z', 'undo'], copyKey]],
-      ['More', [scriptsKey, isShortcuts && ['S-→', 'goals'], isShortcuts && (webKey || ['^g', 'git web page']), uiKey]],
+      ['More', [scriptsKey, isShortcuts && ['S-→', 'goals'], isShortcuts && (webKey || ['^g', 'git web page']), uiKey, full && ['right-click', 'row menu']]],
     ];
     const help = groups.flatMap(([name, pairs], i) => [...(i ? [''] : []), `    ${chalk.bold(name)}`, ...wrapHint(pairs, cw).map(r => `  ${r}`)]);
     lines.push(...help.slice(0, Math.max(0, height - lines.length - footRows(foot) - 2)), '', chalk.dim('    any key closes'));
@@ -1255,6 +1304,7 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
     let targets = [];   // clickable areas of the last frame
     let mouse = null;   // readMouse state
     let lastClick = {}; // { y, at } for double-click
+    let menu = null;    // right-click menu: { items: [{ label, run }], index, line, col }
     let web = null;     // upex ui from ^u: { server, url, restore }, stopped when the selector closes
 
     // Counts rows at the current width, so a resize that rewrapped the last frame still clears all of it.
@@ -1330,7 +1380,13 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
         targets,
       });
       // Never taller than the screen, or the top scrolls away and frames stack up.
-      const clipped = output.split('\n').slice(0, height).map(line => ui.truncate(line, width)).map(settings.glyphs === 'ascii' ? ui.toAscii : l => l);
+      let shown = output.split('\n').slice(0, height).map(line => ui.truncate(line, width));
+      if (menu && alt) {
+        const m = overlayMenu(shown, menu, width);
+        shown = m.lines;
+        targets.unshift(...m.hits);
+      }
+      const clipped = shown.map(settings.glyphs === 'ascii' ? ui.toAscii : l => l);
 
       if (alt) {
         stdout.write(`\x1b[H${clipped.join('\x1b[K\n')}\x1b[K\x1b[J`);
@@ -1564,6 +1620,26 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
       } catch (err) {
         flash = `can't copy: ${err.message.split('\n')[0]}`;
       }
+    };
+
+    // Right-click menu of the selected row: its keys, one click each. Acts on that row only, never the marks.
+    const menuItems = () => {
+      const ctrl = name => () => handleKey(undefined, { ctrl: true, name });
+      if (view === 'workspaces') return [{ label: 'open all', run: () => handleKey(undefined, { name: 'return' }) }, { label: 'edit', run: ctrl('e') }, { label: 'delete', run: ctrl('d') }];
+      const c = filteredChoices[selectedIndex];
+      const opens = c.isApp || c.isUrl ? [{ label: c.isUrl ? 'open in browser' : 'launch', run: () => openSelected() }]
+        : appChoices.map(a => ({ label: `open in ${a.label}`, run: () => openSelected(a.key) }));
+      return [
+        ...opens,
+        { label: 'edit', run: ctrl('e') },
+        { label: c.pinned ? 'unpin' : 'pin', run: ctrl('p') },
+        c.path && { label: c.isUrl ? 'copy url' : 'copy path', run: ctrl('y') },
+        { label: 'archive', run: () => askArchive(false) },
+      ].filter(Boolean);
+    };
+    const runMenu = (item) => {
+      item.run();
+      if (!closed) redraw();
     };
 
     const startAction = (name, buffer = prefill(name, filteredChoices[selectedIndex]), who = null) => {
@@ -1960,15 +2036,69 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
       }
     };
 
+    // Enter on the selected row, in the picked opener or `picked` (the right-click menu's "open in").
+    const openSelected = (picked = appChoices[selectedAppIndex]?.key) => {
+      const selected = filteredChoices[selectedIndex];
+      if (!selected) return;
+      // App and URL shortcuts launch directly, ignore the opener selector.
+      const direct = selected.isApp || selected.isUrl;
+
+      // A missing folder would only end in an error after exit: stay and say how to fix it.
+      const missing = !direct && missingFlash(selected);
+      if (missing) {
+        rebuild(selected.name);
+        flash = missing;
+        redraw();
+        return;
+      }
+
+      const appKey = direct ? null : picked || fallback;
+      const count = isTerminalApp(appKey) ? cmdCount : 1;
+      // Terminal tabs open beside the selector, so it stays either way.
+      const tab = tabsOn(selected.isCmd ? 'cmd' : appKey);
+      const n = selected.isCmd ? 1 : count;
+      if (tab || stay(selected.isCmd ? 'cmd' : appKey, n)) {
+        const where = tab ? (n > 1 ? `${n} new tabs` : 'a new tab') : appKey && (appMap[appKey]?.displayName || appKey);
+        openHere([{ shortcut: selected.name, app: appKey, count: n }], `opened "${selected.name}"${where ? ` in ${where}` : ''}`, [selected.name]);
+        return;
+      }
+      finish({ status: 'selected', name: selected.name, app: appKey, count });
+    };
+
     // Mouse is only on in full screen; ignored while typing or confirming.
     // Presses are skipped: the second press of a double-click must not wipe the first one's flash.
-    const handleMouse = ({ x, y, wheel, click }) => {
+    const handleMouse = ({ x, y, wheel, click, right }) => {
       const picking = mode === 'scripts';
       const goalPick = mode === 'goals';
-      if (!alt || (mode !== 'browse' && !picking && !goalPick) || !(wheel || click)) return;
+      if (!alt || (mode !== 'browse' && !picking && !goalPick) || !(wheel || click || right)) return;
       // The ^k overlay: a click closes it, the wheel does nothing.
       if (keysHelp) {
-        if (click) { keysHelp = false; redraw(); }
+        if (click || right) { keysHelp = false; redraw(); }
+        return;
+      }
+      // Right-click menu: a click on an item runs it, any other click closes it; a right-click elsewhere reopens it there.
+      if (menu) {
+        if (wheel) return;
+        const t = hitTest(targets, x, y);
+        const item = click && t?.menu != null && menu.items[t.menu];
+        menu = null;
+        if (click) {
+          flash = '';
+          if (item) runMenu(item);
+          else redraw();
+          // Either way, a double-click's second half must not act on the row under it.
+          lastClick = { y, at: Date.now(), opened: true };
+          return;
+        }
+      }
+      if (right) {
+        const t = hitTest(targets, x, y);
+        if (mode !== 'browse' || view === 'settings' || t?.row == null) { redraw(); return; }
+        flash = '';
+        if (view === 'workspaces') wsIndex = t.row;
+        else selectedIndex = t.row;
+        menu = { items: menuItems(), index: 0, line: y - 1, col: x - 1 };
+        redraw();
         return;
       }
       if (wheel) {
@@ -2033,6 +2163,20 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
       if (keysHelp) {
         keysHelp = false;
         redraw();
+        return;
+      }
+      // Right-click menu: ↑↓ move, Enter runs, any other key closes it.
+      if (menu) {
+        const n = menu.items.length;
+        if (key.name === 'up' || key.name === 'down') {
+          menu.index = (menu.index + (key.name === 'up' ? n - 1 : 1)) % n;
+          redraw();
+          return;
+        }
+        const item = key.name === 'return' && menu.items[menu.index];
+        menu = null;
+        if (item) runMenu(item);
+        else redraw();
         return;
       }
 
@@ -2373,34 +2517,7 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
       }
 
       if (key.name === 'return') {
-        if (filteredChoices.length === 0) {
-          return;
-        }
-
-        const selected = filteredChoices[selectedIndex];
-        // App and URL shortcuts launch directly, ignore the opener selector.
-        const direct = selected.isApp || selected.isUrl;
-
-        // A missing folder would only end in an error after exit: stay and say how to fix it.
-        const missing = !direct && missingFlash(selected);
-        if (missing) {
-          rebuild(selected.name);
-          flash = missing;
-          redraw();
-          return;
-        }
-
-        const appKey = direct ? null : appChoices[selectedAppIndex]?.key || fallback;
-        const count = isTerminalApp(appKey) ? cmdCount : 1;
-        // Terminal tabs open beside the selector, so it stays either way.
-        const tab = tabsOn(selected.isCmd ? 'cmd' : appKey);
-        const n = selected.isCmd ? 1 : count;
-        if (tab || stay(selected.isCmd ? 'cmd' : appKey, n)) {
-          const where = tab ? (n > 1 ? `${n} new tabs` : 'a new tab') : appKey && (appMap[appKey]?.displayName || appKey);
-          openHere([{ shortcut: selected.name, app: appKey, count: n }], `opened "${selected.name}"${where ? ` in ${where}` : ''}`, [selected.name]);
-          return;
-        }
-        finish({ status: 'selected', name: selected.name, app: appKey, count });
+        openSelected();
         return;
       }
 
@@ -2477,7 +2594,8 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
       if (m.event) handleMouse(m.event);
       if (m.pass) handleKey(str, key);
     });
-    const onResize = guard(redraw);
+    // The menu sits at screen cells, which a resize moves.
+    const onResize = guard(() => { menu = null; redraw(); });
 
     readline.emitKeypressEvents(stdin);
     stdin.setRawMode(true);

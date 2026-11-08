@@ -22,7 +22,7 @@ import { applyShortcut, applyOpener, cleanEntries, startServer } from '../src/co
 import { COMMAND_NAMES } from '../src/fast.js';
 import { createProgram } from '../src/index.js';
 import { readScripts, detectPm } from '../src/commands/run.js';
-import { renderInteractiveView, nextView, backTo, accentOf, pathLook, inView, tidyPath, byOrder, optionRow, listRows, readMouse, hitTest, rowClick, undoError, undoneLinks, clipName, prefill, editLine, sameLinks, kindOf, retyped, setField, fieldWords, completeTag, expiryOptions, formRows, formLines, statLines, doctorLines, inputLine, missingFlash, staysOpen, expandHome, underlineHits, movePinned, sameGroup, withRecent, withGroups, filterChoices, maxListOf, isAlt, detailLines, rowOptions, pickedOf, goalSummary, goalsOf, goalText, oneLine, scriptLines, markLines, paneShown, paneToggles, paneWidthOf, withSamePath, archivedList, dotLines, lr, wrapHint } from '../src/interactive.js';
+import { renderInteractiveView, nextView, backTo, accentOf, pathLook, inView, tidyPath, byOrder, optionRow, listRows, readMouse, hitTest, rowClick, undoError, undoneLinks, clipName, prefill, editLine, sameLinks, kindOf, retyped, setField, fieldWords, completeTag, expiryOptions, formRows, formLines, statLines, doctorLines, inputLine, missingFlash, staysOpen, expandHome, underlineHits, movePinned, sameGroup, withRecent, withGroups, filterChoices, maxListOf, isAlt, detailLines, rowOptions, pickedOf, goalSummary, goalsOf, goalText, oneLine, scriptLines, markLines, paneShown, paneToggles, paneWidthOf, withSamePath, archivedList, dotLines, lr, wrapHint, splice, overlayMenu } from '../src/interactive.js';
 import { parseStatus, parseDiff, parseLog, gitOf, stopGit } from '../src/git.js';
 import chalk from 'chalk';
 import { resolveTarget, resolveName, suggestNames } from '../src/fuzzy.js';
@@ -554,7 +554,17 @@ const feed = async (...chunks) => {
 };
 const fed = await feed('a\x1b[<0;12;5M\x1b[<0;1', '2;5mb', '\x1b[<64;3;9M\x1b[<65;3;9M\x1b[<2;1;1m', '\x1b[<0;1x', '\x1b[M !!c');
 assert.equal(fed.keys, 'abxc', 'only real keys pass: split, broken and X10 reports are swallowed');
-assert.deepEqual(fed.events.map(e => [e.x, e.y, e.wheel, e.click]), [[12, 5, 0, false], [12, 5, 0, true], [3, 9, -1, false], [3, 9, 1, false], [1, 1, 0, false]], 'press, left release = click, wheel up/down, right release');
+assert.deepEqual(fed.events.map(e => [e.x, e.y, e.wheel, e.click, e.right]), [[12, 5, 0, false, false], [12, 5, 0, true, false], [3, 9, -1, false, false], [3, 9, 1, false, false], [1, 1, 0, false, true]], 'press, left release = click, wheel up/down, right release = right');
+// -- right-click menu: spliced over styled lines, under the row or above it near the bottom, inside the width --
+assert.equal(strip(splice('ab\x1b[2mcdef\x1b[22mgh', 3, 'XY')), 'abcXYfgh', 'splice keeps the columns around');
+assert.ok(splice('\x1b[2mabcdef\x1b[22m', 1, 'X').replaceAll('\x1b[0m', '').endsWith('X\x1b[2mcdef\x1b[22m'), 'splice re-applies the line style after');
+assert.equal(strip(splice('a', 3, 'X')), 'a  X', 'splice past the end pads');
+const frame = Array.from({ length: 10 }, () => '.'.repeat(30));
+const items = [{ label: 'edit' }, { label: 'archive' }];
+const below = overlayMenu(frame, { items, index: 1, line: 2, col: 28 }, 30);
+assert.deepEqual([below.hits.map(h => [h.line, h.from, h.to]), strip(below.lines[3]), strip(below.lines[5])], [[[4, 18, 30], [5, 18, 30]], '..................╭──────────╮', '..................│› archive │'], 'menu under the row, pulled inside the width');
+assert.equal(overlayMenu(frame, { items, index: 0, line: 8, col: 0 }, 30).hits[0].line, 5, 'menu above the row near the bottom');
+assert.ok(overlayMenu(frame.map(l => l.slice(0, 20)), { items: [{ label: 'open in Windows Terminal' }], index: 0, line: 2, col: 5 }, 20).lines.every(l => strip(l).length <= 20), 'menu labels clip to a narrow width');
 const escFed = await feed('\x1b', '\x1b[<65;3;9M', 'x');
 assert.ok(escFed.keys === 'x' && escFed.events.length === 1, 'esc right before a report: the report is not typed');
 assert.deepEqual([rowClick({}, 5, 0, true), rowClick({}, 5, 0, false), rowClick({ y: 5, at: 0 }, 5, 300, false), rowClick({ y: 5, at: 0, opened: true }, 5, 300, true), rowClick({ y: 5, at: 0, opened: true }, 5, 900, true), rowClick({ y: 4, at: 0, opened: true }, 5, 300, true)],
@@ -773,6 +783,34 @@ await send('\x03'); await run;
   const left = JSON.parse(fs.readFileSync(file, 'utf-8'));
   assert.deepEqual([r.stderr, left.a1, left.a2, left.a3], ['', { path: 'A', archived: true, expires: 1 }, { path: 'B' }, { path: 'C' }], 'Enter, then a double-click restore one each');
   assert.ok(r.stdout.includes('restored "a2"') && r.stdout.includes('Archived 1') && r.stdout.includes('› a1'), 'flash kept, list and selection follow');
+}
+// -- right-click menu on fake streams: click "pin" on one row, then ↑ (wraps to archive) Enter y on another --
+{
+  const shome = fs.mkdtempSync(path.join(os.tmpdir(), 'upex-menu-'));
+  const file = path.join(shome, '.upex', 'links.json');
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.writeFileSync(file, JSON.stringify({ one: { path: shome }, two: { path: shome } }));
+  const drive = path.join(shome, 'drive.mjs');
+  fs.writeFileSync(drive, String.raw`
+import { PassThrough } from 'node:stream';
+import { runInteractiveMode } from '${new URL('../src/interactive.js', import.meta.url).href}';
+const stdin = Object.assign(new PassThrough(), { isTTY: true, setRawMode() {} });
+const stdout = Object.assign(new PassThrough(), { isTTY: true, columns: 100, rows: 40 });
+let out = '';
+stdout.on('data', d => { out += d; });
+const frame = () => out.slice(out.lastIndexOf('\x1b[H')).replace(/\x1b\[[\d;?<]*[A-Za-z]/g, '').split('\n');
+const send = async s => { stdin.write(s); await new Promise(r => setTimeout(r, 30)); };
+const rowY = name => frame().findIndex(l => new RegExp('^  . ' + name + ' ').test(l)) + 1;
+const run = runInteractiveMode({ stdin, stdout });
+await send('\x1b[<2;5;' + rowY('two') + 'm');
+const pinY = frame().findIndex(l => l.includes('│  pin ')) + 1;
+await send('\x1b[<0;' + (frame()[pinY - 1].indexOf('pin') + 1) + ';' + pinY + 'm');
+await send('\x1b[<2;5;' + rowY('one') + 'm'); await send('\x1b[A'); await send('\r'); await send('y');
+await send('\x03'); await run;
+`);
+  const r = spawnSync(process.execPath, [drive], { encoding: 'utf-8', env: { ...process.env, USERPROFILE: shome, HOME: shome } });
+  const left = JSON.parse(fs.readFileSync(file, 'utf-8'));
+  assert.deepEqual([r.stderr, !!left.two.pinned, !!left.one.archived], ['', true, true], 'right-click menu pins by click, archives by keys');
 }
 const zs = new PassThrough();
 readline.emitKeypressEvents(zs);

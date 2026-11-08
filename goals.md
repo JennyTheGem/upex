@@ -18,7 +18,6 @@ Closed sections: §5 Platform support · §7 Web UI · §9 Detail pane
 
 ## 3. Resolution & UX
 
-- `inline-row-actions-on-right-click` Inline row actions on right-click (next)
 - `filter-tokens-beyond-tag` Filter tokens beyond #tag (next)
 - `pgup-pgdn-and-home-end-in-lists` PgUp/PgDn and Home/End in lists (next)
 - `empty-start-opens-the-selector` Empty start opens the selector (next)
