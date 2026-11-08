@@ -349,6 +349,7 @@ Appearance:
 Detail pane (selector only, full screen, 140+ columns, or narrower with `narrowPane`):
 
 - `"narrowPane"`: `"toggle"` (default) or `"always"`. Under 140 columns, Shift+→ opens the pane anyway (the list gets narrower) and Shift+← or Esc closes it; `"always"` shows it there without asking. Never under 60 columns. Shift+↑↓ still sets the terminal count.
+- `"paneWidth"`: `"normal"` (default, about 38% of the screen), `"narrow"` (about 28%, more room for the list) or `"wide"` (half the screen).
 - `"goals"`: `"off"` (default), `"3"`, `"5"` or `"10"`. A folder shortcut with an [upgo](https://github.com/JennyTheGem/upgo) `goals.json` shows its open goal count and up to that many open goals, soonest phase first. Shift+→ picks one in the pane (↑↓ or the wheel move, Enter copies `id: title` and its body, Esc or ← goes back). A click on a goal copies it too.
 - `"git"`: `"off"` (default) or `"on"`. A folder shortcut inside a git repo shows its branch, ahead/behind, changed file count and last commit (age and message), looked up in the background and cached per folder for a few seconds, so scrolling stays fast. With an `origin` remote it also shows the repo's web page: Ctrl+G or a click opens it in the browser.
 

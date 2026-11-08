@@ -25,6 +25,9 @@ const PANE_FLOOR = 60;
 // Is the detail pane shown? `open` = opened on a narrow screen.
 export const paneShown = (columns, full, open) => !!full && (columns >= PANE_MIN || (!!open && columns >= PANE_FLOOR));
 // Can Shift+Right open it and Shift+Left close it here?
+// Pane width per the paneWidth setting: [share of the screen, max columns].
+const PANE_WIDTHS = { narrow: [0.28, 56], normal: [0.38, 72], wide: [0.5, 110] };
+export const paneWidthOf = (w, size) => { const [f, max] = PANE_WIDTHS[size] || PANE_WIDTHS.normal; return Math.min(max, Math.floor(w * f)); };
 export const paneToggles = (columns, full, s = {}) => !!full && columns < PANE_MIN && columns >= PANE_FLOOR && s.narrowPane !== 'always';
 const ALT_ON = '\x1b[?1049h';
 const ALT_OFF = '\x1b[?1049l';
@@ -401,6 +404,7 @@ const SETTING_ROWS = [
   { section: 'Appearance', key: 'glyphs', label: 'Glyphs', names: { unicode: 'Unicode', ascii: 'ASCII' } },
   { section: 'Appearance', key: 'theme', label: 'Web theme', names: { system: 'System', dark: 'Dark', light: 'Light' } },
   { section: 'Detail pane', key: 'narrowPane', label: 'Narrow screens', names: { toggle: 'Shift+→ / ←', always: 'Always' } },
+  { section: 'Detail pane', key: 'paneWidth', label: 'Width', names: { normal: 'Normal', narrow: 'Narrow', wide: 'Wide' } },
   { section: 'Detail pane', key: 'goals', label: 'Open goals', names: { off: 'Off', 3: '3', 5: '5', 10: '10' } },
   { section: 'Detail pane', key: 'git', label: 'Git status', names: { off: 'Off', on: 'On' } },
 ];
@@ -431,6 +435,7 @@ function settingNote(key, s, wt) {
   if (key === 'rowDetails') return 'Right side of a row: #tags, badges (pinned, app, missing), both or none. Here, in upex ls and upex ui.';
   if (key === 'pinned') return 'Pinned shortcuts first, or first under their own Pinned heading. Here and in upex ui. ^p pins, Alt+↑↓ moves one.';
   if (key === 'narrowPane') return 'Under 140 columns (full screen): Shift+→ opens the pane, Shift+← or Esc closes it, or it always shows. Not under 60.';
+  if (key === 'paneWidth') return 'How much of the screen the pane takes: Narrow leaves the list more room, Wide shows more details.';
   if (key === 'goals') return 'Pane right of the list (full screen): open upgo goals of a folder, up to this many. S-→ picks one to copy, a click copies it.';
   if (key === 'git') return 'Pane right of the list (full screen): branch, ahead/behind, changes and last commit of a folder in git. ^g opens its web page.';
   if (key === 'keyHints') return 'Key rows under the list. Short: one row of the main keys. Off: more room for the list. Settings keeps its keys.';
@@ -643,7 +648,7 @@ export function renderInteractiveView({
   const isGoals = mode === 'goals' && !!goals?.next.length;
   const git = pane && !isWs && !isScripts && !marking ? folderGit(currentChoice, settings.git, gitFor) : null;
   const w = Math.max(width, 20);
-  const pw = pane ? Math.min(72, Math.floor(w * 0.38)) : 0; // pane width
+  const pw = pane ? paneWidthOf(w, settings.paneWidth) : 0; // pane width
   const lw = pane ? w - pw - 3 : w; // list width, " │ " between
   const cw = lw - 2; // row width after the 2-space indent
   // With the pane, the rules join its │ with ┬ (top) and ┴ (bottom).

@@ -1628,10 +1628,11 @@
       "title": "Detail pane width",
       "body": "A narrow/wide setting, or drag the divider with the mouse.",
       "phase": "maybe",
-      "status": "planned",
+      "status": "done",
       "size": "M",
       "created": "2026-11-08",
-      "updated": "2026-11-08"
+      "updated": "2026-11-08",
+      "note": "Settings > Detail pane > Width: Narrow / Normal / Wide (paneWidth). Drag skipped by choice."
     }
   ]
 }
