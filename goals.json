@@ -1102,10 +1102,11 @@
       "title": "Filter tokens beyond #tag",
       "body": "#tag already filters. Add is:pinned, is:missing, is:stale, is:app and @opener so the list can be narrowed without a Settings trip. Same tokens in upex ui search.",
       "phase": "next",
-      "status": "planned",
+      "status": "done",
       "size": "S",
       "created": "2026-11-08",
-      "updated": "2026-11-08"
+      "updated": "2026-11-08",
+      "note": "is:pinned|missing|stale|app and @opener tokens in the selector filter and upex ui search"
     },
     {
       "id": "pgup-pgdn-and-home-end-in-lists",

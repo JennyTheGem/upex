@@ -143,15 +143,34 @@ function buildWorkspaceChoices() {
   });
 }
 
+const STALE_DAYS = 60;
+// is: tokens; upex ui has its own copy in index.html. Workspaces have no lastUsed, so never stale.
+const IS = {
+  pinned: c => c.pinned,
+  missing: c => c.exists === false,
+  stale: c => c.lastUsed !== undefined && Date.now() - (c.lastUsed || c.added || 0) >= STALE_DAYS * 86400000,
+  app: c => c.isApp,
+};
+const TOKEN = /^(#|@|is:)(.*)$/i;
+// Test for a #tag, @opener or is:x word, prefix match, any case; null for a bare #, @ or is:. Unknown is:x matches none.
+function tokenTest(w) {
+  const [, kind, v] = w.toLowerCase().match(TOKEN);
+  if (!v) return null;
+  if (kind === '#') return c => !!c.tags?.some(t => t.toLowerCase().startsWith(v));
+  if (kind === '@') return c => !!c.opener?.toLowerCase().startsWith(v);
+  const key = Object.keys(IS).find(k => k.startsWith(v));
+  return key ? IS[key] : () => false;
+}
+
 // `fuzzy` and `searchIn` are the settings of the same name.
 export function filterChoices(choices, query, { fuzzy, searchIn } = {}) {
-  // "#we" words keep shortcuts with a tag starting with "we" (a lone # none); the other words search fuzzy.
-  // Also split before each #: Space marks, so "#we#ui" or "api#we".
-  const words = query.trim().split(/\s+|(?=#)/);
-  const isTag = w => w.startsWith('#');
-  const tags = words.filter(isTag).map(w => w.slice(1).toLowerCase()).filter(Boolean);
-  const pool = tags.length ? choices.filter(c => tags.every(t => c.tags?.some(x => x.toLowerCase().startsWith(t)))) : choices;
-  const trimmed = words.filter(w => !isTag(w)).join(' ');
+  // Token words (#tag, @opener, is:pinned|missing|stale|app) narrow the list; the other words search fuzzy.
+  // Also split before each token: Space marks, so "#we#ui" or "apiis:pinned".
+  const words = query.trim().split(/\s+|(?=[#@])|(?=is:)/i);
+  const isToken = w => TOKEN.test(w);
+  const tests = words.filter(isToken).map(tokenTest).filter(Boolean);
+  const pool = tests.length ? choices.filter(c => tests.every(t => t(c))) : choices;
+  const trimmed = words.filter(w => !isToken(w)).join(' ');
   if (!trimmed) return pool;
 
   const fuse = new Fuse(pool, {
@@ -655,7 +674,7 @@ function settingNote(key, s, wt) {
   if (key === 'views') return 'Which tabs show and Tab cycles through, here and in upex ui.';
   if (key === 'enter') return 'Selector only. Open and stay keeps upex open after Enter, to open more.';
   if (key === 'fuzzy') return 'How close a typed name must be, in this filter and for upex <name> / go. Exact: the letters in a row, no typos. Loose: more typos.';
-  if (key === 'searchIn') return 'What the filter looks at, here and in upex ui. Names only: names and aliases. #tag filters by tag either way.';
+  if (key === 'searchIn') return 'What the filter looks at, here and in upex ui. Names only: names and aliases. #tag, @opener and is:pinned, is:missing, is:stale, is:app filter either way.';
   if (key === 'updateCheck') return `Checks npm once a day in the background; after a command, one dim line when a newer upex is out. This is v${VERSION}.`;
   if (key === 'flash') return 'How long a success message (bottom right) stays. Warnings always stay until the next key.';
   if (key === 'maxRows') return s.fullScreen === 'off' ? 'List rows here.' : 'List rows here. Auto: as many as the screen fits.';
@@ -687,7 +706,6 @@ function settingNote(key, s, wt) {
 }
 
 // Settings rows after the settings: what Enter does and the note under the list.
-const STALE_DAYS = 60;
 const EXTRA_KEYS = { opener: 'edit command', newOpener: 'add', broken: 'prune', stale: 'archive all', stats: 'show', doctor: 'run', export: 'export', import: 'import', archived: 'restore' };
 const EXTRA_NOTES = {
   opener: 'A custom opener: upex runs this command with the folder. It shows in the opener row, like upex app.',

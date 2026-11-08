@@ -448,10 +448,31 @@ const openerSelect = (value, set) => h('select', { 'aria-label': 'Default opener
 
 // ---------- Shortcuts view ----------
 
+// Search tokens, like the selector filter (filterChoices in interactive.js): #tag, @opener, is:pinned|missing|stale|app,
+// prefix match; a bare #, @ or is: is none, an unknown is:x matches none.
+const IS = {
+  pinned: l => l.pinned,
+  missing: l => l.broken,
+  stale: l => Date.now() - (l.lastUsed || l.added) >= 60 * 864e5,
+  app: l => l.kind === 'app' || l.kind === 'cmd',
+};
+const SEARCH_TOKEN = /^(#|@|is:)(.*)$/;
+function tokenTest(w) {
+  const [, kind, v] = w.match(SEARCH_TOKEN);
+  if (!v) return () => true;
+  if (kind === '#') return l => l.tags.some(t => t.toLowerCase().startsWith(v));
+  if (kind === '@') return l => l.opener.toLowerCase().startsWith(v);
+  const key = Object.keys(IS).find(k => k.startsWith(v));
+  return key ? IS[key] : () => false;
+}
+
 function visibleLinks() {
-  const q = S.q.trim().toLowerCase();
+  const words = S.q.trim().toLowerCase().split(/(?=[#@])|(?=is:)|\s+/).filter(Boolean);
+  const tests = words.filter(w => SEARCH_TOKEN.test(w)).map(tokenTest);
+  const q = words.filter(w => !SEARCH_TOKEN.test(w)).join(' ');
   return tabLinks()
     .filter(l => !S.tag || l.tags.includes(S.tag))
+    .filter(l => tests.every(t => t(l)))
     .filter(l => !q || [l.name, ...l.aliases, ...(S.settings.searchIn === 'names' ? [] : [l.target, ...l.tags])].some(s => s.toLowerCase().includes(q)))
     .sort((a, b) => { const f = SORT_FIELD[S.settings.sort]; return b.pinned - a.pinned || Math.sign(pinRank(a) - pinRank(b)) || (f ? b[f] - a[f] : 0) || a.name.localeCompare(b.name); });
 }
@@ -985,6 +1006,7 @@ function render() {
     t.dataset.view === S.view ? t.setAttribute('aria-current', 'page') : t.removeAttribute('aria-current');
   });
   document.getElementById('q').placeholder = S.view === 'ws' ? 'Search workspaces' : S.settings.searchIn === 'names' ? 'Search names' : 'Search names, paths, tags';
+  document.getElementById('q').title = S.view === 'ws' ? '' : '#tag, @opener, is:pinned, is:missing, is:stale, is:app narrow the list';
   document.querySelector('.search').hidden = S.view === 'settings';
 
   const main = document.getElementById('main');

@@ -977,6 +977,12 @@ assert.deepEqual(filterChoices(tagged, '#VEL #web').map(c => c.name), ['a'], 'ev
 assert.deepEqual(filterChoices(tagged, '#velora b').map(c => c.name), ['b'], '#tag plus fuzzy words');
 assert.equal(filterChoices(tagged, '#').length, 3, 'a lone # is no tag filter');
 assert.deepEqual([filterChoices(tagged, '#vel#web'), filterChoices(tagged, 'b#vel')].map(l => l.map(c => c.name).join()), ['a', 'b'], '#tags chain without a space (Space marks)');
+// is: and @opener tokens, chained without a space.
+const tok = [{ name: 'p', pinned: true, opener: 'vscode', lastUsed: Date.now(), exists: true }, { name: 'm', exists: false, lastUsed: Date.now() }, { name: 'ap', isApp: true, exists: true, lastUsed: 0, added: 0 }];
+const by = q => filterChoices(tok, q).map(c => c.name).join();
+assert.equal(filterChoices([{ name: 'w', entries: [] }], 'is:stale').length, 0, 'workspaces are never stale');
+assert.deepEqual([by('is:pinned'), by('IS:p'), by('is:missing'), by('is:stale'), by('is:app'), by('@vs'), by('is:nope'), by('is:')], ['p', 'p', 'm', 'ap', 'ap', 'p', '', 'p,m,ap'], 'is: and @ tokens');
+assert.deepEqual([by('apis:app'), by('is:pinned@vs'), by('is:pinned is:app')], ['ap', 'p', ''], 'tokens chain and all must match');
 // Fuzzy and searchIn settings on the filter.
 const fz = [{ name: 'website', path: '/x/api', aliases: ['ws'] }, { name: 'other', path: '/x/webkit' }];
 const names = (q, s) => filterChoices(fz, q, s).map(c => c.name).join();
