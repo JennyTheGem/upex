@@ -12,7 +12,7 @@ import readline from 'node:readline';
 import { PassThrough } from 'node:stream';
 import { spawn, spawnSync, execSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { frecency, pruneBroken, mergeLinks, lastUsedName, nameError, takenError, checkAliases, aliasClashes, staleLinks, sweepExpired, diffLinks, keepUsage, withPinned } from '../src/store.js';
+import { unarchived, frecency, pruneBroken, mergeLinks, lastUsedName, nameError, takenError, checkAliases, aliasClashes, staleLinks, sweepExpired, diffLinks, keepUsage, withPinned } from '../src/store.js';
 import { remoteWebUrl } from '../src/git.js';
 import { installCmdWrapper } from '../src/commands/setup.js';
 import { normalizeUrl, caretEscape, wtCommandLine, setting, shellCommand, defaultOpener, checkSettings, resetSettings, startTab } from '../src/launcher.js';
@@ -22,7 +22,7 @@ import { applyShortcut, applyOpener, cleanEntries, startServer } from '../src/co
 import { COMMAND_NAMES } from '../src/fast.js';
 import { createProgram } from '../src/index.js';
 import { readScripts, detectPm } from '../src/commands/run.js';
-import { renderInteractiveView, nextView, backTo, accentOf, pathLook, inView, tidyPath, byOrder, optionRow, listRows, readMouse, hitTest, rowClick, undoError, undoneLinks, clipName, prefill, editLine, inputLine, missingFlash, staysOpen, expandHome, underlineHits, movePinned, withRecent, maxListOf, isAlt, detailLines, rowOptions, pickedOf, goalSummary, goalsOf, goalText, oneLine, scriptLines, markLines, paneShown, paneToggles, paneWidthOf, withSamePath } from '../src/interactive.js';
+import { renderInteractiveView, nextView, backTo, accentOf, pathLook, inView, tidyPath, byOrder, optionRow, listRows, readMouse, hitTest, rowClick, undoError, undoneLinks, clipName, prefill, editLine, inputLine, missingFlash, staysOpen, expandHome, underlineHits, movePinned, withRecent, maxListOf, isAlt, detailLines, rowOptions, pickedOf, goalSummary, goalsOf, goalText, oneLine, scriptLines, markLines, paneShown, paneToggles, paneWidthOf, withSamePath, archivedList } from '../src/interactive.js';
 import { parseStatus, parseDiff, parseLog, gitOf, stopGit } from '../src/git.js';
 import chalk from 'chalk';
 import { resolveTarget, resolveName, suggestNames } from '../src/fuzzy.js';
@@ -430,6 +430,16 @@ assert.ok(strip(renderInteractiveView({ ...setArgs, settings: { ...setArgs.setti
 assert.ok(setView.includes('‹ A to Z ›'), 'sort row shows the saved sort');
 assert.ok(strip(renderInteractiveView({ ...setArgs, settingIndex: 7 })).includes('no opener of their own'), 'note follows the picked row');
 assert.ok(setView.indexOf('Workspaces') < setView.indexOf('Settings'), 'settings tab is last');
+// archived shortcuts sit under the settings, Enter restores the picked one
+assert.deepEqual(archivedList({ b: { path: '/b', archived: true }, a: { app: 'x.exe', archived: true }, c: { path: '/c' } }), [{ name: 'a', path: 'x.exe' }, { name: 'b', path: '/b' }], 'archived list: only archived, A to Z');
+assert.deepEqual(unarchived({ path: '/a', archived: true, expires: 1, uses: 2 }), { path: '/a', uses: 2 }, 'restore drops archived and expires');
+assert.ok(!setView.includes('Archived'), 'no archived section when none');
+const arcArgs = { ...setArgs, archived: [{ name: 'old', path: '/old/dir' }], height: 80 };
+const arcView = strip(renderInteractiveView({ ...arcArgs, settingIndex: 0 }));
+assert.ok(arcView.includes('Archived 1') && arcView.includes('/old/dir') && arcView.includes('change (saved)'), 'archived section lists them');
+// 22 setting rows (pane split hidden), so index 22 is the first archived one.
+const arcSel = strip(renderInteractiveView({ ...arcArgs, settingIndex: 22 }));
+assert.ok(arcSel.includes('› old') && arcSel.includes('↵ restore') && arcSel.includes('upex restore old'), 'picked archived row: restore key and note');
 
 // rows stay inside the given width, the missing badge survives a long path
 const longArgs = (width, exists) => ({ ...viewArgs, width, choices: [{ name: 's', path: 'P/'.repeat(60) + 'leaf', exists }] });
@@ -569,6 +579,8 @@ assert.ok(['General', 'Terminals', 'Opening', 'Appearance'].every(s => tall.incl
 const short = rowsOf({ ...setArgs, height: 14, settingIndex: 17 });
 assert.ok(short.length <= 14 && short.some(l => l.startsWith('  › Web theme')) && short.at(-1).includes('setting'), 'short terminal scrolls settings, keeps the footer');
 assert.equal(at({ ...setArgs, height: 14, settingIndex: 16 }, 3, short.findIndex(l => l.startsWith('  › Web theme')) + 1)?.setting, 16, 'scrolled settings stay clickable');
+const arcShort = { ...setArgs, archived: [{ name: 'old', path: '/old/dir' }], height: 14, settingIndex: 22 };
+assert.equal(at(arcShort, 3, rowsOf(arcShort).findIndex(l => l.startsWith('  › old')) + 1)?.setting, 22, 'last archived row scrolls into view, stays clickable');
 assert.equal(checkSettings({ accent: 'red' }).error, 'accent must be one of: default, green, blue, purple, orange, or a hex color like #ff66aa.', 'bad accent refused');
 assert.deepEqual([checkSettings({ accent: '#FF66aa' }).next.accent, checkSettings({ accent: 'ff66aa' }).next.accent, checkSettings({ sort: '#ff66aa' }).error?.slice(0, 4)], ['#ff66aa', '#ff66aa', 'sort'], 'hex only for accent, normalized');
 assert.deepEqual([setting('accent', { accent: '#ff66aa' }), setting('accent', { accent: '#ff66a' }), setting('accent', { accent: '"><x' })], ['#ff66aa', 'default', 'default'], 'stored hex read back, junk falls back');
@@ -655,6 +667,34 @@ assert.ok(strip(renderInteractiveView({ ...markArgs, mode: 'confirm', action: 'a
   assert.deepEqual(Object.keys(JSON.parse(fs.readFileSync(file, 'utf-8'))), ['c'], 'removeLinks deletes them');
   assert.equal(spawnSync(process.execPath, [cli, 'undo'], { encoding: 'utf-8', env }).status, 0, 'undo runs');
   assert.deepEqual(Object.keys(JSON.parse(fs.readFileSync(file, 'utf-8'))).sort(), ['a', 'b', 'c'], 'one upex undo restores all of them');
+}
+// -- selector on fake streams: S-Tab, ↑ (wraps to the last archived), Enter restores; a double-click restores once, keeps its flash --
+{
+  const shome = fs.mkdtempSync(path.join(os.tmpdir(), 'upex-sel-'));
+  const file = path.join(shome, '.upex', 'links.json');
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.writeFileSync(file, JSON.stringify({ live: { path: shome }, a1: { path: 'A', archived: true, expires: 1 }, a2: { path: 'B', archived: true }, a3: { path: 'C', archived: true } }));
+  const drive = path.join(shome, 'drive.mjs');
+  fs.writeFileSync(drive, String.raw`
+import { PassThrough } from 'node:stream';
+import { runInteractiveMode } from '${new URL('../src/interactive.js', import.meta.url).href}';
+const stdin = Object.assign(new PassThrough(), { isTTY: true, setRawMode() {} });
+const stdout = Object.assign(new PassThrough(), { isTTY: true, columns: 100, rows: 60 });
+let out = '';
+stdout.on('data', d => { out += d; });
+const frame = () => out.slice(out.lastIndexOf('\x1b[H')).replace(/\x1b\[[\d;?<]*[A-Za-z]/g, '').split('\n');
+const send = async s => { stdin.write(s); await new Promise(r => setTimeout(r, 30)); };
+const run = runInteractiveMode({ stdin, stdout });
+await send('\x1b[Z'); await send('\x1b[A'); await send('\r');
+const y = frame().findIndex(l => l.includes('› a2')) + 1;
+await send('\x1b[<0;3;' + y + 'm'); await send('\x1b[<0;3;' + y + 'm');
+console.log(frame().join('\n'));
+await send('\x03'); await run;
+`);
+  const r = spawnSync(process.execPath, [drive], { encoding: 'utf-8', env: { ...process.env, USERPROFILE: shome, HOME: shome } });
+  const left = JSON.parse(fs.readFileSync(file, 'utf-8'));
+  assert.deepEqual([r.stderr, left.a1, left.a2, left.a3], ['', { path: 'A', archived: true, expires: 1 }, { path: 'B' }, { path: 'C' }], 'Enter, then a double-click restore one each');
+  assert.ok(r.stdout.includes('restored "a2"') && r.stdout.includes('Archived 1') && r.stdout.includes('› a1'), 'flash kept, list and selection follow');
 }
 const zs = new PassThrough();
 readline.emitKeypressEvents(zs);

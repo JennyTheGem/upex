@@ -984,6 +984,74 @@
       "note": "Max rows Auto (default) fills the screen in full screen; key rows pinned to the bottom; detail pane right of the list at 140+ cols"
     },
     {
+      "id": "selector-preview-line",
+      "section": 3,
+      "title": "Selector preview line",
+      "body": "Show the highlighted shortcut's full path, git branch and last-used time under the list. Less guessing between similar names.",
+      "phase": "later",
+      "status": "dropped",
+      "size": "S",
+      "created": "2026-11-08",
+      "updated": "2026-11-08",
+      "note": "Out of scope"
+    },
+    {
+      "id": "show-archived-setting",
+      "section": 3,
+      "title": "Show archived setting",
+      "body": "Archived shortcuts hidden, dimmed at the bottom, or in their own tab.",
+      "phase": "later",
+      "status": "dropped",
+      "size": "S",
+      "created": "2026-11-08",
+      "updated": "2026-11-08",
+      "note": "Already done"
+    },
+    {
+      "id": "fuzzy-strictness-setting",
+      "section": 3,
+      "title": "Fuzzy strictness setting",
+      "body": "Exact, normal or loose: sets the Fuse threshold for the filter and name resolution.",
+      "phase": "next",
+      "status": "planned",
+      "size": "S",
+      "created": "2026-11-08",
+      "updated": "2026-11-08"
+    },
+    {
+      "id": "search-scope-setting",
+      "section": 3,
+      "title": "Search scope setting",
+      "body": "Filter matches the name only, or name + path + tags.",
+      "phase": "next",
+      "status": "planned",
+      "size": "S",
+      "created": "2026-11-08",
+      "updated": "2026-11-08"
+    },
+    {
+      "id": "flash-duration-setting",
+      "section": 3,
+      "title": "Flash duration setting",
+      "body": "Success flash fades after 3s, 6s, or stays until the next key.",
+      "phase": "next",
+      "status": "planned",
+      "size": "S",
+      "created": "2026-11-08",
+      "updated": "2026-11-08"
+    },
+    {
+      "id": "tag-filter-in-selector",
+      "section": 3,
+      "title": "Tag filter in selector",
+      "body": "Typing #web filters to that tag; a key cycles through tags.",
+      "phase": "next",
+      "status": "planned",
+      "size": "M",
+      "created": "2026-11-08",
+      "updated": "2026-11-08"
+    },
+    {
       "id": "cd-support-via-wrapper-hidden-resolve-public-go",
       "section": 4,
       "title": "`cd` support via wrapper + hidden `__resolve` / public `go`",

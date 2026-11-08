@@ -18,6 +18,10 @@ Closed sections: §5 Platform support · §7 Web UI · §9 Detail pane
 
 ## 3. Resolution & UX
 
+- `fuzzy-strictness-setting` Fuzzy strictness setting (next)
+- `search-scope-setting` Search scope setting (next)
+- `flash-duration-setting` Flash duration setting (next)
+- `tag-filter-in-selector` Tag filter in selector (next)
 - Plus 1 maybe: `upgo list --section 3 --phase maybe`
 
 ## 4. Shell integration

@@ -26,14 +26,6 @@
       "created": "2026-11-06"
     },
     {
-      "id": "selector-preview-line",
-      "title": "Selector preview line",
-      "body": "Show the highlighted shortcut's full path, git branch and last-used time under the list. Less guessing between similar names.",
-      "section": 3,
-      "size": "S",
-      "created": "2026-11-06"
-    },
-    {
       "id": "on-open-hooks-per-shortcut",
       "title": "On-open hooks per shortcut",
       "body": "Optional command run when a shortcut opens (git pull, docker compose up, nvm use). Turns opening a project into starting it.",
@@ -98,51 +90,11 @@
       "created": "2026-11-07"
     },
     {
-      "id": "show-archived-setting",
-      "title": "Show archived setting",
-      "body": "Archived shortcuts hidden, dimmed at the bottom, or in their own tab.",
-      "section": 3,
-      "size": "S",
-      "created": "2026-11-07"
-    },
-    {
-      "id": "fuzzy-strictness-setting",
-      "title": "Fuzzy strictness setting",
-      "body": "Exact, normal or loose: sets the Fuse threshold for the filter and name resolution.",
-      "section": 3,
-      "size": "S",
-      "created": "2026-11-07"
-    },
-    {
-      "id": "search-scope-setting",
-      "title": "Search scope setting",
-      "body": "Filter matches the name only, or name + path + tags.",
-      "section": 3,
-      "size": "S",
-      "created": "2026-11-07"
-    },
-    {
       "id": "usage-column-setting",
       "title": "Usage column setting",
       "body": "Hide usage, show the open count, or show relative time like 3d ago.",
       "section": 3,
       "size": "S",
-      "created": "2026-11-07"
-    },
-    {
-      "id": "flash-duration-setting",
-      "title": "Flash duration setting",
-      "body": "Success flash fades after 3s, 6s, or stays until the next key.",
-      "section": 3,
-      "size": "S",
-      "created": "2026-11-07"
-    },
-    {
-      "id": "tag-filter-in-selector",
-      "title": "Tag filter in selector",
-      "body": "Typing #web filters to that tag; a key cycles through tags.",
-      "section": 3,
-      "size": "M",
       "created": "2026-11-07"
     },
     {

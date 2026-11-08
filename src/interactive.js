@@ -10,7 +10,7 @@ import chalk from 'chalk';
 import Fuse from 'fuse.js';
 import { getInteractiveAppChoices, getAppMap, isTerminalApp, hasWindowsTerminal, defaultOpener, readSettings, setting, startTab, shownTabs, isHex, copyToClipboard, launchUrl, SETTINGS } from './launcher.js';
 import { gitOf, stopGit } from './git.js';
-import { loadLinks, activeLinks, aliasesOf, takenError, checkAliases, frecency, removeLinks, saveLinks, setLink, renameLink, loadWorkspaces, saveWorkspaces, removeWorkspace, nameError, loadConfig, saveConfig, withPinned, setPinOrder } from './store.js';
+import { loadLinks, activeLinks, unarchived, aliasesOf, takenError, checkAliases, frecency, removeLinks, saveLinks, setLink, renameLink, loadWorkspaces, saveWorkspaces, removeWorkspace, nameError, loadConfig, saveConfig, withPinned, setPinOrder } from './store.js';
 import { describeEntry } from './commands/workspace.js';
 import { handleOpen } from './commands/open.js';
 import { startServer } from './commands/web.js';
@@ -107,6 +107,10 @@ export const maxListOf = (v, full = false) => (full && !Number(v) ? Infinity : N
 
 // Folder shortcuts on the Shortcuts tab, app + URL shortcuts on the Apps tab.
 export const inView = (view) => (c) => (view === 'apps') === !!(c.isApp || c.isUrl);
+
+// Archived shortcuts for Settings, A to Z.
+export const archivedList = links => Object.entries(activeLinks(links, true))
+  .map(([name, e]) => ({ name, path: e.path || e.app || e.url || '' })).sort((a, b) => a.name.localeCompare(b.name));
 
 // Workspaces in the same { name, path, searchText } shape so filterChoices works on them.
 function buildWorkspaceChoices() {
@@ -625,6 +629,7 @@ export function renderInteractiveView({
   undo = false,
   settings = {},
   settingIndex = 0,
+  archived = [], // Settings: archived shortcuts [{ name, path }]
   wt = null,
   counts = {},
   webUrl = '', // upex ui started with ^u
@@ -756,6 +761,16 @@ export function renderInteractiveView({
       const hits = [...spans.map(s => [20 + s.from, 20 + s.to, { setting: i, option: s.index }]), [0, w, { setting: i }]];
       body.push({ text: `  ${sel ? pick('›') : ' '} ${(sel ? chalk.bold : chalk.dim)(row.label.padEnd(16))}${picker}`, hits, i });
     });
+    // Archived shortcuts last, their index after the setting rows; Enter restores one.
+    if (archived.length) body.push(...gap.map(text => ({ text })), { text: `  ${chalk.bold('Archived')} ${chalk.dim(archived.length)}` });
+    archived.forEach((a, k) => {
+      const i = rows.length + k;
+      const sel = i === settingIndex;
+      const name = clipName(a.name, 15).text;
+      const text = `  ${sel ? pick('›') : ' '} ${(sel ? chalk.bold : chalk.dim)(name)}${' '.repeat(16 - vis(name))}${chalk.dim(ui.truncate(tidyPath(a.path), w - 20))}`;
+      body.push({ text, hits: [[0, w, { setting: i }]], i });
+    });
+    const onArchived = archived[settingIndex - rows.length];
     // Too tall for the terminal: scroll so the picked row stays in view (note + footer take the rest).
     const room = height - lines.length - gap.length - 3 - webRows.length;
     const { start, end } = getVisibleWindow(body, body.findIndex(b => b.i === settingIndex), Math.max(1, room));
@@ -763,8 +778,9 @@ export function renderInteractiveView({
       for (const [from, to, t] of b.hits || []) hit(lines.length, from, to, t);
       lines.push(b.text);
     }
-    lines.push(...gap, chalk.dim(`    ${settingNote(rows[settingIndex].key, settings, wt)}`));
-    return footer([keyHint([['↑↓', 'setting'], ['←→', 'change (saved)'], tabKey, ['S-Tab', 'back'], ['esc', 'quit'], uiKey]), ...webRows]);
+    const note = onArchived ? `Enter or a second click brings it back to its tab, like upex restore ${onArchived.name}.` : settingNote(rows[settingIndex].key, settings, wt);
+    lines.push(...gap, chalk.dim(`    ${note}`));
+    return footer([keyHint([['↑↓', 'setting'], onArchived ? ['↵', 'restore'] : ['←→', 'change (saved)'], tabKey, ['S-Tab', 'back'], ['esc', 'quit'], uiKey]), ...webRows]);
   }
 
   const openerSpans = [];
@@ -926,6 +942,7 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
     let backView = view; // where Shift+Tab returns from Settings
     let settings = readSettings(); // appearance applies on every tab
     let settingIndex = 0;
+    let archived = []; // Settings: archived shortcuts, read when it opens
     let wt = null;
     const appIndex = (key) => appChoices.findIndex(choice => choice.key === key);
     // A folder's own opener, else the default.
@@ -993,6 +1010,7 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
         undo: !!undo,
         settings,
         settingIndex,
+        archived,
         wt,
         webUrl: web?.url,
         scripts,
@@ -1288,8 +1306,9 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
       if (to === 'settings') {
         backView = view;
         settings = readSettings();
-        // The pane split row may have gone since last time (layout changed elsewhere).
-        settingIndex = Math.min(settingIndex, visibleRows(settings).length - 1);
+        archived = archivedList(loadLinks());
+        // The pane split row or archived ones may have gone since last time.
+        settingIndex = Math.min(settingIndex, settingCount() - 1);
         wt = hasWindowsTerminal();
       }
       view = to;
@@ -1308,6 +1327,21 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
     };
 
     const clamp = (i, n) => Math.max(0, Math.min(i, n - 1));
+    // Settings rows plus the archived shortcuts under them.
+    const settingCount = () => visibleRows(settings).length + archived.length;
+    // Enter / a second click on an archived row in Settings.
+    const restore = () => {
+      const a = archived[settingIndex - visibleRows(settings).length];
+      const entry = a && loadLinks()[a.name];
+      if (!entry?.archived) return;
+      setLink(a.name, unarchived(entry));
+      // A ^z for its archive would only be refused now.
+      if (undo?.some(u => u.archived && u.name === a.name)) undo = null;
+      rebuild();
+      archived = archivedList(loadLinks());
+      settingIndex = clamp(settingIndex, settingCount());
+      done(`restored "${a.name}"`);
+    };
 
     // Mouse is only on in full screen; ignored while typing or confirming.
     // Presses are skipped: the second press of a double-click must not wipe the first one's flash.
@@ -1319,7 +1353,7 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
         flash = '';
         if (picking) scriptIndex = clamp(scriptIndex + wheel, scripts.list.length);
         else if (goalPick) goalIndex = clamp(goalIndex + wheel, paneGoals()?.next.length || 1);
-        else if (view === 'settings') settingIndex = clamp(settingIndex + wheel, visibleRows(settings).length);
+        else if (view === 'settings') settingIndex = clamp(settingIndex + wheel, settingCount());
         else if (view === 'workspaces') wsIndex = clamp(wsIndex + wheel, filteredWs.length);
         else selectedIndex = clamp(selectedIndex + wheel, filteredChoices.length);
         redraw();
@@ -1327,11 +1361,14 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
       }
       const t = hitTest(targets, x, y);
       const ws = view === 'workspaces';
+      // Archived rows in Settings click like list rows.
+      const arc = t?.setting >= visibleRows(settings).length;
       // The web, copy and archive lines act on any click, so a double-click must not act twice.
       const once = !!(t?.web || t?.copy || t?.archive);
-      const act = (t?.row != null || once) && rowClick(lastClick, y, Date.now(), once || t.row === (picking ? scriptIndex : ws ? wsIndex : selectedIndex));
-      // Second half of a double-click that already opened: keep its flash.
-      if (act === 'skip') return;
+      const now = Date.now();
+      const act = (t?.row != null || once || arc) && rowClick(lastClick, y, now, once || (arc ? t.setting === settingIndex : t.row === (picking ? scriptIndex : ws ? wsIndex : selectedIndex)));
+      // Second half of a double-click that already opened, also when its row went (restored): keep its flash.
+      if (rowClick(lastClick, y, now) === 'skip') return;
       // Any click dismisses the flash, an empty spot included, and leaves the goal picker.
       flash = '';
       if (goalPick) mode = 'browse';
@@ -1344,10 +1381,11 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
         else copy(t.copy, t.msg);
         lastClick = { y, at: Date.now(), opened: true };
       } else if (act) {
+        if (arc) settingIndex = t.setting;
         if (act === 'open') handleKey(undefined, { name: 'return' });
         else if (act === 'select' && picking) scriptIndex = t.row;
         else if (act === 'select' && ws) wsIndex = t.row;
-        else if (act === 'select') selectedIndex = t.row;
+        else if (act === 'select' && !arc) selectedIndex = t.row;
         // Stamped after opening: a tab launch blocks and the second click queues behind it.
         lastClick = { y, at: Date.now(), opened: act === 'open' };
         if (act === 'open') return;
@@ -1487,14 +1525,17 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
         return;
       }
 
-      // Settings: Up/Down picks a row, Left/Right changes and saves it; everything else is ignored.
+      // Settings: Up/Down picks a row, Left/Right changes and saves it, Enter restores an archived one; everything else is ignored.
       if (view === 'settings') {
         const rows = visibleRows(settings);
         if (key.name === 'up' || key.name === 'down') {
-          const n = rows.length;
+          const n = settingCount();
           settingIndex = (settingIndex + (key.name === 'up' ? n - 1 : 1)) % n;
           redraw();
-        } else if (key.name === 'left' || key.name === 'right') {
+        } else if (key.name === 'return' && settingIndex >= rows.length) {
+          restore();
+          redraw();
+        } else if ((key.name === 'left' || key.name === 'right') && settingIndex < rows.length) {
           // Only the layout row changes which rows show, and pane split comes after it, so the index stays put.
           const row = rows[settingIndex];
           const keys = rowOptions(row, appChoices, settings).map(([k]) => k);
