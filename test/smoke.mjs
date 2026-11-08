@@ -422,7 +422,7 @@ assert.ok(!wsView.includes('Explorer'), 'no opener row in workspace view');
 assert.ok(strip(renderInteractiveView(viewArgs)).includes('tab apps'), 'shortcut view is the default');
 const appsView = strip(renderInteractiveView({ ...viewArgs, view: 'apps', choices: [{ name: 'g', path: 'x.dev', isUrl: true, exists: true }] }));
 assert.ok(appsView.includes('tab workspaces') && appsView.includes('open in browser') && !appsView.includes('Explorer'), 'apps view: no opener row');
-const setArgs = { ...viewArgs, view: 'settings', settings: { startView: 'apps', sort: 'name', terminalLayout: 'tabs', paneSplit: 'auto', terminalShell: 'pwsh', defaultOpener: 'explorer' }, settingIndex: 7, wt: false, height: 40 };
+const setArgs = { ...viewArgs, view: 'settings', settings: { startView: 'apps', sort: 'name', terminalLayout: 'tabs', paneSplit: 'auto', terminalShell: 'pwsh', defaultOpener: 'explorer' }, settingIndex: 8, wt: false, height: 40 };
 const setView = strip(renderInteractiveView(setArgs));
 if (os.platform() === 'win32') assert.ok(setView.includes('‹ Tabs ›') && setView.includes('‹ PowerShell 7 ›') && setView.includes('‹ Explorer ›') && setView.includes('not found'), 'settings view: all rows + missing-wt note');
 assert.ok(!setView.includes('Pane split'), 'pane split hidden unless split panes');
@@ -430,7 +430,7 @@ if (os.platform() === 'win32') assert.ok(strip(renderInteractiveView({ ...setArg
 assert.ok(setView.includes('‹ A to Z ›'), 'sort row shows the saved sort');
 // The Shell row shows on Windows only, so later rows sit one lower elsewhere.
 const win = os.platform() === 'win32' ? 1 : 0;
-assert.ok(strip(renderInteractiveView({ ...setArgs, settingIndex: 8 + win })).includes('no opener of their own'), 'note follows the picked row');
+assert.ok(strip(renderInteractiveView({ ...setArgs, settingIndex: 9 + win })).includes('no opener of their own'), 'note follows the picked row');
 assert.ok(setView.indexOf('Workspaces') < setView.indexOf('Settings'), 'settings tab is last');
 // archived shortcuts sit under the settings, Enter restores the picked one
 assert.deepEqual(archivedList({ b: { path: '/b', archived: true }, a: { app: 'x.exe', archived: true }, c: { path: '/c' } }), [{ name: 'a', path: 'x.exe' }, { name: 'b', path: '/b' }], 'archived list: only archived, A to Z');
@@ -439,8 +439,8 @@ assert.ok(!setView.includes('Archived'), 'no archived section when none');
 const arcArgs = { ...setArgs, archived: [{ name: 'old', path: '/old/dir' }], height: 80 };
 const arcView = strip(renderInteractiveView({ ...arcArgs, settingIndex: 0 }));
 assert.ok(arcView.includes('Archived 1') && arcView.includes('/old/dir') && arcView.includes('change (saved)'), 'archived section lists them');
-// 26 setting rows on Windows (pane split hidden), so index 26 is the first archived one.
-const arcSel = strip(renderInteractiveView({ ...arcArgs, settingIndex: 25 + win }));
+// 27 setting rows on Windows (pane split hidden), so index 27 is the first archived one.
+const arcSel = strip(renderInteractiveView({ ...arcArgs, settingIndex: 26 + win }));
 assert.ok(arcSel.includes('› old') && arcSel.includes('↵ restore') && arcSel.includes('upex restore old') && arcSel.includes('^d delete') && !arcView.includes('^d delete'), 'picked archived row: restore and delete keys, note');
 
 // rows stay inside the given width, the missing badge survives a long path
@@ -600,11 +600,11 @@ assert.ok(renderInteractiveView({ ...setArgs, settings: { ...setArgs.settings, a
 const tall = strip(renderInteractiveView({ ...setArgs, height: 40, settings: { ...setArgs.settings, theme: 'light' } }));
 assert.ok(tall.includes('Web theme       System  Dark  ‹ Light ›'), 'web theme row');
 assert.ok(['General', 'Search', 'Terminals', 'Opening', 'Appearance'].every(s => tall.includes(`\n  ${s}\n`)), 'settings grouped in sections');
-const short = rowsOf({ ...setArgs, height: 14, settingIndex: 20 + win });
+const short = rowsOf({ ...setArgs, height: 14, settingIndex: 21 + win });
 assert.ok(short.length <= 14 && short.some(l => l.startsWith('  › Web theme')) && short.at(-1).includes('setting'), 'short terminal scrolls settings, keeps the footer');
-assert.equal(at({ ...setArgs, height: 14, settingIndex: 19 + win }, 3, short.findIndex(l => l.startsWith('  › Web theme')) + 1)?.setting, 19 + win, 'scrolled settings stay clickable');
-const arcShort = { ...setArgs, archived: [{ name: 'old', path: '/old/dir' }], height: 14, settingIndex: 25 + win };
-assert.equal(at(arcShort, 3, rowsOf(arcShort).findIndex(l => l.startsWith('  › old')) + 1)?.setting, 25 + win, 'last archived row scrolls into view, stays clickable');
+assert.equal(at({ ...setArgs, height: 14, settingIndex: 20 + win }, 3, short.findIndex(l => l.startsWith('  › Web theme')) + 1)?.setting, 20 + win, 'scrolled settings stay clickable');
+const arcShort = { ...setArgs, archived: [{ name: 'old', path: '/old/dir' }], height: 14, settingIndex: 26 + win };
+assert.equal(at(arcShort, 3, rowsOf(arcShort).findIndex(l => l.startsWith('  › old')) + 1)?.setting, 26 + win, 'last archived row scrolls into view, stays clickable');
 assert.equal(checkSettings({ accent: 'red' }).error, 'accent must be one of: default, green, blue, purple, orange, or a hex color like #ff66aa.', 'bad accent refused');
 assert.deepEqual([checkSettings({ accent: '#FF66aa' }).next.accent, checkSettings({ accent: 'ff66aa' }).next.accent, checkSettings({ sort: '#ff66aa' }).error?.slice(0, 4)], ['#ff66aa', '#ff66aa', 'sort'], 'hex only for accent, normalized');
 assert.deepEqual([setting('accent', { accent: '#ff66aa' }), setting('accent', { accent: '#ff66a' }), setting('accent', { accent: '"><x' })], ['#ff66aa', 'default', 'default'], 'stored hex read back, junk falls back');
@@ -662,11 +662,11 @@ assert.ok(v({}).includes('^u web ui') && v({ view: 'workspaces' }).includes('^u 
 {
   const extras = [{ section: 'Openers', kind: 'opener', name: 'zed', text: 'zed' }, { section: 'Maintenance', kind: 'stats', name: 'Stats', text: 'web 3' }];
   const ex = (i, more = {}) => strip(renderInteractiveView({ ...setArgs, extras, archived: [{ name: 'old', path: '/o' }], height: 80, settingIndex: i, ...more }));
-  const e0 = ex(25 + win);
+  const e0 = ex(26 + win);
   assert.ok(e0.indexOf('Openers') < e0.indexOf('Maintenance') && e0.indexOf('Maintenance') < e0.indexOf('Archived 1'), 'extra sections in order');
   assert.ok(e0.includes('› zed') && e0.includes('↵ edit command') && e0.includes('^d remove'), 'opener row keys');
-  assert.ok(ex(26 + win, { expanded: { kind: 'stats', lines: ['web  3'] } }).includes('↵ hide') && ex(26 + win, { expanded: { kind: 'stats', lines: ['web  3'] } }).includes('      web  3'), 'stats lines under its row');
-  assert.ok(ex(27 + win).includes('› old') && ex(27 + win).includes('↵ restore'), 'archived index after the extras');
+  assert.ok(ex(27 + win, { expanded: { kind: 'stats', lines: ['web  3'] } }).includes('↵ hide') && ex(27 + win, { expanded: { kind: 'stats', lines: ['web  3'] } }).includes('      web  3'), 'stats lines under its row');
+  assert.ok(ex(28 + win).includes('› old') && ex(28 + win).includes('↵ restore'), 'archived index after the extras');
   assert.ok(strip(renderInteractiveView({ ...setArgs, mode: 'confirm', ask: 'remove opener "zed"?' })).includes('? remove opener "zed"?  y / n'), 'settings confirm question');
   const day = 86400000;
   const sl = statLines({ code: { displayName: 'VS Code' } }, [{ name: 'web', opener: 'code', ts: 10 * day }, { name: 'web', ts: 11 * day }, { name: 'api', ts: 11 * day }], 12 * day).map(strip);
@@ -1194,7 +1194,7 @@ try {
   assert.equal(cfg2.paneSplit, 'horizontal', 'refused request saved nothing, later one did');
   assert.equal(cfg2.defaultOpener, 'vscode', 'default opener stored as its key');
   const st2 = await (await fetch(base + '/api/state', { headers: { 'x-upex-token': token } })).json();
-  assert.deepEqual(st2.settings, { startView: 'apps', sort: 'name', terminalLayout: 'panes', paneSplit: 'horizontal', terminalShell: 'powershell', fullScreen: 'on', theme: 'system', accent: 'default', density: 'comfortable', paths: 'dim', keyHints: 'full', maxRows: 'auto', recentStrip: 'off', views: 'all', enter: 'quit', fuzzy: 'normal', searchIn: 'all', flash: '3', rowDetails: 'both', pinned: 'top', groups: 'off', narrowPane: 'toggle', paneWidth: 'normal', goals: 'off', git: 'off', glyphs: 'unicode', defaultOpener: 'vscode' }, 'state reports settings');
+  assert.deepEqual(st2.settings, { startView: 'apps', sort: 'name', terminalLayout: 'panes', paneSplit: 'horizontal', terminalShell: 'powershell', fullScreen: 'on', theme: 'system', accent: 'default', density: 'comfortable', paths: 'dim', keyHints: 'full', maxRows: 'auto', recentStrip: 'off', views: 'all', enter: 'quit', fuzzy: 'normal', searchIn: 'all', flash: '3', updateCheck: 'on', rowDetails: 'both', pinned: 'top', groups: 'off', narrowPane: 'toggle', paneWidth: 'normal', goals: 'off', git: 'off', glyphs: 'unicode', defaultOpener: 'vscode' }, 'state reports settings');
   assert.deepEqual(Object.keys(cfg2.workspaces), ['work'], 'settings save keeps workspaces');
   const note = path.join(webHome, 'note.txt');
   fs.writeFileSync(note, '');
@@ -1253,4 +1253,34 @@ for (const total of [20, 40, 80, 120]) {
 }
 chalk.level = lvl3;
 
-console.log('ok - frecency + prune + cmd wrapper + resolve guard + go args + safe store + edit url + merge + lastUsed + url + tags + truncate + web ui + subpaths + opener + doctor + apps tab + names + ws rename + cmd quoting + wt layout + settings + shells + default opener + auto-backup + aliases + archive + remote url + add cwd + pins + undo + fast cd + custom openers + help');
+// -- update notice: version compare, version on the bottom rule --
+import { isNewer, VERSION } from '../src/update.js';
+assert.ok(isNewer('1.15.0', '1.14.9') && isNewer('2.0.0', '1.99.99') && isNewer('1.10.0', '1.9.0'), 'newer x.y.z');
+assert.ok(!isNewer('1.14.0', '1.14.0') && !isNewer('1.9.0', '1.10.0') && !isNewer(undefined, '1.0.0'), 'same, older or missing is not newer');
+assert.ok(!isNewer('1.14.0-beta.1', '1.14.0'), 'pre-release tag ignored');
+const bottom = (flash, more = {}) => stripAnsi(renderInteractiveView({ ...viewArgs, flash, width: 119, ...more })).split('\n').filter(l => l.includes('─')).at(-1);
+assert.ok(bottom('').endsWith(`─ v${VERSION} ──`) && bottom('').length === 119, 'wide: version at the right end of the bottom rule');
+assert.ok(!bottom('saved').includes(`v${VERSION}`) && bottom('saved').includes(' saved '), 'a flash covers the version');
+assert.ok(!bottom('', { width: 60 }).includes(`v${VERSION}`), 'narrow: no version');
+assert.ok(bottom('', { ...setArgs, width: 60 }).includes(`v${VERSION}`), 'settings: version at any width');
+// Hook on a fake terminal, fresh cache (so no check spawns): notice after a command, not after completion, __names or with updateCheck off.
+{
+  const uhome = fs.mkdtempSync(path.join(os.tmpdir(), 'upex-upd-'));
+  const cache = path.join(uhome, '.upex', 'update.json');
+  fs.mkdirSync(path.dirname(cache));
+  fs.writeFileSync(cache, JSON.stringify({ checked: Date.now(), latest: '99.0.0' }));
+  const before = fs.readFileSync(cache, 'utf-8');
+  const runs = [['config', 'get', 'sort'], ['completion', 'bash'], ['__names'], ['config', 'set', 'updateCheck', 'off'], ['config', 'get', 'sort']];
+  const r = spawnSync(process.execPath, ['--input-type=module', '-e', `process.stderr.isTTY = true;
+const { createProgram } = await import('${new URL('../src/index.js', import.meta.url).href}');
+let err = [];
+console.error = (s) => err.push(String(s));
+const out = [];
+for (const args of ${JSON.stringify(runs)}) { await createProgram().parseAsync(['node', 'upex', ...args]); out.push(err.filter(s => s.includes('update available')).join()); err = []; }
+process.stdout.write('\\n' + JSON.stringify(out));`], { encoding: 'utf-8', env: { ...process.env, USERPROFILE: uhome, HOME: uhome } });
+  assert.deepEqual(JSON.parse(r.stdout.trim().split('\n').at(-1)).map(stripAnsi), [`  update available ${VERSION} -> 99.0.0, run npm i -g @uplift-beyond/upex@latest`, '', '', '', ''], 'notice gating');
+  assert.equal(fs.readFileSync(cache, 'utf-8'), before, 'fresh cache: no new check');
+  fs.rmSync(uhome, { recursive: true, force: true });
+}
+
+console.log('ok - frecency + prune + cmd wrapper + resolve guard + go args + safe store + edit url + merge + lastUsed + url + tags + truncate + web ui + subpaths + opener + doctor + apps tab + names + ws rename + cmd quoting + wt layout + settings + shells + default opener + auto-backup + aliases + archive + remote url + add cwd + pins + undo + fast cd + custom openers + help + update notice');

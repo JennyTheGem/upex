@@ -2,7 +2,6 @@
  * index.js -- Main entry point for the upex CLI
  */
 
-import { readFileSync } from 'node:fs';
 import { Command } from 'commander';
 import chalk from 'chalk';
 import { registerAdd } from './commands/add.js';
@@ -35,8 +34,8 @@ import { registerPin } from './commands/pin.js';
 import { registerUndo } from './commands/undo.js';
 import { registerNote } from './commands/note.js';
 import { runInteractiveMode } from './interactive.js';
-
-const { version } = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf-8'));
+import { setting } from './launcher.js';
+import { VERSION as version, updateNotice } from './update.js';
 
 const label = `upex v${version}`;
 const title = `${label} -- shortcut manager`;
@@ -105,6 +104,17 @@ export function createProgram() {
       // A broken store is reported by the command itself (or upex doctor).
       if (!(err instanceof StoreError)) throw err;
     }
+  });
+
+  // Update notice: not for the selector (no name), wrappers, completion (shell startup), ui (still starting) or non-terminals.
+  program.hook('postAction', (_root, cmd) => {
+    if (!process.stderr.isTTY || (cmd === program && !cmd.args.length)) return;
+    if (cmd.name().startsWith('__') || ['go', 'ui', 'completion'].includes(cmd.name())) return;
+    try {
+      if (setting('updateCheck') === 'off') return;
+    } catch { return; }
+    const notice = updateNotice();
+    if (notice) console.error(chalk.dim(`  ${notice}`));
   });
 
   // Default action: upex <name> [app]

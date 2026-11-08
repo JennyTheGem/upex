@@ -21,6 +21,10 @@ import { runChecks } from './commands/doctor.js';
 import { sparkline } from './commands/stats.js';
 import { bundleOf, importBundle } from './commands/transfer.js';
 import * as ui from './ui.js';
+import { VERSION } from './update.js';
+
+// Terminal width from which the version shows outside Settings.
+const VERSION_WIDTH = 100;
 
 const MAX_VISIBLE_CHOICES = 8;
 // Full screen in a terminal at least this wide: detail pane right of the list.
@@ -559,6 +563,7 @@ const SETTING_ROWS = [
   { section: 'General', key: 'recentStrip', label: 'Recent on top', names: { off: 'Off', on: 'On' } },
   { section: 'General', key: 'views', label: 'Tabs', names: { all: 'All', 'no-workspaces': 'No Workspaces', 'no-apps': 'No Apps', shortcuts: 'Shortcuts only' } },
   { section: 'General', key: 'enter', label: 'Enter', names: { quit: 'Open and quit', stay: 'Open and stay' } },
+  { section: 'General', key: 'updateCheck', label: 'Update check', names: { on: 'On', off: 'Off' } },
   { section: 'Search', key: 'fuzzy', label: 'Fuzzy', names: { normal: 'Normal', exact: 'Exact', loose: 'Loose' } },
   { section: 'Search', key: 'searchIn', label: 'Search in', names: { all: 'Names, paths, tags', names: 'Names only' } },
   { section: 'Terminals', key: 'terminalLayout', label: 'Layout', names: { here: 'This window', windows: 'Separate windows', tabs: 'Tabs', panes: 'Split panes' } },
@@ -602,6 +607,7 @@ function settingNote(key, s, wt) {
   if (key === 'enter') return 'Selector only. Open and stay keeps upex open after Enter, to open more.';
   if (key === 'fuzzy') return 'How close a typed name must be, in this filter and for upex <name> / go. Exact: the letters in a row, no typos. Loose: more typos.';
   if (key === 'searchIn') return 'What the filter looks at, here and in upex ui. Names only: names and aliases. #tag filters by tag either way.';
+  if (key === 'updateCheck') return `Checks npm once a day in the background; after a command, one dim line when a newer upex is out. This is v${VERSION}.`;
   if (key === 'flash') return 'How long a success message (bottom right) stays. Warnings always stay until the next key.';
   if (key === 'maxRows') return s.fullScreen === 'off' ? 'List rows here.' : 'List rows here. Auto: as many as the screen fits.';
   if (key === 'defaultOpener') return 'Opens folder shortcuts that have no opener of their own.';
@@ -900,8 +906,10 @@ export function renderInteractiveView({
   // A plain string is a warning; { text, ok: true } a success. One line, right end of the bottom rule, so nothing moves.
   const flashText = flash ? ui.truncate(` ${String(flash.text ?? flash).replace(/\s*\n\s*/g, ' ')} `, w - 6) : '';
   const flashOn = (flash.ok ? chalk.green : chalk.yellow)(flashText);
-  const at = w - vis(flashText) - 2;
-  const rule = flash ? chalk.dim(ruleText('┴').slice(0, at)) + flashOn + chalk.dim(ruleText('┴').slice(at + vis(flashText))) : ruleOf('┴');
+  // Without a flash, the version sits there (dim): always on Settings, elsewhere only from VERSION_WIDTH columns.
+  const tagText = flash ? flashText : isSettings || width + 1 >= VERSION_WIDTH ? ` v${VERSION} ` : '';
+  const at = w - vis(tagText) - 2;
+  const rule = chalk.dim(ruleText('┴').slice(0, at)) + (flash ? flashOn : chalk.dim(tagText)) + chalk.dim(ruleText('┴').slice(at + vis(tagText)));
   const terminal = isTerminalApp(appChoices[selectedAppIndex]?.key);
   const pick = accentOf(settings.accent);
   // Compact: no spacer lines.

@@ -445,4 +445,4 @@ export function saveConfig(config) {
   writeJson(CONFIG_FILE, config);
 }
 
-export { LINKS_FILE, CONFIG_FILE };
+export { UPEX_DIR, LINKS_FILE, CONFIG_FILE };

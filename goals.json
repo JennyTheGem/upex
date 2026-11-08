@@ -1338,9 +1338,10 @@
       "section": 6,
       "title": "show version in tui",
       "phase": "next",
-      "status": "planned",
+      "status": "done",
       "created": "2026-11-08",
-      "updated": "2026-11-08"
+      "updated": "2026-11-08",
+      "note": "dim v<version> next to upex in the selector header, dropped when the tabs would not fit; also in the Update check setting note"
     },
     {
       "id": "upex-ui-local-web-page-to-add-edit-rename-tag",
@@ -1477,7 +1478,7 @@
       "title": "Update notice",
       "body": "Check the npm registry for a newer @uplift-beyond/upex at most once a day, in the background, cached in ~/.upex/. Show one dim line after normal commands: 'update available x -> y, run npm i -g @uplift-beyond/upex@latest'. Never on go, __resolve, __names or the selector, never blocks or fails a command offline. Setting to turn it off.",
       "phase": "next",
-      "status": "planned",
+      "status": "done",
       "size": "S",
       "pointers": {
         "trap": [
@@ -1485,7 +1486,8 @@
         ]
       },
       "created": "2026-11-08",
-      "updated": "2026-11-08"
+      "updated": "2026-11-08",
+      "note": "src/update.js: daily detached npm check cached in ~/.upex/update.json, dim stderr line in a postAction hook (TTY only, skips selector, go, ui, __*), setting updateCheck on/off"
     },
     {
       "id": "scripts-in-the-detail-pane",

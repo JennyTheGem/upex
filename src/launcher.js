@@ -114,6 +114,8 @@ export const SETTINGS = {
   searchIn: ['all', 'names'],
   // Selector success message: fades after 3 or 6 seconds, or stays until the next key.
   flash: ['3', '6', 'key'],
+  // Daily npm check, one dim line after commands when a newer upex is out.
+  updateCheck: ['on', 'off'],
   // here = the shell runs in this terminal once upex quits. Tabs and panes need Windows Terminal.
   terminalLayout: ['here', 'windows', 'tabs', 'panes'],
   paneSplit: ['auto', 'vertical', 'horizontal'],

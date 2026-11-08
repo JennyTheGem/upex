@@ -30,12 +30,10 @@ Closed sections: §5 Platform support · §7 Web UI · §9 Detail pane
 
 ## 6. Quality
 
-- `show-version-in-tui` show version in tui (next)
 - Plus 1 maybe: `upgo list --section 6 --phase maybe`
 
 ## 8. Distribution
 
-- `update-notice` Update notice (next)
 - Plus 1 maybe: `upgo list --section 8 --phase maybe`
 
 ## 10. TUI editing
