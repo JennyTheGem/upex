@@ -72,6 +72,13 @@ export function registerGo(program) {
     });
 }
 
+// Terminal layout 'here': the shell takes over this terminal until it exits.
+function runHere(result) {
+  if (!result.inPlace) return;
+  ui.dim('exit to come back');
+  process.exitCode = result.inPlace();
+}
+
 /**
  * Handle the default open/launch action.
  * Returns true when opened; in batch mode a failure returns false instead of exiting.
@@ -115,7 +122,7 @@ export async function handleOpen(name, app, count = 1, startCmd = '', { batch = 
   // ── App shortcut: launch stored executable directly ──
   if (entry.app && !app && !resolved.sub) {
     // A command line opens a terminal in the home folder and runs there.
-    const result = entry.terminal ? launchApp('cmd', os.homedir(), 1, entry.app) : launchExecutable(entry.app);
+    const result = entry.terminal ? launchApp('cmd', os.homedir(), 1, entry.app, { here: !batch }) : launchExecutable(entry.app);
 
     if (!result.ok) {
       if (bail(() => ui.error(result.message))) return false;
@@ -132,6 +139,7 @@ export async function handleOpen(name, app, count = 1, startCmd = '', { batch = 
       ['run', entry.terminal && entry.app],
       ['path', entry.path && ui.dimParent(entry.path, chalk.bold)],
     ]);
+    runHere(result);
     return true;
   }
 
@@ -154,7 +162,7 @@ export async function handleOpen(name, app, count = 1, startCmd = '', { batch = 
 
   // No opener given: the shortcut's own, else a file opens in its default app and a folder in the default opener.
   const appKey = app || entry.opener || (isFile(targetPath) ? 'open' : defaultOpener());
-  const result = launchApp(appKey, targetPath, count, startCmd);
+  const result = launchApp(appKey, targetPath, count, startCmd, { here: !batch });
 
   if (!result.ok) {
     if (bail(() => ui.error(result.message))) return false;
@@ -168,5 +176,6 @@ export async function handleOpen(name, app, count = 1, startCmd = '', { batch = 
   }
 
   ui.card(shortcutName, [['app', chalk.bold(result.displayName || appKey)], ['path', ui.dimParent(targetPath, chalk.bold)]]);
+  runHere(result);
   return true;
 }

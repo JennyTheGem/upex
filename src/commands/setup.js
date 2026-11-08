@@ -9,9 +9,9 @@ import os from 'node:os';
 import path from 'node:path';
 import { execSync } from 'node:child_process';
 import * as ui from '../ui.js';
+import { detectShell } from './completion.js';
 
-const BASH_ZSH_FUNCTION = `# ~/.bashrc or ~/.zshrc
-upex() {
+const BASH_ZSH_FUNCTION = `upex() {
   if [ "$1" = "go" ] && [ -n "$2" ]; then
     if result=$(command upex go "$2" 2>/dev/null) && cd "$result"; then
       shift 2
@@ -47,8 +47,7 @@ function upex {
   & upex.ps1 @args
 }`;
 
-const FISH_FUNCTION = `# ~/.config/fish/functions/upex.fish
-function upex
+const FISH_FUNCTION = `function upex
   if test (count $argv) -ge 2; and test "$argv[1]" = "go"
     set result (command upex go $argv[2] 2>/dev/null)
     if test $status -eq 0; and test -n "$result"
@@ -104,6 +103,38 @@ export const CMD_WRAPPER = [
   '',
 ].join('\r\n');
 
+// The file `upex setup <shell>` writes; bash on macOS reads .bash_profile.
+export function rcFile(shell, home = os.homedir()) {
+  if (shell === 'fish') return path.join(process.env.XDG_CONFIG_HOME || path.join(home, '.config'), 'fish', 'functions', 'upex.fish');
+  if (shell === 'zsh') return path.join(process.env.ZDOTDIR || home, '.zshrc');
+  return path.join(home, os.platform() === 'darwin' ? '.bash_profile' : '.bashrc');
+}
+
+const START = '# >>> upex shell integration >>>';
+const END = '# <<< upex shell integration <<<';
+// rc text with the upex block added at the end, or replaced where it is.
+export function withBlock(text) {
+  const block = `${START}\n${BASH_ZSH_FUNCTION}\n${END}`;
+  const at = text.indexOf(START);
+  const end = text.indexOf(END, at);
+  if (at >= 0 && end >= 0) return text.slice(0, at) + block + text.slice(end + END.length);
+  return `${text}${text && !text.endsWith('\n') ? '\n' : ''}${text ? '\n' : ''}${block}\n`;
+}
+
+// Writes the cd function for bash, zsh or fish. kept: a hand-added one (no upex block) is already there.
+export function installShell(shell, home) {
+  const file = rcFile(shell, home);
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  if (shell === 'fish') {
+    fs.writeFileSync(file, FISH_FUNCTION + '\n');
+    return { file };
+  }
+  const text = fs.existsSync(file) ? fs.readFileSync(file, 'utf-8') : '';
+  if (text.includes('__resolve') && !text.includes(START)) return { file, kept: true };
+  fs.writeFileSync(file, withBlock(text));
+  return { file };
+}
+
 export function installCmdWrapper(dir) {
   const target = path.join(dir, 'upex.bat');
   fs.writeFileSync(target, CMD_WRAPPER);
@@ -123,10 +154,25 @@ export function findShimDir() {
 export function registerSetup(program) {
   program
     .command('setup [shell]')
-    .description('Shell integration for cd support ("setup cmd" installs the cmd.exe wrapper)')
-    .summary('Shell integration ("setup cmd": cmd.exe wrapper)')
+    .description('Shell integration for cd support: "setup bash|zsh|fish" adds the cd function to your shell, "setup cmd" installs the cmd.exe wrapper')
+    .summary('Shell integration (setup bash|zsh|fish|cmd)')
     .action((shell) => {
       const platform = os.platform();
+
+      if (['bash', 'zsh', 'fish'].includes(shell)) {
+        const { file, kept } = installShell(shell);
+        if (kept) {
+          ui.warn(`${file} already has an upex function, left as is.`);
+          return;
+        }
+        ui.success(`Installed in ${file}`);
+        ui.dim(shell === 'fish' ? 'Works in new fish shells.' : `Open a new shell, or run: source ${file}`);
+        return;
+      }
+      if (shell && shell !== 'cmd') {
+        ui.error(`Unknown shell "${shell}". Supported: bash, zsh, fish${platform === 'win32' ? ', cmd' : ''}`);
+        process.exit(1);
+      }
 
       if (shell === 'cmd') {
         if (platform !== 'win32') {
@@ -160,17 +206,19 @@ export function registerSetup(program) {
         ui.separator(40);
         console.log(POWERSHELL_FUNCTION.split('\n').map(l => '    ' + l).join('\n'));
       } else {
-        console.log(chalk.bold('  Bash / Zsh:'));
-        ui.separator(40);
-        console.log(BASH_ZSH_FUNCTION.split('\n').map(l => '    ' + l).join('\n'));
+        const mine = detectShell();
+        for (const [name, title, fn] of [['bash', 'Bash', BASH_ZSH_FUNCTION], ['zsh', 'Zsh', BASH_ZSH_FUNCTION], ['fish', 'Fish', FISH_FUNCTION]]) {
+          console.log(chalk.bold(`  ${title}${name === mine ? ' (your shell)' : ''}:`));
+          ui.separator(40);
+          ui.info(`run: upex setup ${name}`);
+          ui.dim(`adds the cd function to ${rcFile(name)}`);
+          // Only your own shell's function in full, for adding it by hand.
+          if (name === mine) console.log(fn.split('\n').map(l => '    ' + l).join('\n'));
+          ui.blank();
+        }
       }
 
-      ui.blank();
-      console.log(chalk.bold('  Fish:'));
-      ui.separator(40);
-      console.log(FISH_FUNCTION.split('\n').map(l => '    ' + l).join('\n'));
-
-      ui.blank();
+      if (platform === 'win32') ui.blank();
       ui.separator();
       ui.dim('Restart your shell after adding the function.');
       ui.blank();

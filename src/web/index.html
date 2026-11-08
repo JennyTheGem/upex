@@ -290,7 +290,7 @@ const SETTING_OPTS = {
   sort: { recent: 'Most used', name: 'A to Z', opened: 'Last opened', added: 'Recently added' },
   views: { all: 'All', 'no-workspaces': 'No Workspaces', 'no-apps': 'No Apps', shortcuts: 'Shortcuts only' },
   searchIn: { all: 'Names, paths, tags', names: 'Names only' },
-  terminalLayout: { windows: 'Separate windows', tabs: 'Tabs', panes: 'Split panes' },
+  terminalLayout: { here: 'This window', windows: 'Separate windows', tabs: 'Tabs', panes: 'Split panes' },
   paneSplit: { auto: 'Auto', vertical: 'Side by side', horizontal: 'Stacked' },
   terminalShell: { cmd: 'cmd', powershell: 'PowerShell', pwsh: 'PowerShell 7', profile: 'WT default profile' },
   theme: { system: 'System', dark: 'Dark', light: 'Light' },
@@ -826,15 +826,16 @@ function settingsView() {
   const seg = (key, title, msg, deco, extra) => h('div', { class: 'row' },
     h('span', { class: 'set-label', id: 'lbl-' + key }, title),
     h('div', { class: 'seg', role: 'radiogroup', 'aria-labelledby': 'lbl-' + key },
-      Object.entries(SETTING_OPTS[key]).map(([k, label]) => [
+      // Off Windows (wt null) there are no tabs or panes.
+      Object.entries(SETTING_OPTS[key]).filter(([k]) => S.wt !== null || key !== 'terminalLayout' || k === 'here' || k === 'windows').map(([k, label]) => [
         h('input', { type: 'radio', name: key, id: `${key}-${k}`, checked: s[key] === k, onchange: () =>
           act(() => api('PUT', 'settings', { [key]: k }), msg(label))
             .then(() => document.getElementById(`${key}-${S.settings[key]}`)?.focus()) }),
         h('label', { for: `${key}-${k}` }, deco?.(k), label),
       ])), extra);
   const notes = [
-    S.wt === null && 'Windows only. Other systems use their own terminal.',
-    S.wt === false && s.terminalLayout !== 'windows' && 'Windows Terminal (wt) was not found, so terminals open as separate windows.',
+    s.terminalLayout === 'here' && 'This window: upex in a terminal hands it over, a shell starts at the folder and exit comes back. Opened from here, terminals get their own window.',
+    S.wt === false && ['tabs', 'panes'].includes(s.terminalLayout) && 'Windows Terminal (wt) was not found, so terminals open as separate windows.',
     S.wt === false && s.terminalShell === 'profile' && 'Without Windows Terminal, the default profile falls back to cmd.',
     S.wt && s.terminalShell === 'profile' && 'A start command (like claude) runs in cmd, since upex cannot know which shell your default profile uses.',
   ].filter(Boolean);
@@ -862,10 +863,11 @@ function settingsView() {
       seg('searchIn', 'Search in', l => `Search: ${l.toLowerCase()}`)),
     h('section', { class: 'form', 'aria-labelledby': 'set-term' },
       head('set-term', 'Terminals', ['terminalLayout', 'paneSplit', 'terminalShell']),
-      h('p', { class: 'lede', style: 'margin:0' }, 'The shell terminal openers start, and whether several of them go into your current Windows Terminal window as tabs or split panes.'),
-      seg('terminalLayout', 'Layout', l => `Terminals open as ${l.toLowerCase()}`),
-      s.terminalLayout === 'panes' && seg('paneSplit', 'Pane split', l => `Panes split: ${l.toLowerCase()}`),
-      seg('terminalShell', 'Shell', l => `Terminals start ${l}`),
+      h('p', { class: 'lede', style: 'margin:0' }, S.wt === null ? 'Where terminal openers run: in the terminal upex runs in, or in a new window.'
+        : 'The shell terminal openers start, and whether they run in this terminal, in new windows, or as tabs or split panes in your current Windows Terminal window.'),
+      seg('terminalLayout', 'Layout', l => `Terminals open in ${l.toLowerCase()}`),
+      S.wt !== null && s.terminalLayout === 'panes' && seg('paneSplit', 'Pane split', l => `Panes split: ${l.toLowerCase()}`),
+      S.wt !== null && seg('terminalShell', 'Shell', l => `Terminals start ${l}`),
       notes.map(n => h('p', { class: 'tag', style: 'margin:0' }, n))),
     h('section', { class: 'form', 'aria-labelledby': 'set-open' },
       head('set-open', 'Opening', ['defaultOpener']),

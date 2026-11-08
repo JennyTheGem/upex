@@ -9,8 +9,8 @@ import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import chalk from 'chalk';
 import { loadLinks, loadConfig, loadWorkspaces, aliasClashes, LINKS_FILE } from '../store.js';
-import { getAppMap, checkOpener, openerKey } from '../launcher.js';
-import { CMD_WRAPPER, findShimDir } from './setup.js';
+import { getAppMap, checkOpener, openerKey, APP_MAP } from '../launcher.js';
+import { CMD_WRAPPER, findShimDir, rcFile } from './setup.js';
 import { resolveTarget } from '../fuzzy.js';
 import * as ui from '../ui.js';
 
@@ -24,9 +24,9 @@ function profileFiles() {
   const files = [
     path.join(home, '.bashrc'),
     path.join(home, '.bash_profile'),
-    path.join(home, '.zshrc'),
-    path.join(home, '.config', 'fish', 'config.fish'),
-    path.join(home, '.config', 'fish', 'functions', 'upex.fish'),
+    rcFile('zsh'),
+    path.join(path.dirname(path.dirname(rcFile('fish'))), 'config.fish'),
+    rcFile('fish'),
   ];
   let docs = null;
   if (platform === 'win32') {
@@ -107,7 +107,9 @@ export function runChecks() {
     if (seen.has(app.displayName)) continue;
     seen.add(app.displayName);
     const r = checkOpener(key);
-    rows.push(r.ok ? ['ok', app.displayName, r.command] : ['warn', app.displayName, r.message.split('\n')[0]]);
+    // A missing app (WebStorm, Claude) just stays out of the opener row; a missing file manager or terminal is a problem.
+    const optional = ['vscode', 'code', 'webstorm', 'claude'].includes(key) && app === APP_MAP[key];
+    rows.push(r.ok ? ['ok', app.displayName, r.command] : [optional ? 'skip' : 'warn', app.displayName, r.message.split('\n')[0]]);
   }
 
   return [...rows, ...shellChecks()];

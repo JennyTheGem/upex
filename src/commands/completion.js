@@ -42,7 +42,7 @@ complete -c upex -n "__fish_use_subcommand" -a "${SUBCOMMANDS}"`,
 }`,
 });
 
-function detectShell() {
+export function detectShell() {
   if (os.platform() === 'win32') return 'powershell';
   const shell = process.env.SHELL || '';
   if (shell.includes('zsh')) return 'zsh';

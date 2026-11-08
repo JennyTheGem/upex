@@ -58,7 +58,7 @@ npm link
 | `upex ui [--port <n>] [--no-open]` | Manage shortcuts and workspaces in the browser |
 | `upex config` / `config get <setting>` / `config set <setting> <value>` / `config reset [setting]` | Show, print, change or reset a setting (see Settings below) |
 | `upex completion [shell]` | Print a shell completion script (bash/zsh/fish/powershell) |
-| `upex setup [cmd]` | Shell integration; `setup cmd` installs the cmd.exe wrapper |
+| `upex setup [bash\|zsh\|fish\|cmd]` | Shell integration; `setup bash`/`zsh`/`fish` adds the cd function to your shell, `setup cmd` installs the cmd.exe wrapper |
 | `upex help` | Commands by section plus current settings, wrapped to the window width |
 
 ## Supported Apps
@@ -67,11 +67,13 @@ npm link
 |---|---|
 | `vscode` / `code` | VS Code |
 | `webstorm` | WebStorm |
-| `cmd` | Terminal (cmd, PowerShell or a WT profile on Windows, see `terminalShell`) |
+| `cmd` | Terminal (cmd, PowerShell or a WT profile on Windows, see `terminalShell`; on Linux `$TERMINAL`, the desktop's own, `x-terminal-emulator`, then gnome-terminal, konsole, xterm, kitty, ...) |
 | `claude` | Terminal running Claude Code (`claude`) |
 | `finder` / `explorer` | System File Manager (reveals a file shortcut) |
 | `open` | OS default handler (opens a file in its default app) |
 | `copy` | Copy the path to the clipboard (`upex <name> copy`; in the selector use `Ctrl+Y`) |
+
+Openers that aren't installed are left out of the selector's opener row and `upex ui`; custom openers always show. On Linux WebStorm is also found in JetBrains Toolbox (`~/.local/share/JetBrains/Toolbox`) and tarballs in `/opt` or your home.
 
 Add your own openers with `upex app`:
 
@@ -247,6 +249,8 @@ Because a Node.js process can't change your shell's directory, add this wrapper 
 
 ### Bash / Zsh (`~/.bashrc` or `~/.zshrc`)
 
+`upex setup bash` (or `zsh`) adds this for you, in a marked block that a rerun updates. `upex setup fish` writes the fish one.
+
 ```bash
 upex() {
   if [ "$1" = "go" ] && [ -n "$2" ]; then
@@ -330,7 +334,7 @@ Settings, also on the Settings tab of `upex ui` and the selector (`Shift+Tab`), 
 - `"recentStrip"` (selector only): `"off"` (default) or `"on"` (the last 3 opened again above the list under a Recent heading, whatever the sort; not while searching).
 - `"fuzzy"`: how close a typed name must be, in the selector filter and for names (`upex <name>`, `go`, ...). `"normal"` (default), `"exact"` (the typed letters in a row, anywhere in the name, no typos) or `"loose"` (more typos).
 - `"searchIn"`: what the selector filter and the `upex ui` search look at. `"all"` (default, names, aliases, paths and tags) or `"names"` (names and aliases). `#tag` in the selector filters by tag either way.
-- `"terminalLayout"` (Windows): how several terminals open. `"windows"` (default, separate windows), `"tabs"` or `"panes"` (added to your current Windows Terminal window). Falls back to windows when `wt` is missing. With tabs, a terminal opened from the selector leaves the selector open.
+- `"terminalLayout"`: where terminal openers run. `"here"` (default): one terminal runs in the terminal upex is in, upex quits and a shell starts at the folder (with the start command, like claude), `exit` comes back; several at once, workspaces and `upex ui` get separate windows. `"windows"` (separate windows), and on Windows `"tabs"` or `"panes"` (added to your current Windows Terminal window). Falls back to windows when `wt` is missing. With tabs, a terminal opened from the selector leaves the selector open.
 - `"paneSplit"` (Windows, panes layout): `"auto"` (default), `"vertical"` (side by side) or `"horizontal"` (stacked).
 - `"terminalShell"` (Windows): the shell terminal openers start. `"cmd"` (default), `"powershell"`, `"pwsh"`, or `"profile"` (your Windows Terminal default profile; a start command like `claude` then runs in cmd, and without `wt` it falls back to cmd).
 - `"defaultOpener"`: opener for folder shortcuts without their own `opener`, e.g. `"vscode"`. Default `"explorer"`. Files still open in their default app.

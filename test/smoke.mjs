@@ -140,7 +140,7 @@ assert.equal(statsOut.status, 0, 'stats runs');
 assert.match(statsOut.stdout, /cd\s+1/, 'stats shows the opener count');
 
 // -- upex config: get/set round-trip, bad values refused without saving --
-assert.equal(upexIn('config', 'get', 'terminalLayout').stdout.trim(), 'windows', 'config get prints the default');
+assert.equal(upexIn('config', 'get', 'terminalLayout').stdout.trim(), 'here', 'config get prints the default');
 assert.equal(upexIn('config', 'set', 'terminalLayout', 'tabs').status, 0, 'config set saves');
 assert.equal(upexIn('config', 'get', 'terminalLayout').stdout.trim(), 'tabs', 'config get reads it back');
 assert.equal(upexIn('config', 'set', 'defaultOpener', 'code').status, 0, 'opener alias accepted');
@@ -149,14 +149,14 @@ assert.equal(upexIn('config', 'set', 'terminalLayout', 'nope').status, 1, 'bad v
 assert.equal(upexIn('config', 'set', 'bogus', 'x').status, 1, 'unknown setting refused');
 assert.equal(upexIn('config', 'get', 'bogus').status, 1, 'unknown setting get refused');
 assert.equal(upexIn('config', 'get', 'terminalLayout').stdout.trim(), 'tabs', 'refused sets saved nothing');
-assert.match(upexIn('config').stdout, /terminalLayout\s+tabs · windows, tabs, panes/, 'config lists settings with options');
+assert.match(upexIn('config').stdout, /terminalLayout\s+tabs · here, windows/, 'config lists settings with options');
 assert.equal(upexIn('config', 'set', 'accent', 'FF66AA').status, 0, 'hex accent without # accepted');
 assert.equal(upexIn('config', 'get', 'accent').stdout.trim(), '#ff66aa', 'hex accent stored as #rrggbb');
 assert.equal(upexIn('config', 'reset', 'accent').status, 0, 'config reset one');
 assert.deepEqual([upexIn('config', 'get', 'accent').stdout.trim(), upexIn('config', 'get', 'terminalLayout').stdout.trim()], ['default', 'tabs'], 'reset one leaves the others');
 assert.equal(upexIn('config', 'reset', 'bogus').status, 1, 'reset unknown setting refused');
 assert.equal(upexIn('config', 'reset').status, 0, 'config reset all');
-assert.deepEqual([upexIn('config', 'get', 'terminalLayout').stdout.trim(), upexIn('config', 'get', 'defaultOpener').stdout.trim()], ['windows', 'explorer'], 'reset all = defaults');
+assert.deepEqual([upexIn('config', 'get', 'terminalLayout').stdout.trim(), upexIn('config', 'get', 'defaultOpener').stdout.trim()], ['here', 'explorer'], 'reset all = defaults');
 {
   const cfgFile = path.join(home, '.upex', 'config.json');
   const cfgText = fs.readFileSync(cfgFile, 'utf-8');
@@ -424,11 +424,13 @@ const appsView = strip(renderInteractiveView({ ...viewArgs, view: 'apps', choice
 assert.ok(appsView.includes('tab workspaces') && appsView.includes('open in browser') && !appsView.includes('Explorer'), 'apps view: no opener row');
 const setArgs = { ...viewArgs, view: 'settings', settings: { startView: 'apps', sort: 'name', terminalLayout: 'tabs', paneSplit: 'auto', terminalShell: 'pwsh', defaultOpener: 'explorer' }, settingIndex: 7, wt: false, height: 40 };
 const setView = strip(renderInteractiveView(setArgs));
-assert.ok(setView.includes('‹ Tabs ›') && setView.includes('‹ PowerShell 7 ›') && setView.includes('‹ Explorer ›') && setView.includes('not found'), 'settings view: all rows + missing-wt note');
+if (os.platform() === 'win32') assert.ok(setView.includes('‹ Tabs ›') && setView.includes('‹ PowerShell 7 ›') && setView.includes('‹ Explorer ›') && setView.includes('not found'), 'settings view: all rows + missing-wt note');
 assert.ok(!setView.includes('Pane split'), 'pane split hidden unless split panes');
-assert.ok(strip(renderInteractiveView({ ...setArgs, settings: { ...setArgs.settings, terminalLayout: 'panes' } })).includes('Pane split'), 'pane split shown for split panes');
+if (os.platform() === 'win32') assert.ok(strip(renderInteractiveView({ ...setArgs, settings: { ...setArgs.settings, terminalLayout: 'panes' } })).includes('Pane split'), 'pane split shown for split panes');
 assert.ok(setView.includes('‹ A to Z ›'), 'sort row shows the saved sort');
-assert.ok(strip(renderInteractiveView({ ...setArgs, settingIndex: 9 })).includes('no opener of their own'), 'note follows the picked row');
+// The Shell row shows on Windows only, so later rows sit one lower elsewhere.
+const win = os.platform() === 'win32' ? 1 : 0;
+assert.ok(strip(renderInteractiveView({ ...setArgs, settingIndex: 8 + win })).includes('no opener of their own'), 'note follows the picked row');
 assert.ok(setView.indexOf('Workspaces') < setView.indexOf('Settings'), 'settings tab is last');
 // archived shortcuts sit under the settings, Enter restores the picked one
 assert.deepEqual(archivedList({ b: { path: '/b', archived: true }, a: { app: 'x.exe', archived: true }, c: { path: '/c' } }), [{ name: 'a', path: 'x.exe' }, { name: 'b', path: '/b' }], 'archived list: only archived, A to Z');
@@ -437,8 +439,8 @@ assert.ok(!setView.includes('Archived'), 'no archived section when none');
 const arcArgs = { ...setArgs, archived: [{ name: 'old', path: '/old/dir' }], height: 80 };
 const arcView = strip(renderInteractiveView({ ...arcArgs, settingIndex: 0 }));
 assert.ok(arcView.includes('Archived 1') && arcView.includes('/old/dir') && arcView.includes('change (saved)'), 'archived section lists them');
-// 26 setting rows (pane split hidden), so index 26 is the first archived one.
-const arcSel = strip(renderInteractiveView({ ...arcArgs, settingIndex: 26 }));
+// 26 setting rows on Windows (pane split hidden), so index 26 is the first archived one.
+const arcSel = strip(renderInteractiveView({ ...arcArgs, settingIndex: 25 + win }));
 assert.ok(arcSel.includes('› old') && arcSel.includes('↵ restore') && arcSel.includes('upex restore old') && arcSel.includes('^d delete') && !arcView.includes('^d delete'), 'picked archived row: restore and delete keys, note');
 
 // rows stay inside the given width, the missing badge survives a long path
@@ -598,11 +600,11 @@ assert.ok(renderInteractiveView({ ...setArgs, settings: { ...setArgs.settings, a
 const tall = strip(renderInteractiveView({ ...setArgs, height: 40, settings: { ...setArgs.settings, theme: 'light' } }));
 assert.ok(tall.includes('Web theme       System  Dark  ‹ Light ›'), 'web theme row');
 assert.ok(['General', 'Search', 'Terminals', 'Opening', 'Appearance'].every(s => tall.includes(`\n  ${s}\n`)), 'settings grouped in sections');
-const short = rowsOf({ ...setArgs, height: 14, settingIndex: 21 });
+const short = rowsOf({ ...setArgs, height: 14, settingIndex: 20 + win });
 assert.ok(short.length <= 14 && short.some(l => l.startsWith('  › Web theme')) && short.at(-1).includes('setting'), 'short terminal scrolls settings, keeps the footer');
-assert.equal(at({ ...setArgs, height: 14, settingIndex: 20 }, 3, short.findIndex(l => l.startsWith('  › Web theme')) + 1)?.setting, 20, 'scrolled settings stay clickable');
-const arcShort = { ...setArgs, archived: [{ name: 'old', path: '/old/dir' }], height: 14, settingIndex: 26 };
-assert.equal(at(arcShort, 3, rowsOf(arcShort).findIndex(l => l.startsWith('  › old')) + 1)?.setting, 26, 'last archived row scrolls into view, stays clickable');
+assert.equal(at({ ...setArgs, height: 14, settingIndex: 19 + win }, 3, short.findIndex(l => l.startsWith('  › Web theme')) + 1)?.setting, 19 + win, 'scrolled settings stay clickable');
+const arcShort = { ...setArgs, archived: [{ name: 'old', path: '/old/dir' }], height: 14, settingIndex: 25 + win };
+assert.equal(at(arcShort, 3, rowsOf(arcShort).findIndex(l => l.startsWith('  › old')) + 1)?.setting, 25 + win, 'last archived row scrolls into view, stays clickable');
 assert.equal(checkSettings({ accent: 'red' }).error, 'accent must be one of: default, green, blue, purple, orange, or a hex color like #ff66aa.', 'bad accent refused');
 assert.deepEqual([checkSettings({ accent: '#FF66aa' }).next.accent, checkSettings({ accent: 'ff66aa' }).next.accent, checkSettings({ sort: '#ff66aa' }).error?.slice(0, 4)], ['#ff66aa', '#ff66aa', 'sort'], 'hex only for accent, normalized');
 assert.deepEqual([setting('accent', { accent: '#ff66aa' }), setting('accent', { accent: '#ff66a' }), setting('accent', { accent: '"><x' })], ['#ff66aa', 'default', 'default'], 'stored hex read back, junk falls back');
@@ -660,11 +662,11 @@ assert.ok(v({}).includes('^u web ui') && v({ view: 'workspaces' }).includes('^u 
 {
   const extras = [{ section: 'Openers', kind: 'opener', name: 'zed', text: 'zed' }, { section: 'Maintenance', kind: 'stats', name: 'Stats', text: 'web 3' }];
   const ex = (i, more = {}) => strip(renderInteractiveView({ ...setArgs, extras, archived: [{ name: 'old', path: '/o' }], height: 80, settingIndex: i, ...more }));
-  const e0 = ex(26);
+  const e0 = ex(25 + win);
   assert.ok(e0.indexOf('Openers') < e0.indexOf('Maintenance') && e0.indexOf('Maintenance') < e0.indexOf('Archived 1'), 'extra sections in order');
   assert.ok(e0.includes('› zed') && e0.includes('↵ edit command') && e0.includes('^d remove'), 'opener row keys');
-  assert.ok(ex(27, { expanded: { kind: 'stats', lines: ['web  3'] } }).includes('↵ hide') && ex(27, { expanded: { kind: 'stats', lines: ['web  3'] } }).includes('      web  3'), 'stats lines under its row');
-  assert.ok(ex(28).includes('› old') && ex(28).includes('↵ restore'), 'archived index after the extras');
+  assert.ok(ex(26 + win, { expanded: { kind: 'stats', lines: ['web  3'] } }).includes('↵ hide') && ex(26 + win, { expanded: { kind: 'stats', lines: ['web  3'] } }).includes('      web  3'), 'stats lines under its row');
+  assert.ok(ex(27 + win).includes('› old') && ex(27 + win).includes('↵ restore'), 'archived index after the extras');
   assert.ok(strip(renderInteractiveView({ ...setArgs, mode: 'confirm', ask: 'remove opener "zed"?' })).includes('? remove opener "zed"?  y / n'), 'settings confirm question');
   const day = 86400000;
   const sl = statLines({ code: { displayName: 'VS Code' } }, [{ name: 'web', opener: 'code', ts: 10 * day }, { name: 'web', ts: 11 * day }, { name: 'api', ts: 11 * day }], 12 * day).map(strip);
@@ -898,7 +900,7 @@ const ps = shellCommand('pwsh', 'echo "a; b" & x', s => s);
 assert.equal(Buffer.from(ps.split(' ').pop(), 'base64').toString('utf16le'), 'echo "a; b" & x', 'powershell start command round-trips');
 assert.ok(ps.startsWith('pwsh -NoExit -EncodedCommand ') && !/[\s;"]/.test(ps.split(' ').pop()), 'encoded command has nothing to quote');
 assert.equal(shellCommand('powershell', '', s => s), 'powershell', 'plain powershell');
-assert.equal(setting('terminalLayout', { terminalLayout: 'bogus' }), 'windows', 'unknown layout falls back to windows');
+assert.equal(setting('terminalLayout', { terminalLayout: 'bogus' }), 'here', 'unknown layout falls back to here');
 assert.equal(setting('terminalShell', {}), 'cmd', 'shell defaults to cmd');
 assert.equal(setting('startView', { startView: 'nope' }), 'shortcuts', 'start view defaults to shortcuts');
 const ord = [{ name: 'b', score: 1 }, { name: 'c', score: 5 }, { name: 'a', score: 1 }];

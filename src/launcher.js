@@ -6,9 +6,12 @@ import { execSync, spawn, spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
+import { pathToFileURL } from 'node:url';
 import { loadConfig } from './store.js';
 
 const platform = os.platform(); // 'win32' | 'darwin' | 'linux'
+// Linux and other XDG desktops (everything that isn't Windows or macOS).
+const xdg = platform !== 'win32' && platform !== 'darwin';
 
 /**
  * Map of app aliases to their launch commands per platform.
@@ -69,7 +72,7 @@ const APP_MAP = {
     cmd: () => {
       if (platform === 'win32') return 'cmd';
       if (platform === 'darwin') return 'open -a Terminal';
-      return 'x-terminal-emulator';
+      return linuxTerminal() || 'x-terminal-emulator';
     },
     displayName: 'Terminal',
     installHint: 'This is a system app and should be available by default.',
@@ -111,7 +114,8 @@ export const SETTINGS = {
   searchIn: ['all', 'names'],
   // Selector success message: fades after 3 or 6 seconds, or stays until the next key.
   flash: ['3', '6', 'key'],
-  terminalLayout: ['windows', 'tabs', 'panes'],
+  // here = the shell runs in this terminal once upex quits. Tabs and panes need Windows Terminal.
+  terminalLayout: ['here', 'windows', 'tabs', 'panes'],
   paneSplit: ['auto', 'vertical', 'horizontal'],
   terminalShell: ['cmd', 'powershell', 'pwsh', 'profile'],
   fullScreen: ['on', 'off'],
@@ -141,6 +145,11 @@ export const SETTINGS = {
   // Selector glyphs: unicode, or plain ASCII for fonts that show boxes.
   glyphs: ['unicode', 'ascii'],
 };
+// Values a setting offers on this system: tabs and panes are Windows Terminal only.
+export const settingValues = key => (key === 'terminalLayout' && platform !== 'win32' ? ['here', 'windows'] : SETTINGS[key]);
+// Settings that only do something on Windows, hidden elsewhere.
+const WINDOWS_ONLY = ['paneSplit', 'terminalShell'];
+export const settingShown = key => platform === 'win32' || !WINDOWS_ONLY.includes(key);
 // Accent also takes a hex color, stored as #rrggbb.
 export const isHex = v => typeof v === 'string' && /^#[0-9a-f]{6}$/i.test(v);
 const valid = (key, v) => SETTINGS[key].includes(v) || (key === 'accent' && isHex(v));
@@ -178,6 +187,29 @@ export function shellCommand(shell, runCmd, quote) {
   }
   if (!runCmd) return shell === 'profile' ? '' : 'cmd';
   return `cmd /s /k ${quote(runCmd)}`;
+}
+
+// Layout 'here': runs the shell (and start command) in this terminal, returns its exit code. `exit` goes back.
+function shellHere(cwd, runCmd, shell) {
+  const opts = { cwd, stdio: 'inherit' };
+  // Ctrl+C is the shell's: upex dying would give the terminal back to its parent shell with this one still running.
+  const keep = () => {};
+  process.on('SIGINT', keep);
+  let r;
+  try {
+    if (platform === 'win32') {
+      // No shell in between, so the quoted start command needs no carets.
+      const line = shellCommand(shell === 'profile' ? 'cmd' : shell, runCmd, s => `"${s}"`);
+      const i = line.indexOf(' ');
+      r = spawnSync(i < 0 ? line : line.slice(0, i), i < 0 ? [] : [line.slice(i + 1)], { ...opts, windowsVerbatimArguments: true });
+    } else {
+      // trap: Ctrl+C stops the start command, not the shell after it.
+      r = runCmd ? spawnSync('sh', ['-c', `trap : INT; ${runCmd}; exec "\${SHELL:-sh}"`], opts) : spawnSync(process.env.SHELL || 'sh', [], opts);
+    }
+  } finally {
+    process.off('SIGINT', keep);
+  }
+  return r.status ?? 1;
 }
 
 const SPLIT_FLAG = { auto: '', vertical: ' -V', horizontal: ' -H' };
@@ -220,19 +252,86 @@ function getAppMap() {
   return { ...APP_MAP, ...customApps() };
 }
 
-/**
- * Check if a command exists on the system.
- */
-function commandExists(cmd) {
-  // `where` rejects absolute paths.
-  if (path.isAbsolute(cmd)) return fileExists(cmd);
+const canRun = (f) => {
   try {
-    const check = platform === 'win32' ? `where ${cmd}` : `which ${cmd}`;
-    execSync(check, { stdio: 'ignore' });
+    fs.accessSync(f, fs.constants.X_OK);
     return true;
   } catch {
     return false;
   }
+};
+
+const pathDirs = () => (process.env.PATH || '').split(path.delimiter).map(d => d.replace(/"/g, '')).filter(Boolean);
+
+// Windows: lowercased names in every PATH dir, read once per PATH (and at most every 5s for upex ui and the selector).
+// A long PATH times PATHEXT is too many lookups per missing command.
+let winPath = null;
+function winPathNames() {
+  const key = process.env.PATH || '';
+  if (winPath?.key !== key || Date.now() - winPath.at > 5000) {
+    const names = new Set();
+    for (const dir of pathDirs()) {
+      try { for (const n of fs.readdirSync(dir)) names.add(n.toLowerCase()); } catch { /* missing dir */ }
+    }
+    winPath = { key, at: Date.now(), names };
+  }
+  return winPath.names;
+}
+
+// Is the command on PATH (PATHEXT on Windows)? Plain fs, no `where`/`which` process, so the opener row can check
+// every opener at startup. Elsewhere access(X_OK), which also skips dead symlinks.
+function commandExists(cmd) {
+  if (path.isAbsolute(cmd)) return fileExists(cmd);
+  if (platform === 'win32') {
+    const names = winPathNames();
+    const c = cmd.toLowerCase();
+    return ['', ...(process.env.PATHEXT || '.EXE;.CMD;.BAT').toLowerCase().split(';')].some(ext => names.has(c + ext));
+  }
+  return pathDirs().some(dir => canRun(path.join(dir, cmd)));
+}
+
+// Linux terminals: the args before `sh -c <script>`. Each takes the rest of its command line as the command.
+export const LINUX_TERMINALS = {
+  'x-terminal-emulator': ['-e'],
+  ptyxis: ['--new-window', '--'],
+  'gnome-terminal': ['--'],
+  konsole: ['-e'],
+  'xfce4-terminal': ['-x'],
+  'mate-terminal': ['-x'],
+  terminator: ['-x'],
+  kitty: [],
+  alacritty: ['-e'],
+  wezterm: ['start', '--'],
+  ghostty: ['-e'],
+  foot: [],
+  xterm: ['-e'],
+};
+// Desktop (XDG_CURRENT_DESKTOP) to its own terminals, tried before the rest.
+const DESKTOP_TERMINALS = { gnome: ['ptyxis', 'gnome-terminal'], kde: ['konsole'], xfce: ['xfce4-terminal'], mate: ['mate-terminal'] };
+
+// The terminal to open on Linux: $TERMINAL, the desktop's own, the distro default, then any known one. null when none.
+export function linuxTerminal() {
+  const desktop = (process.env.XDG_CURRENT_DESKTOP || '').toLowerCase().split(':');
+  const own = Object.entries(DESKTOP_TERMINALS).filter(([d]) => desktop.includes(d)).flatMap(([, t]) => t);
+  return [process.env.TERMINAL, ...own, ...Object.keys(LINUX_TERMINALS)].find(t => t && commandExists(t)) || null;
+}
+const NO_TERMINAL = 'No terminal found. Install one (gnome-terminal, konsole, xterm, ...) or set $TERMINAL.';
+// A $TERMINAL we don't know gets the common -e.
+const terminalArgs = term => LINUX_TERMINALS[path.basename(term)] || ['-e'];
+
+// Single-quote for sh.
+export const shQuote = s => `'${String(s).replace(/'/g, `'\\''`)}'`;
+
+// Detached and without a shell: xdg-open, terminals and IDEs can stay in the foreground until closed.
+const launchDetached = (cmd, args, opts = {}) => spawn(cmd, args, { detached: true, stdio: 'ignore', ...opts }).on('error', () => {}).unref();
+
+// Select a file in the file manager (Nautilus, Dolphin, ...) over D-Bus. False when none answers.
+function showItemLinux(file) {
+  // dbus-send splits arrays on commas.
+  const url = pathToFileURL(file).href.replace(/,/g, '%2C');
+  const r = spawnSync('dbus-send', ['--session', '--print-reply', '--reply-timeout=2000', '--dest=org.freedesktop.FileManager1',
+    '/org/freedesktop/FileManager1', 'org.freedesktop.FileManager1.ShowItems', `array:string:${url}`, 'string:'], { stdio: 'ignore', timeout: 3000 });
+  return r.status === 0;
 }
 
 function fileExists(filePath) {
@@ -247,7 +346,8 @@ function fileExists(filePath) {
 export function copyToClipboard(text) {
   const cmd = platform === 'win32' ? 'clip'
     : platform === 'darwin' ? 'pbcopy'
-    : process.env.WAYLAND_DISPLAY && commandExists('wl-copy') ? 'wl-copy' : 'xclip -selection clipboard';
+    : [process.env.WAYLAND_DISPLAY && 'wl-copy', 'xclip -selection clipboard', 'xsel --clipboard --input'].find(c => c && commandExists(c.split(' ')[0]));
+  if (!cmd) throw new Error('no clipboard tool found, install wl-clipboard, xclip or xsel');
   // Keep non-ASCII paths intact: clip reads UTF-16LE whatever the code page, pbcopy needs a UTF-8 locale.
   const input = platform === 'win32' ? Buffer.from(text, 'utf16le') : text;
   const env = platform === 'darwin' ? { ...process.env, LC_CTYPE: 'UTF-8' } : process.env;
@@ -296,26 +396,28 @@ function versionDirs(dir, prefix = '') {
   }
 }
 
-// First bin/webstorm(64).exe found across the given version directories.
+// First WebStorm launcher (bin/webstorm64.exe, bin/webstorm.sh, ...) found across the given install directories.
 function webStormBinIn(dirs) {
+  const names = platform === 'win32' ? ['webstorm64.exe', 'webstorm.exe'] : ['webstorm.sh', 'webstorm'];
   for (const dir of dirs) {
-    const found = findFirstExistingFile([
-      path.join(dir, 'bin', 'webstorm64.exe'),
-      path.join(dir, 'bin', 'webstorm.exe'),
-    ]);
+    const found = findFirstExistingFile(names.map(n => path.join(dir, 'bin', n)));
     if (found) return found;
   }
   return null;
 }
 
-// Find WebStorm binary inside JetBrains Toolbox versioned directories.
-function findToolboxWebStormExe(localAppData) {
-  const toolboxRoot = path.join(localAppData, 'JetBrains', 'Toolbox', 'apps', 'WebStorm');
-  for (const channel of ['ch-0', 'ch-1']) {
-    const found = webStormBinIn(versionDirs(path.join(toolboxRoot, channel)));
-    if (found) return found;
-  }
-  return null;
+// WebStorm inside a JetBrains Toolbox folder: Toolbox 2 (apps/webstorm) or the older versioned channels.
+function findToolboxWebStormExe(toolbox) {
+  const apps = path.join(toolbox, 'apps');
+  return webStormBinIn([path.join(apps, 'webstorm'), ...['ch-0', 'ch-1'].flatMap(ch => versionDirs(path.join(apps, 'WebStorm', ch)))]);
+}
+
+// Linux: Toolbox under ~/.local/share/JetBrains (its shell script first), then tarballs in /opt or home.
+function findLinuxWebStorm() {
+  const toolbox = path.join(process.env.XDG_DATA_HOME || path.join(os.homedir(), '.local', 'share'), 'JetBrains', 'Toolbox');
+  const script = path.join(toolbox, 'scripts', 'webstorm');
+  if (fileExists(script)) return script;
+  return findToolboxWebStormExe(toolbox) || webStormBinIn([...versionDirs('/opt', 'WebStorm'), ...versionDirs(os.homedir(), 'WebStorm')]);
 }
 
 // Find WebStorm inside versioned JetBrains install folders (e.g. "WebStorm 2026.1.3").
@@ -327,27 +429,32 @@ function findInstalledWebStormExe(roots) {
   return null;
 }
 
-// Resolve WebStorm command on Windows even when no `webstorm` CLI launcher exists.
-function resolveWindowsWebStormCommand() {
-  const pathCandidates = ['webstorm', 'webstorm64.exe', 'webstorm.exe'];
+// Resolve the WebStorm command on Windows and Linux even when no `webstorm` CLI launcher is on PATH.
+// Windows paths come back quoted when they have spaces (they run through a shell), Linux ones raw (spawned directly).
+function resolveWebStormCommand() {
+  const win = platform === 'win32';
+  const pathCandidates = win ? ['webstorm', 'webstorm64.exe', 'webstorm.exe'] : ['webstorm', 'webstorm.sh'];
   for (const candidate of pathCandidates) {
     if (commandExists(candidate)) return candidate;
   }
+  const quote = win ? quoteIfNeeded : s => s;
 
   const config = loadConfig();
   if (config.webstormPath && fileExists(config.webstormPath)) {
-    return quoteIfNeeded(config.webstormPath);
+    return quote(config.webstormPath);
   }
 
   if (process.env.WEBSTORM_PATH && fileExists(process.env.WEBSTORM_PATH)) {
-    return quoteIfNeeded(process.env.WEBSTORM_PATH);
+    return quote(process.env.WEBSTORM_PATH);
   }
+
+  if (!win) return findLinuxWebStorm();
 
   const localAppData = process.env.LOCALAPPDATA || '';
   const programFiles = process.env.ProgramFiles || 'C:\\Program Files';
   const programFilesX86 = process.env['ProgramFiles(x86)'] || 'C:\\Program Files (x86)';
 
-  const toolboxExe = localAppData ? findToolboxWebStormExe(localAppData) : null;
+  const toolboxExe = localAppData ? findToolboxWebStormExe(path.join(localAppData, 'JetBrains', 'Toolbox')) : null;
   if (toolboxExe) return quoteIfNeeded(toolboxExe);
 
   // Standard installer puts it in a versioned folder like "JetBrains\WebStorm 2026.1.3".
@@ -374,8 +481,8 @@ function resolveOpener(key, app) {
   // `start` is a cmd.exe builtin, not a resolvable executable.
   let skipCommandCheck = platform === 'win32' && key === 'open';
 
-  if (platform === 'win32' && key === 'webstorm') {
-    const resolved = resolveWindowsWebStormCommand();
+  if (key === 'webstorm' && platform !== 'darwin') {
+    const resolved = resolveWebStormCommand();
     if (!resolved) {
       return {
         error: `WebStorm not found. Set "webstormPath" in ~/.upex/config.json or WEBSTORM_PATH env.\n` +
@@ -384,6 +491,17 @@ function resolveOpener(key, app) {
     }
     cmdBase = resolved;
     skipCommandCheck = true;
+  }
+
+  // Linux needs a terminal app, unless layout 'here' runs the shell in this terminal.
+  if (xdg && key === 'cmd' && !linuxTerminal()) {
+    if (setting('terminalLayout') !== 'here') return { error: NO_TERMINAL };
+    skipCommandCheck = true;
+  }
+  // Claude runs inside a terminal window, so it needs one too.
+  if (key === 'claude') {
+    const term = resolveOpener('cmd', APP_MAP.cmd);
+    if (term.error) return term;
   }
 
   // For multi-word commands like "open -na ..." we only check the first word
@@ -448,9 +566,10 @@ export function checkOpener(key) {
 /**
  * Launch a folder in the specified app.
  * @param {number} [count] - how many windows to open (only honored for the terminal opener)
- * @returns {{ ok: boolean, message?: string }}
+ * @param {{ here?: boolean }} [opts] - here: the caller can hand this terminal over (layout 'here')
+ * @returns {{ ok: boolean, message?: string, inPlace?: () => number }} inPlace: call it to run the shell here
  */
-export function launchApp(appName, folderPath, count = 1, startCmd = '') {
+export function launchApp(appName, folderPath, count = 1, startCmd = '', { here = false } = {}) {
   const key = appName.toLowerCase();
   const appMap = getAppMap();
   const app = Object.hasOwn(appMap, key) && appMap[key];
@@ -482,7 +601,7 @@ export function launchApp(appName, folderPath, count = 1, startCmd = '') {
   let { cmdBase } = resolvedCmd;
   const { cmdBin } = resolvedCmd;
 
-  // Claude runs inside a terminal window.
+  // Claude runs inside a terminal window (resolveOpener checked there is one).
   if (key === 'claude') cmdBase = APP_MAP.cmd.cmd();
   const runCmd = key === 'claude' ? `claude ${startCmd}`.trim() : startCmd;
 
@@ -496,11 +615,29 @@ export function launchApp(appName, folderPath, count = 1, startCmd = '') {
   // A terminal at a file means "sit in that file's folder".
   const terminalCwd = targetIsFile ? path.dirname(folderPath) : folderPath;
 
+  const config = isTerminal ? loadConfig() : {};
+  let layout = isTerminal ? setting('terminalLayout', config) : '';
+  // Layout 'here' takes one terminal from a real TTY; several, or a batch (workspace, upex ui), get windows.
+  if (layout === 'here') {
+    if (here && repeat === 1 && process.stdin.isTTY) {
+      const shell = platform === 'win32' ? setting('terminalShell', config) : '';
+      if ((shell === 'powershell' || shell === 'pwsh') && !commandExists(shell)) {
+        return { ok: false, message: `Shell "${shell}" not found. Pick another one on the Settings tab (upex ui, or Shift+Tab in upex).` };
+      }
+      return {
+        ok: true,
+        displayName: app.displayName,
+        message: `${app.displayName}${startCmd ? ` (${startCmd})` : ''} --> ${folderPath}`,
+        inPlace: () => shellHere(terminalCwd, runCmd, shell),
+      };
+    }
+    layout = 'windows';
+    if (xdg && !linuxTerminal()) return { ok: false, message: NO_TERMINAL };
+  }
+
   // Windows terminal settings. The default profile needs wt; without it, cmd.
   let win;
   if (platform === 'win32' && isTerminal) {
-    const config = loadConfig();
-    const layout = setting('terminalLayout', config);
     let shell = setting('terminalShell', config);
     const wt = (layout !== 'windows' || shell === 'profile') && hasWindowsTerminal();
     if (shell === 'profile' && !wt) shell = 'cmd';
@@ -543,26 +680,24 @@ export function launchApp(appName, folderPath, count = 1, startCmd = '') {
         ], { stdio: 'ignore' });
       }
     } else if (isTerminal) {
-      // Linux: cd into the dir, run the command, keep the shell open.
-      const inner = `cd ${JSON.stringify(terminalCwd)}; ${runCmd ? runCmd + '; ' : ''}exec "\${SHELL:-bash}"`;
+      // Linux: cd into the dir, run the command, keep the shell open (Ctrl+C too, like cmd /k).
+      const inner = `cd ${shQuote(terminalCwd)}; ${runCmd ? `trap : INT; ${runCmd}; ` : ''}exec "\${SHELL:-bash}"`;
       for (let i = 0; i < repeat; i++) {
-        const r = spawnSync(cmdBase, ['-e', 'sh', '-c', inner], { stdio: 'ignore' });
-        if (r.error) throw r.error;
+        launchDetached(cmdBase, [...terminalArgs(cmdBase), 'sh', '-c', inner], { cwd: terminalCwd });
       }
     } else if (key === 'open') {
       // Open the path in the OS default handler (default app for a file).
       if (platform === 'win32') {
         execSync('start "" ' + `"${folderPath}"`, { stdio: 'ignore' });
+      } else if (xdg) {
+        launchDetached(cmdBase, [folderPath]);
       } else {
         execSync(`${cmdBase} "${folderPath}"`, { stdio: 'ignore' });
       }
-    } else if (platform === 'win32' && key === 'webstorm') {
-      // Run WebStorm detached on Windows (works for PATH command or absolute exe/cmd path).
-      spawn(cmdBase, [folderPath], {
-        detached: true,
-        stdio: 'ignore',
-        shell: true,
-      }).unref();
+    } else if (key === 'webstorm' && platform !== 'darwin') {
+      // Detached: the IDE would otherwise hold upex until it closes. Windows goes through a shell (PATH command or .cmd).
+      if (platform === 'win32') launchDetached(cmdBase, [`"${folderPath}"`], { shell: true });
+      else launchDetached(cmdBase, [folderPath]);
     } else if (isSystemFileManager) {
       // Reveal the file in its folder, or just open a folder directly.
       if (platform === 'win32') {
@@ -570,9 +705,9 @@ export function launchApp(appName, folderPath, count = 1, startCmd = '') {
         spawn('explorer', args, { detached: true, stdio: 'ignore', shell: false }).unref();
       } else if (platform === 'darwin') {
         execSync(`${cmdBase} ${targetIsFile ? '-R ' : ''}"${folderPath}"`, { stdio: 'ignore' });
-      } else {
-        const target = targetIsFile ? path.dirname(folderPath) : folderPath;
-        execSync(`${cmdBase} "${target}"`, { stdio: 'ignore' });
+      } else if (!targetIsFile || !showItemLinux(folderPath)) {
+        // A file whose file manager can't select it: open its folder.
+        launchDetached(cmdBase, [targetIsFile ? path.dirname(folderPath) : folderPath]);
       }
     } else {
       const fullCmd = `${cmdBase} "${folderPath}"`;
@@ -604,18 +739,21 @@ export function launchUrl(url) {
   try {
     if (platform === 'win32') execSync(`start "" "${target}"`, { stdio: 'ignore' });
     else if (platform === 'darwin') execSync(`open "${target}"`, { stdio: 'ignore' });
-    else execSync(`xdg-open "${target}"`, { stdio: 'ignore' });
+    else if (commandExists('xdg-open')) launchDetached('xdg-open', [target]);
+    else throw new Error('xdg-open not found, install xdg-utils');
     return { ok: true, displayName: 'Browser', url: target };
   } catch (err) {
     return { ok: false, message: `Failed to open URL: ${err.message}` };
   }
 }
 
+// The opener row: built-ins this system has (WebStorm or a terminal may be missing), then every custom opener.
 export function getInteractiveAppChoices() {
   const appMap = getAppMap();
-  const keys = [...INTERACTIVE_APP_KEYS, ...Object.keys(customApps())];
+  const custom = customApps();
+  const keys = [...INTERACTIVE_APP_KEYS, ...Object.keys(custom)];
   return keys
-    .filter(key => appMap[key])
+    .filter(key => appMap[key] && (custom[key] || !resolveOpener(key, appMap[key]).error))
     .map(key => ({ key, label: appMap[key].displayName }));
 }
 

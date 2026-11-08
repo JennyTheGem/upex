@@ -1060,6 +1060,74 @@
       "note": "Typing #tag filters (prefix, #a#b needs both); Settings > Groups > By tag groups rows. No tag-cycling key, #tag and web chips cover it."
     },
     {
+      "id": "inline-row-actions-on-right-click",
+      "section": 3,
+      "title": "Inline row actions on right-click",
+      "body": "Mouse already selects and double-clicks. A right-click could show a small menu (open in..., edit, pin, copy path, archive) next to the row, so mouse users don't need the keys.",
+      "phase": "next",
+      "status": "planned",
+      "size": "M",
+      "created": "2026-11-08",
+      "updated": "2026-11-08"
+    },
+    {
+      "id": "remember-the-selected-row",
+      "section": 3,
+      "title": "Remember the selected row",
+      "body": "Start view Last used brings back the tab and opener but not the row. Also reselect the last opened or highlighted shortcut, so reopening upex lands where you left.",
+      "phase": "later",
+      "status": "dropped",
+      "size": "S",
+      "created": "2026-11-08",
+      "updated": "2026-11-08",
+      "note": "Not worth it"
+    },
+    {
+      "id": "command-palette-in-the-selector",
+      "section": 3,
+      "title": "Command palette in the selector",
+      "body": "Typing > in the filter lists actions by name (prune, stats, doctor, settings rows, open upex ui, archive...) so nobody has to remember ctrl keys. Easier than reading the ^k overlay.",
+      "phase": "later",
+      "status": "dropped",
+      "size": "M",
+      "created": "2026-11-08",
+      "updated": "2026-11-08",
+      "note": "Out of scope"
+    },
+    {
+      "id": "filter-tokens-beyond-tag",
+      "section": 3,
+      "title": "Filter tokens beyond #tag",
+      "body": "#tag already filters. Add is:pinned, is:missing, is:stale, is:app and @opener so the list can be narrowed without a Settings trip. Same tokens in upex ui search.",
+      "phase": "next",
+      "status": "planned",
+      "size": "S",
+      "created": "2026-11-08",
+      "updated": "2026-11-08"
+    },
+    {
+      "id": "pgup-pgdn-and-home-end-in-lists",
+      "section": 3,
+      "title": "PgUp/PgDn and Home/End in lists",
+      "body": "Lists only move one row per arrow press. PgUp/PgDn jump a page, Home/End jump to first/last row (when the filter is empty, so the filter keeps Home/End for the cursor).",
+      "phase": "next",
+      "status": "planned",
+      "size": "S",
+      "created": "2026-11-08",
+      "updated": "2026-11-08"
+    },
+    {
+      "id": "empty-start-opens-the-selector",
+      "section": 3,
+      "title": "Empty start opens the selector",
+      "body": "With zero shortcuts, upex prints 'No shortcuts saved' and quits, so a new user can't use ^a in the TUI. Open the selector with an empty-state hint and ^a ready instead.",
+      "phase": "next",
+      "status": "planned",
+      "size": "S",
+      "created": "2026-11-08",
+      "updated": "2026-11-08"
+    },
+    {
       "id": "cd-support-via-wrapper-hidden-resolve-public-go",
       "section": 4,
       "title": "`cd` support via wrapper + hidden `__resolve` / public `go`",
@@ -1193,9 +1261,10 @@
       "title": "Linux capabilities",
       "body": "Bring Linux up to Windows parity: test on a real distro, terminal detection beyond one default (gnome-terminal, konsole, xterm), WebStorm/Toolbox resolution under ~/.local/share/JetBrains, file manager via xdg-open, shell setup for bash/zsh/fish.",
       "phase": "next",
-      "status": "planned",
+      "status": "done",
       "created": "2026-11-08",
-      "updated": "2026-11-08"
+      "updated": "2026-11-08",
+      "note": "Linux terminals ($TERMINAL, desktop, x-terminal-emulator, table), WebStorm via Toolbox/opt, xdg-open + D-Bus file select, clipboard fallbacks, upex setup bash|zsh|fish, missing openers hidden everywhere, new default layout 'here'. Test in WSL done by Jenny."
     },
     {
       "id": "smoke-asserts-for-frecency-prunebroken",
@@ -1263,6 +1332,15 @@
       },
       "created": "2026-11-07",
       "updated": "2026-11-07"
+    },
+    {
+      "id": "show-version-in-tui",
+      "section": 6,
+      "title": "show version in tui",
+      "phase": "next",
+      "status": "planned",
+      "created": "2026-11-08",
+      "updated": "2026-11-08"
     },
     {
       "id": "upex-ui-local-web-page-to-add-edit-rename-tag",
@@ -1392,6 +1470,22 @@
       "size": "M",
       "created": "2026-11-07",
       "updated": "2026-11-07"
+    },
+    {
+      "id": "update-notice",
+      "section": 8,
+      "title": "Update notice",
+      "body": "Check the npm registry for a newer @uplift-beyond/upex at most once a day, in the background, cached in ~/.upex/. Show one dim line after normal commands: 'update available x -> y, run npm i -g @uplift-beyond/upex@latest'. Never on go, __resolve, __names or the selector, never blocks or fails a command offline. Setting to turn it off.",
+      "phase": "next",
+      "status": "planned",
+      "size": "S",
+      "pointers": {
+        "trap": [
+          "fastPath (go/__resolve) must stay instant: no network, no extra imports there"
+        ]
+      },
+      "created": "2026-11-08",
+      "updated": "2026-11-08"
     },
     {
       "id": "scripts-in-the-detail-pane",
@@ -1823,6 +1917,29 @@
       "created": "2026-11-08",
       "updated": "2026-11-08",
       "note": "^x archives (marked too), ^d deletes only workspaces and Settings > Archived rows; full key rows wrap (^s, ^g last after a |), row count from the widest case; short mode ^k overlay"
+    },
+    {
+      "id": "multi-step-undo-in-the-selector",
+      "section": 10,
+      "title": "Multi-step undo in the selector",
+      "body": "^z only undoes the last archive/delete/prune in this session. Pressing it again could step back through the links.json backups like upex undo, with a flash saying what came back.",
+      "phase": "next",
+      "status": "planned",
+      "size": "M",
+      "created": "2026-11-08",
+      "updated": "2026-11-08"
+    },
+    {
+      "id": "bulk-edit-marked-shortcuts",
+      "section": 10,
+      "title": "Bulk edit marked shortcuts",
+      "body": "Marks can open, archive and make a workspace, but not edit. ^e with marks: add/remove a tag, set or clear the opener, pin/unpin for all marked at once, one save so one ^z undoes it.",
+      "phase": "later",
+      "status": "dropped",
+      "size": "M",
+      "created": "2026-11-08",
+      "updated": "2026-11-08",
+      "note": "Out of scope"
     }
   ]
 }

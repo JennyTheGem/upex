@@ -8,7 +8,7 @@ import path from 'node:path';
 import readline from 'node:readline';
 import chalk from 'chalk';
 import Fuse from 'fuse.js';
-import { getInteractiveAppChoices, getAppMap, isTerminalApp, hasWindowsTerminal, defaultOpener, readSettings, setting, startTab, shownTabs, isHex, copyToClipboard, launchUrl, configApps, SETTINGS } from './launcher.js';
+import { getInteractiveAppChoices, getAppMap, isTerminalApp, hasWindowsTerminal, defaultOpener, readSettings, setting, startTab, shownTabs, isHex, copyToClipboard, launchUrl, configApps, SETTINGS, settingValues, settingShown } from './launcher.js';
 import { gitOf, stopGit } from './git.js';
 import { fuseOpts } from './fuzzy.js';
 import { loadLinks, activeLinks, unarchived, aliasesOf, takenError, checkAliases, frecency, removeLinks, saveLinks, setLink, renameLink, loadWorkspaces, saveWorkspaces, removeWorkspace, nameError, loadConfig, saveConfig, withPinned, setPinOrder, StoreError, undoLast, pruneBroken, staleLinks, loadHistory, statsFrom, diffLinks, keepUsage } from './store.js';
@@ -561,7 +561,7 @@ const SETTING_ROWS = [
   { section: 'General', key: 'enter', label: 'Enter', names: { quit: 'Open and quit', stay: 'Open and stay' } },
   { section: 'Search', key: 'fuzzy', label: 'Fuzzy', names: { normal: 'Normal', exact: 'Exact', loose: 'Loose' } },
   { section: 'Search', key: 'searchIn', label: 'Search in', names: { all: 'Names, paths, tags', names: 'Names only' } },
-  { section: 'Terminals', key: 'terminalLayout', label: 'Layout', names: { windows: 'Separate windows', tabs: 'Tabs', panes: 'Split panes' } },
+  { section: 'Terminals', key: 'terminalLayout', label: 'Layout', names: { here: 'This window', windows: 'Separate windows', tabs: 'Tabs', panes: 'Split panes' } },
   { section: 'Terminals', key: 'paneSplit', label: 'Pane split', names: { auto: 'Auto', vertical: 'Side by side', horizontal: 'Stacked' } },
   { section: 'Terminals', key: 'terminalShell', label: 'Shell', names: { cmd: 'cmd', powershell: 'PowerShell', pwsh: 'PowerShell 7', profile: 'WT profile' } },
   { section: 'Opening', key: 'defaultOpener', label: 'Default opener' },
@@ -582,14 +582,14 @@ const SETTING_ROWS = [
   { section: 'Detail pane', key: 'goals', label: 'Open goals', names: { off: 'Off', 3: '3', 5: '5', 10: '10' } },
   { section: 'Detail pane', key: 'git', label: 'Git status', names: { off: 'Off', on: 'On' } },
 ];
-// Pane split only matters for split panes.
-const visibleRows = s => SETTING_ROWS.filter(r => r.key !== 'paneSplit' || s.terminalLayout === 'panes');
+// Pane split only matters for split panes; Windows-only rows hide elsewhere.
+const visibleRows = s => SETTING_ROWS.filter(r => settingShown(r.key) && (r.key !== 'paneSplit' || s.terminalLayout === 'panes'));
 // Inline, Max rows Auto is 8: one "8" option that keeps auto, so going full screen still fills.
 const inlineRows = (row, s) => row.key === 'maxRows' && s.fullScreen === 'off';
 // [key, label] options of a settings row, in SETTINGS order (object keys put "8" before "auto"); copy is no way
 // to open a folder. A hex accent shows as its own option.
 export const rowOptions = (row, appChoices, s = {}) => (inlineRows(row, s) ? [['auto', '8'], ['12', '12'], ['16', '16']]
-  : row.names ? [...SETTINGS[row.key].map(k => [k, row.names[k] ?? k]), ...(row.key === 'accent' && isHex(s.accent) ? [[s.accent, s.accent]] : [])]
+  : row.names ? [...settingValues(row.key).map(k => [k, row.names[k] ?? k]), ...(row.key === 'accent' && isHex(s.accent) ? [[s.accent, s.accent]] : [])]
     : appChoices.filter(c => c.key !== 'copy').map(c => [c.key, c.label]));
 // The option a row shows as picked.
 export const pickedOf = (row, s) => (inlineRows(row, s) && s.maxRows === '8' ? 'auto' : s[row.key]);
@@ -619,8 +619,9 @@ function settingNote(key, s, wt) {
   if (key === 'keyHints') return 'Key rows under the list. Short: one row of the main keys, ^k shows them all. Off: more room for the list. Settings keeps its keys.';
   if (key === 'glyphs') return 'Selector only. ASCII swaps arrows, pointers, lines and the ellipsis for plain characters, for fonts that show boxes.';
   if (key === 'theme') return 'upex ui only. The terminal keeps its own colors.';
-  if (wt === null) return 'Windows only. Other systems use their own terminal.';
   if (key === 'terminalLayout') {
+    if (s.terminalLayout === 'here') return 'Terminal openers run in this terminal: upex quits (even with Open and stay), a shell starts at the folder, exit comes back. Several at once and workspaces get windows.';
+    if (wt === null) return 'Several terminals at once each get their own window.';
     return !wt && s.terminalLayout !== 'windows'
       ? 'Windows Terminal (wt) not found, so terminals open as separate windows.'
       : 'How several terminals open: separate windows, or tabs or panes in your current Windows Terminal window.';
@@ -1412,6 +1413,8 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
       }), fail);
     };
     const tabsOn = appKey => staysOpen(appKey, setting('terminalLayout'), hasWindowsTerminal);
+    // Layout 'here' hands this terminal over, so the selector has to quit even with Open and stay.
+    const stay = (appKey, n = 1) => settings.enter === 'stay' && !(isTerminalApp(appKey) && n === 1 && setting('terminalLayout') === 'here');
 
     // Safety net: a crash must not leave the terminal on the alt screen or without a cursor.
     const onExit = () => {
@@ -1506,7 +1509,7 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
       const start = `${scripts.pm} run ${scripts.list[scriptIndex].name}`;
       mode = 'browse';
       const tab = tabsOn('cmd');
-      if (tab || settings.enter === 'stay') { openHere([{ shortcut: c.name, app: 'cmd', start }], `running "${start}"${tab ? ' in a new tab' : ''}`, [c.name]); return; }
+      if (tab || stay('cmd')) { openHere([{ shortcut: c.name, app: 'cmd', start }], `running "${start}"${tab ? ' in a new tab' : ''}`, [c.name]); return; }
       finish({ status: 'selected', name: c.name, app: 'cmd', count: 1, start });
     };
 
@@ -1865,6 +1868,8 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
       if (row.key === 'defaultOpener') fallback = next;
       if (row.key === 'sort') rebuild();
       if (row.key === 'fullScreen') setFullScreen(next === 'on');
+      // Without a terminal app (Linux over SSH), only 'here' offers terminal openers.
+      if (row.key === 'terminalLayout') reloadOpeners();
     };
 
     const clamp = (i, n) => Math.max(0, Math.min(i, n - 1));
@@ -2381,8 +2386,8 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
         const count = isTerminalApp(appKey) ? cmdCount : 1;
         // Terminal tabs open beside the selector, so it stays either way.
         const tab = tabsOn(selected.isCmd ? 'cmd' : appKey);
-        if (tab || settings.enter === 'stay') {
-          const n = selected.isCmd ? 1 : count;
+        const n = selected.isCmd ? 1 : count;
+        if (tab || stay(selected.isCmd ? 'cmd' : appKey, n)) {
           const where = tab ? (n > 1 ? `${n} new tabs` : 'a new tab') : appKey && (appMap[appKey]?.displayName || appKey);
           openHere([{ shortcut: selected.name, app: appKey, count: n }], `opened "${selected.name}"${where ? ` in ${where}` : ''}`, [selected.name]);
           return;

@@ -4,7 +4,7 @@
 
 import chalk from 'chalk';
 import { loadConfig, saveConfig } from '../store.js';
-import { SETTINGS, readSettings, checkSettings, getInteractiveAppChoices, resetSettings } from '../launcher.js';
+import { SETTINGS, settingValues, settingShown, readSettings, checkSettings, getInteractiveAppChoices, resetSettings } from '../launcher.js';
 import * as ui from '../ui.js';
 
 const fail = (msg) => {
@@ -15,10 +15,10 @@ const fail = (msg) => {
 // Allowed values per setting; openers are the selector's row minus copy.
 const choices = (key) => (key === 'defaultOpener'
   ? getInteractiveAppChoices().map(c => c.key).filter(k => k !== 'copy')
-  : key === 'accent' ? [...SETTINGS.accent, '#rrggbb'] : SETTINGS[key]);
+  : key === 'accent' ? [...SETTINGS.accent, '#rrggbb'] : settingValues(key));
 
-// defList rows: setting, current value bold, options dim.
-export const settingRows = (settings = readSettings()) => Object.entries(settings)
+// defList rows: setting, current value bold, options dim. Windows-only ones hide elsewhere.
+export const settingRows = (settings = readSettings()) => Object.entries(settings).filter(([k]) => settingShown(k))
   .map(([k, v]) => ({ term: k, text: [[v, chalk.bold], [`· ${choices(k).join(', ')}`, chalk.dim]] }));
 
 export function registerConfig(program) {
