@@ -39,6 +39,10 @@
     {
       "n": 9,
       "title": "Detail pane"
+    },
+    {
+      "n": 10,
+      "title": "TUI editing"
     }
   ],
   "traps": [],
@@ -1046,10 +1050,11 @@
       "title": "Tag filter in selector",
       "body": "Typing #web filters to that tag; a key cycles through tags.",
       "phase": "next",
-      "status": "planned",
+      "status": "done",
       "size": "M",
       "created": "2026-11-08",
-      "updated": "2026-11-08"
+      "updated": "2026-11-08",
+      "note": "Typing #tag filters (prefix, #a#b needs both); Settings > Groups > By tag groups rows. No tag-cycling key, #tag and web chips cover it."
     },
     {
       "id": "cd-support-via-wrapper-hidden-resolve-public-go",
@@ -1178,6 +1183,16 @@
       "created": "2026-11-07",
       "updated": "2026-11-07",
       "note": "Settings > Appearance > Glyphs (glyphs: unicode|ascii): ui.toAscii swaps selector glyphs 1:1 per frame, key hints spell out enter, up/down, left/right, bs"
+    },
+    {
+      "id": "linux-capabilities",
+      "section": 5,
+      "title": "Linux capabilities",
+      "body": "Bring Linux up to Windows parity: test on a real distro, terminal detection beyond one default (gnome-terminal, konsole, xterm), WebStorm/Toolbox resolution under ~/.local/share/JetBrains, file manager via xdg-open, shell setup for bash/zsh/fish.",
+      "phase": "next",
+      "status": "planned",
+      "created": "2026-11-08",
+      "updated": "2026-11-08"
     },
     {
       "id": "smoke-asserts-for-frecency-prunebroken",
@@ -1706,6 +1721,94 @@
       "created": "2026-11-08",
       "updated": "2026-11-08",
       "note": "Settings > Detail pane > Width: Narrow / Normal / Wide (paneWidth). Drag skipped by choice."
+    },
+    {
+      "id": "tui-tags",
+      "section": 10,
+      "title": "TUI: edit tags",
+      "body": "Add/remove tags on a shortcut from the selector, like upex tag.",
+      "phase": "now",
+      "status": "done",
+      "created": "2026-11-08",
+      "updated": "2026-11-08",
+      "note": "in the ^e edit form, Tab completes"
+    },
+    {
+      "id": "tui-note",
+      "section": 10,
+      "title": "TUI: edit note",
+      "body": "Write or clear a shortcut's note from the selector, like upex note.",
+      "phase": "now",
+      "status": "done",
+      "created": "2026-11-08",
+      "updated": "2026-11-08",
+      "note": "in the ^e edit form"
+    },
+    {
+      "id": "tui-aliases",
+      "section": 10,
+      "title": "TUI: edit aliases",
+      "body": "Add/remove aliases from the selector, like upex alias.",
+      "phase": "now",
+      "status": "done",
+      "created": "2026-11-08",
+      "updated": "2026-11-08",
+      "note": "in the ^e edit form"
+    },
+    {
+      "id": "tui-edit-target",
+      "section": 10,
+      "title": "TUI: edit any target",
+      "body": "Change app, URL and command targets too, not only folder paths; save a default opener (edit --opener).",
+      "phase": "now",
+      "status": "done",
+      "created": "2026-11-08",
+      "updated": "2026-11-08",
+      "note": "^e form: target + type for every kind, opener row"
+    },
+    {
+      "id": "tui-add",
+      "section": 10,
+      "title": "TUI: richer add",
+      "body": "Add an app, URL or command shortcut, a typed path, plus tags/aliases/ttl, not only the cwd as a folder.",
+      "phase": "now",
+      "status": "done",
+      "created": "2026-11-08",
+      "updated": "2026-11-08",
+      "note": "^a name then the edit form on target"
+    },
+    {
+      "id": "tui-workspaces",
+      "section": 10,
+      "title": "TUI: create and edit workspaces",
+      "body": "Workspaces tab can open and delete; add create and edit (ws add).",
+      "phase": "now",
+      "status": "done",
+      "created": "2026-11-08",
+      "updated": "2026-11-08",
+      "note": "Workspaces ^a from marks, ^e form with entries"
+    },
+    {
+      "id": "tui-openers",
+      "section": 10,
+      "title": "TUI: custom openers",
+      "body": "Add, change and remove custom openers (upex app) from the selector.",
+      "phase": "now",
+      "status": "done",
+      "created": "2026-11-08",
+      "updated": "2026-11-08",
+      "note": "Settings > Openers"
+    },
+    {
+      "id": "tui-maintenance",
+      "section": 10,
+      "title": "TUI: maintenance",
+      "body": "check --prune, stale, stats, doctor, export/import reachable from the selector.",
+      "phase": "now",
+      "status": "done",
+      "created": "2026-11-08",
+      "updated": "2026-11-08",
+      "note": "Settings > Maintenance: broken, stale, stats, doctor, export, import"
     }
   ]
 }

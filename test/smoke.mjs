@@ -22,7 +22,7 @@ import { applyShortcut, applyOpener, cleanEntries, startServer } from '../src/co
 import { COMMAND_NAMES } from '../src/fast.js';
 import { createProgram } from '../src/index.js';
 import { readScripts, detectPm } from '../src/commands/run.js';
-import { renderInteractiveView, nextView, backTo, accentOf, pathLook, inView, tidyPath, byOrder, optionRow, listRows, readMouse, hitTest, rowClick, undoError, undoneLinks, clipName, prefill, editLine, inputLine, missingFlash, staysOpen, expandHome, underlineHits, movePinned, sameGroup, withRecent, withGroups, filterChoices, maxListOf, isAlt, detailLines, rowOptions, pickedOf, goalSummary, goalsOf, goalText, oneLine, scriptLines, markLines, paneShown, paneToggles, paneWidthOf, withSamePath, archivedList, dotLines, lr } from '../src/interactive.js';
+import { renderInteractiveView, nextView, backTo, accentOf, pathLook, inView, tidyPath, byOrder, optionRow, listRows, readMouse, hitTest, rowClick, undoError, undoneLinks, clipName, prefill, editLine, sameLinks, kindOf, retyped, setField, fieldWords, completeTag, expiryOptions, formRows, formLines, statLines, doctorLines, inputLine, missingFlash, staysOpen, expandHome, underlineHits, movePinned, sameGroup, withRecent, withGroups, filterChoices, maxListOf, isAlt, detailLines, rowOptions, pickedOf, goalSummary, goalsOf, goalText, oneLine, scriptLines, markLines, paneShown, paneToggles, paneWidthOf, withSamePath, archivedList, dotLines, lr } from '../src/interactive.js';
 import { parseStatus, parseDiff, parseLog, gitOf, stopGit } from '../src/git.js';
 import chalk from 'chalk';
 import { resolveTarget, resolveName, suggestNames } from '../src/fuzzy.js';
@@ -597,6 +597,60 @@ assert.ok(v({}).includes('esc quit') && v({ query: 's' }).includes('esc clear') 
 assert.ok(v({ view: 'workspaces', query: 'd' }).includes('esc clear'), 'workspaces too');
 assert.ok(v({}).includes('^u web ui') && v({ view: 'workspaces' }).includes('^u web ui'), '^u hint');
 
+// -- edit form (^e): types, field parsing, rows, render in the list and in the pane --
+{
+  assert.deepEqual(['folder', 'app', 'cmd', 'url'], [{ path: '/p' }, { app: 'x' }, { app: 'npm t', terminal: true }, { url: 'x.dev' }].map(kindOf), 'kind of each entry');
+  assert.deepEqual(retyped({ path: '/p', opener: 'vscode', tags: ['a'] }, 'cmd', 'npm t'), { tags: ['a'], app: 'npm t', terminal: true }, 'folder -> command drops path and opener');
+  assert.deepEqual(retyped({ app: 'npm t', terminal: true }, 'folder', '/p'), { path: '/p' }, 'command -> folder drops terminal');
+  assert.deepEqual([setField({ a: 1, n: 'x' }, 'n', ''), setField({ a: 1 }, 'tags', []), setField({ a: 1 }, 'n', 'y')], [{ a: 1 }, { a: 1 }, { a: 1, n: 'y' }], 'empty value drops the field');
+  assert.deepEqual(fieldWords(' #web, api  web #'), ['web', 'api'], 'tags field: # and commas dropped, once each');
+  assert.deepEqual([completeTag('api #ve', ['work', 'velora']), completeTag('x', ['y']), completeTag('', ['y'])], ['api #velora ', 'x', ''], 'tab completes the last tag');
+  const D = 86400000;
+  assert.deepEqual(expiryOptions({}, 0), { labels: ['never', '1d', '7d', '30d'], at: 0 }, 'no expiry: never picked');
+  assert.deepEqual(expiryOptions({ expires: D - 5 }, 0), { labels: ['never', 'in 24h', '7d', '30d'], at: 1 }, 'just set 1d: in the 1d slot, so → goes on to 7d');
+  assert.deepEqual(expiryOptions({ expires: 3 * D }, 0), { labels: ['never', '1d', 'in 3d', '30d'], at: 2 }, '3d left: in the 7d slot');
+  assert.deepEqual(expiryOptions({ expires: 60 * D }, 0), { labels: ['never', '1d', '7d', '30d', 'in 60d'], at: 4 }, 'past 30d: its own slot last');
+  assert.equal(expiryOptions({ expires: 5 }, 10).at, 0, 'expired counts as never');
+  assert.deepEqual(formRows({ entry: { url: 'x' } }), ['name', 'target', 'type', 'tags', 'aliases', 'note', 'expires'], 'no opener row for a url');
+  assert.deepEqual(formRows({ ws: true, entry: [{ shortcut: 'a' }, { shortcut: 'b' }] }), ['name', 0, 1], 'workspace rows: name, then entries');
+  const entry = { path: home, tags: ['work'], note: 'hi there', opener: 'explorer' };
+  const fl = formLines({ name: 'web', entry, field: 4, editing: false }, 60, [{ key: 'explorer', label: 'Explorer' }]).map(strip);
+  assert.ok(fl[0].startsWith('web') && fl[0].endsWith('folder') && fl.some(l => l.startsWith('› tags') && l.includes('#work')) && fl.some(l => l.includes('‹ Explorer ›')), 'form rows');
+  assert.ok(fl.some(l => l.includes('tab completes')) && fl.every(l => l.length <= 60), 'form note, in width');
+  const typing = formLines({ name: 'web', entry, field: 6, editing: true, buffer: 'new note', cursor: 8 }, 60).map(strip);
+  assert.ok(typing.some(l => l.startsWith('› note') && l.includes('new note▏')), 'editing shows the input');
+  // Values get the full width left of the label, no more: the cursor, a row's last option and a path's end stay in view.
+  const narrow = formLines({ name: 'web', entry: { path: `${home}/${'d/'.repeat(20)}leaf` }, field: 1, editing: false }, 34).map(strip);
+  assert.ok(narrow.find(l => l.startsWith('› target')).includes('…') && narrow.find(l => l.startsWith('› target')).endsWith('leaf  missing'), 'long target keeps its end');
+  assert.ok(narrow.find(l => l.startsWith('  expires')).endsWith('›') && narrow.every(l => l.length <= 34), 'option row not cut by one');
+  const long = formLines({ name: 'web', entry, field: 6, editing: true, buffer: 'x'.repeat(80), cursor: 80 }, 40).map(strip);
+  assert.ok(long.find(l => l.startsWith('› note')).endsWith('x▏'), 'long input keeps its cursor');
+  const ws = formLines({ name: 'dev', ws: true, entry: [{ shortcut: 'api', app: 'explorer', count: 2, start: 'npm run dev' }], field: 1 }, 60, [{ key: 'explorer', label: 'Explorer' }]).map(strip);
+  assert.ok(ws.some(l => l.startsWith('› api') && l.includes('Explorer ×2') && l.includes('npm run dev')), 'workspace entry row');
+  const form = { name: 's', entry: { path: home }, field: 0, editing: false, history: [] };
+  const inList = strip(renderInteractiveView({ ...viewArgs, mode: 'form', form, height: 30 }));
+  assert.ok(inList.includes('edit s') && inList.includes('› name') && inList.includes('↵ edit') && !inList.includes('open with'), 'form replaces the list when narrow');
+  const inPane = strip(renderInteractiveView({ ...viewArgs, mode: 'form', form, width: 160, height: 30, full: true })).split('\n');
+  assert.ok(inPane.some(l => l.includes('│') && l.includes('› name')), 'form in the pane when wide');
+  assert.ok(strip(renderInteractiveView({ ...viewArgs, mode: 'form', form: { ...form, field: 2, kind: 'url' }, height: 30 })).includes('↵ new target'), 'picked type: enter asks for its target');
+}
+// -- settings: openers and maintenance rows above Archived, stats and doctor lines --
+{
+  const extras = [{ section: 'Openers', kind: 'opener', name: 'zed', text: 'zed' }, { section: 'Maintenance', kind: 'stats', name: 'Stats', text: 'web 3' }];
+  const ex = (i, more = {}) => strip(renderInteractiveView({ ...setArgs, extras, archived: [{ name: 'old', path: '/o' }], height: 80, settingIndex: i, ...more }));
+  const e0 = ex(23);
+  assert.ok(e0.indexOf('Openers') < e0.indexOf('Maintenance') && e0.indexOf('Maintenance') < e0.indexOf('Archived 1'), 'extra sections in order');
+  assert.ok(e0.includes('› zed') && e0.includes('↵ edit command') && e0.includes('^d remove'), 'opener row keys');
+  assert.ok(ex(24, { expanded: { kind: 'stats', lines: ['web  3'] } }).includes('↵ hide') && ex(24, { expanded: { kind: 'stats', lines: ['web  3'] } }).includes('      web  3'), 'stats lines under its row');
+  assert.ok(ex(25).includes('› old') && ex(25).includes('↵ restore'), 'archived index after the extras');
+  assert.ok(strip(renderInteractiveView({ ...setArgs, mode: 'confirm', ask: 'remove opener "zed"?' })).includes('? remove opener "zed"?  y / n'), 'settings confirm question');
+  const day = 86400000;
+  const sl = statLines({ code: { displayName: 'VS Code' } }, [{ name: 'web', opener: 'code', ts: 10 * day }, { name: 'web', ts: 11 * day }, { name: 'api', ts: 11 * day }], 12 * day).map(strip);
+  assert.ok(sl[0].startsWith('web') && sl[0].endsWith('2') && sl.some(l => l.includes('VS Code 1')), 'stats lines');
+  assert.deepEqual(strip(statLines({}, [], 0)[0]), 'No opens in the last 30 days.', 'no stats');
+  assert.ok(strip(doctorLines([['warn', 'paths', '1 broken']])[0]).startsWith('warn  paths'), 'doctor line');
+}
+
 // -- script picker: ^s hint, the picker rows, package.json reading --
 const picker = v({ mode: 'scripts', scripts: { pm: 'pnpm', list: [{ name: 'dev', path: 'vite' }, { name: 'build', path: 'vite build' }] }, scriptIndex: 1 });
 assert.ok(v({}).includes('^s scripts'), '^s hint on Shortcuts');
@@ -707,12 +761,12 @@ assert.deepEqual(clipName('abc', 5, [[0, 2]]), { text: 'abc', hits: [[0, 2]] }, 
 const longName = strip(renderInteractiveView({ ...viewArgs, selectedIndex: 1, choices: [{ name: 'n'.repeat(40), path: 'P1', exists: true }, { name: 'short', path: 'P2', exists: true }] })).split('\n');
 const p1 = longName.find(l => l.includes('P1'));
 assert.ok(p1.includes(`${'n'.repeat(23)}…  P1`) && p1.indexOf('P1') === longName.find(l => l.includes('P2')).indexOf('P2'), 'long name clipped, path column aligned');
-assert.deepEqual([prefill('edit', { name: 'n', path: 'C:/x' }), prefill('rename', { name: 'n', path: 'C:/x' }), prefill('add', { name: 'n' })], ['C:/x', 'n', ''], 'edit/rename prefill, add starts empty');
+assert.deepEqual([prefill('rename', { name: 'n', path: 'C:/x' }), prefill('add', { name: 'n' })], ['n', ''], 'rename prefill, add starts empty');
 const typing = v({ mode: 'input', action: 'rename', inputBuffer: 's', height: 20 });
 assert.ok(typing.includes('rename "s" to: s▏') && typing.includes('^u clear') && !typing.includes('^a add'), 'rename prompt prefilled, input keys shown');
 assert.equal(typing.split('\n').length, v({ height: 20 }).split('\n').length, 'typing keeps the frame height');
-const deep = v({ mode: 'input', action: 'edit', inputBuffer: `C:/${'d/'.repeat(60)}leaf`, width: 60 }).split('\n').find(l => l.includes('path for'));
-assert.ok(deep.includes('(empty = cwd): …') && deep.endsWith('leaf▏') && deep.length <= 60, 'long input keeps its end in view');
+const deep = v({ mode: 'input', action: 'export', inputBuffer: `C:/${'d/'.repeat(60)}leaf`, width: 60 }).split('\n').find(l => l.includes('export to'));
+assert.ok(deep.includes('file: …') && deep.endsWith('leaf▏') && deep.length <= 60, 'long input keeps its end in view');
 // -- line editing: cursor moves, inserts mid-text, word delete stops at path separators --
 {
   const ed = (st, ...keys) => keys.reduce((s, [str, key]) => editLine(s, str, key) ?? s, st);
@@ -1002,6 +1056,13 @@ assert.ok(v({}).includes('^y copy') && !v({}).includes('move pin') && v({ choice
 assert.deepEqual([{ name: 'up', meta: true, sequence: '\x1b[1;3A' }, { name: 'up', meta: false, sequence: '\x1b\x1b[A' }, { name: 'up', sequence: '\x1b[A' }].map(isAlt), [true, true, false], 'Alt+arrow: modifier code or Esc prefix');
 assert.deepEqual(diffLinks({ a: { path: 'A' }, b: { path: 'B' } }, { b: { path: 'X' }, c: { path: 'C' } }), { added: ['c'], removed: ['a'], changed: ['b'] }, 'diffLinks');
 assert.deepEqual(keepUsage({ a: { path: 'A', uses: 1 }, b: { path: 'B' } }, { a: { path: 'Z', uses: 3, lastUsed: 9 } }), { a: { path: 'A', uses: 3, lastUsed: 9 }, b: { path: 'B' } }, 'keepUsage takes current stats');
+// Prune ^z (selector): only while nothing but usage changed since the prune.
+{
+  const after = { a: { path: 'A' }, b: { app: 'x' } };
+  const since = now => sameLinks(keepUsage(after, now), now);
+  assert.deepEqual([since({ a: { path: 'A', uses: 2, lastUsed: 5 }, b: { app: 'x' } }), since({ a: { path: 'A', pinned: true }, b: { app: 'x' } }), since({ a: { path: 'A' } })],
+    [true, false, false], 'prune undo: an open since is fine, an edit or delete is not');
+}
 assert.equal(defaultName('/x/My Cool  App/'), 'My-Cool-App', 'defaultName: basename, spaces to dashes');
 assert.equal(defaultOpener({ defaultOpener: 'Code' }), 'vscode', 'default opener alias normalized');
 assert.equal(defaultOpener({ defaultOpener: 'nope' }), 'explorer', 'unknown default opener falls back to explorer');

@@ -205,13 +205,13 @@ Run `upex` with no arguments to open the interactive selector. Pinned shortcuts 
 - `Up` / `Down` -- move through shortcuts
 - `Left` / `Right` -- change the selected app (starts on the shortcut's default opener)
 - `Shift+Up` / `Shift+Down` (or `Ctrl`) -- terminal count when a terminal opener (cmd, claude) is selected
-- `Tab` -- cycle the Shortcuts (folders), Apps (app + URL shortcuts) and Workspaces views (Enter opens the whole workspace, `Ctrl+D` deletes it). The `views` setting hides Apps and/or Workspaces
-- `Shift+Tab` -- jump to Settings (Left/Right changes a setting, saved right away), again to go back
+- `Tab` -- cycle the Shortcuts (folders), Apps (app + URL shortcuts) and Workspaces views (Enter opens the whole workspace, `Ctrl+D` deletes it, `Ctrl+A` puts the marked shortcuts into a new or existing one, `Ctrl+E` edits one: its name, and per entry the opener (Left/Right), start command (Enter) or `Ctrl+D` to remove it). The `views` setting hides Apps and/or Workspaces
+- `Shift+Tab` -- jump to Settings (Left/Right changes a setting, saved right away), again to go back. Below the settings: Openers (custom ones, Enter edits the command, `Ctrl+D` removes, "+ add opener"), Maintenance (prune broken paths, archive stale shortcuts, `Ctrl+Z` undoes; stats, doctor, export, import) and Archived (Enter restores one)
 - `Enter` -- open the selected shortcut in the selected app, then quit (or stay open with the `enter` setting on `stay`)
 - `Space` -- mark or unmark the selected shortcut (Shortcuts and Apps tabs) and move down; `Enter` then opens every marked one (folders in the picked opener, else their own) and `Ctrl+D` deletes them all (one `Ctrl+Z` or `upex undo` brings them back)
 - Type -- fuzzy-filter the list (Space marks instead of typing); `#vel` keeps shortcuts with a tag starting with vel, `#vel#web` needs both tags, `api#vel` also searches api fuzzy
-- `Ctrl+A` -- add a shortcut for the current directory
-- `Ctrl+E` -- edit the selected shortcut's path (starts filled in, `Ctrl+U` clears it)
+- `Ctrl+A` -- add a shortcut for the current directory, then edit it in the form below
+- `Ctrl+E` -- edit the selected shortcut in a form (in the detail pane when it shows): name, target, type (folder, app, command or URL), opener, tags (Tab completes one), aliases, note and expiry. Up/Down picks a row, Enter edits a text row and Enter saves it, Left/Right changes a choice row and saves it, `Ctrl+Z` undoes the form's last save, Esc closes it
 - `Ctrl+R` -- rename the selected shortcut (starts filled in)
 - `Ctrl+P` -- pin or unpin the selected shortcut; `Alt+Up` / `Alt+Down` moves a pinned one among the pinned (saved, `upex ui` uses the same order)
 - `Ctrl+X` -- archive the selected shortcut (confirm with `y`, `Ctrl+Z` undoes it, `upex restore <name>` later); a click on the detail pane's stale row does the same

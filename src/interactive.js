@@ -8,13 +8,17 @@ import path from 'node:path';
 import readline from 'node:readline';
 import chalk from 'chalk';
 import Fuse from 'fuse.js';
-import { getInteractiveAppChoices, getAppMap, isTerminalApp, hasWindowsTerminal, defaultOpener, readSettings, setting, startTab, shownTabs, isHex, copyToClipboard, launchUrl, SETTINGS } from './launcher.js';
+import { getInteractiveAppChoices, getAppMap, isTerminalApp, hasWindowsTerminal, defaultOpener, readSettings, setting, startTab, shownTabs, isHex, copyToClipboard, launchUrl, configApps, SETTINGS } from './launcher.js';
 import { gitOf, stopGit } from './git.js';
-import { loadLinks, activeLinks, unarchived, aliasesOf, takenError, checkAliases, frecency, removeLinks, saveLinks, setLink, renameLink, loadWorkspaces, saveWorkspaces, removeWorkspace, nameError, loadConfig, saveConfig, withPinned, setPinOrder } from './store.js';
+import { loadLinks, activeLinks, unarchived, aliasesOf, takenError, checkAliases, frecency, removeLinks, saveLinks, setLink, renameLink, loadWorkspaces, saveWorkspaces, removeWorkspace, nameError, loadConfig, saveConfig, withPinned, setPinOrder, StoreError, undoLast, pruneBroken, staleLinks, loadHistory, statsFrom, diffLinks, keepUsage } from './store.js';
 import { describeEntry } from './commands/workspace.js';
 import { handleOpen } from './commands/open.js';
-import { startServer } from './commands/web.js';
+import { startServer, applyOpener } from './commands/web.js';
 import { readScripts, detectPm } from './commands/run.js';
+import { parseDuration } from './commands/add.js';
+import { runChecks } from './commands/doctor.js';
+import { sparkline } from './commands/stats.js';
+import { bundleOf, importBundle } from './commands/transfer.js';
 import * as ui from './ui.js';
 
 const MAX_VISIBLE_CHOICES = 8;
@@ -356,6 +360,9 @@ export function undoError(u, links, workspaces) {
   return takenError(links, name) || checkAliases(links, name, aliasesOf(entry)).error || null;
 }
 
+// Same shortcuts in both? A prune's ^z checks nothing changed since it.
+export const sameLinks = (a, b) => Object.values(diffLinks(a, b)).every(names => !names.length);
+
 // links after ^z: deleted ones come back as they were, archived ones only lose the flag (edits made since stay).
 export const undoneLinks = (undo, links) => ({ ...links, ...Object.fromEntries(undo.map(({ name, entry, archived }) => {
   if (!archived) return [name, entry];
@@ -389,19 +396,138 @@ function getVisibleWindow(choices, selectedIndex, maxVisible = MAX_VISIBLE_CHOIC
 }
 
 const PROMPT_LABEL = {
-  edit: name => `path for "${name}" (empty = cwd):`,
   rename: name => `rename "${name}" to:`,
   add: () => 'new shortcut name (path = cwd):',
+  wsadd: n => `add the ${n} marked to workspace (new or existing):`,
+  opener: name => `command for opener "${name}":`,
+  openerName: () => 'new opener name:',
+  openerCmd: name => `command for opener "${name}":`,
+  export: () => 'export to file:',
+  import: () => 'import from file (merge):',
 };
 
-// Input a prompt starts with: the current path (^e) or name (^r), so Enter on it changes nothing.
-export const prefill = (action, choice) => (action === 'edit' ? choice?.path : action === 'rename' ? choice?.name : '') || '';
+// Input a prompt starts with: the current name for ^r, so Enter on it changes nothing.
+export const prefill = (action, choice) => (action === 'rename' ? choice?.name : '') || '';
 
 // Terminal tabs open next to upex in Windows Terminal, so the selector stays open. `wt` is lazy.
 export const staysOpen = (appKey, layout, wt) => isTerminalApp(appKey) && layout === 'tabs' && !!wt();
 
 // Why Enter can't open this folder shortcut, or null. Checks the disk again: the list can be stale.
 export const missingFlash = (c, exists = fs.existsSync) => (c.isApp || c.isUrl || exists(c.path) ? null : 'path missing, ^e to fix');
+
+// ── Edit form (^e): one row per field, saved as you go ──
+// Shortcut types, named like add --app / --cmd / --url.
+const KINDS = ['folder', 'app', 'cmd', 'url'];
+const KIND_NAMES = { folder: 'folder', app: 'app', cmd: 'command', url: 'url' };
+const KIND_FIELD = { folder: 'path', app: 'app', cmd: 'app', url: 'url' };
+export const kindOf = e => (e.url ? 'url' : e.app ? (e.terminal ? 'cmd' : 'app') : 'folder');
+const targetOf = e => e[KIND_FIELD[kindOf(e)]] || '';
+// The entry as another type with `target` as its path, command or URL; a default opener stays only on a folder.
+export function retyped(entry, kind, target) {
+  const { path: _p, app: _a, url: _u, terminal: _t, opener, ...rest } = entry;
+  return { ...rest, [KIND_FIELD[kind]]: target, ...(kind === 'cmd' && { terminal: true }), ...(kind === 'folder' && opener && { opener }) };
+}
+// The entry with `key` set, or without it when `value` is empty.
+export const setField = (e, key, value) => {
+  const { [key]: _old, ...rest } = e;
+  return value && (!Array.isArray(value) || value.length) ? { ...rest, [key]: value } : rest;
+};
+// Words of a tags or aliases field, each once: "#a, b c" -> ['a', 'b', 'c'].
+export const fieldWords = s => [...new Set(String(s ?? '').split(/[\s,]+/).map(w => w.replace(/^#+/, '')).filter(Boolean))];
+// Tab in the tags field: the last word finished to the first known tag it starts.
+export function completeTag(text, known) {
+  const w = /[^\s,#]*$/.exec(text)[0];
+  const hit = w && known.find(t => t.toLowerCase().startsWith(w.toLowerCase()));
+  return hit ? `${text.slice(0, text.length - w.length)}${hit} ` : text;
+}
+// Expiry options and the picked one: a running expiry shows as "in 5d" in the slot of the first preset it fits
+// (past 30d its own slot last), so ←→ step on from there.
+const EXPIRES = ['never', '1d', '7d', '30d'];
+export function expiryOptions(e, now = Date.now()) {
+  const left = e.expires > now ? e.expires - now : 0;
+  if (!left) return { labels: EXPIRES, at: 0 };
+  const fit = EXPIRES.findIndex((p, i) => i && left <= parseDuration(p));
+  const at = fit < 0 ? EXPIRES.length : fit;
+  const labels = [...EXPIRES];
+  labels[at] = `in ${ui.span(left, Math.ceil)}`;
+  return { labels, at };
+}
+// Form rows: a shortcut's fields (opener only for a folder), or a workspace's name and then its entries by index.
+export const formRows = ({ ws, entry }) => (ws ? ['name', ...(entry || []).map((_, i) => i)]
+  : ['name', 'target', 'type', ...(kindOf(entry) === 'folder' ? ['opener'] : []), 'tags', 'aliases', 'note', 'expires']);
+export const isTextRow = (f, ws) => (ws ? true : ['name', 'target', 'tags', 'aliases', 'note'].includes(f));
+// Openers a folder or workspace entry can pick: its default first.
+const openerOptions = appChoices => [['', 'default'], ...appChoices.filter(c => c.key !== 'copy').map(c => [c.key, c.label])];
+
+function formNote(f, form) {
+  if (form.ws) return f === 'name' ? 'Unique, no spaces.' : '←→ picks its opener, ↵ sets a start command (runs in a terminal), ^d removes it.';
+  const kind = form.kind || kindOf(form.entry);
+  if (f === 'name') return 'Unique, no spaces.';
+  if (f === 'target') return { folder: 'Folder path, ~ works, empty = the current folder.', app: 'Program or command to launch.', cmd: 'Command line, runs in a terminal.', url: 'Web address, opens in the browser.' }[kind];
+  if (f === 'type') return form.kind ? '↵ asks for its new target, esc keeps the type.' : '←→ picks another type, then ↵ asks for its target.';
+  if (f === 'opener') return 'Opens it when no opener is picked. Default: Settings > Default opener.';
+  if (f === 'tags') return 'Space between tags, tab completes one you use. Type #tag in the filter to find them.';
+  if (f === 'aliases') return 'Other names that open it too, space between.';
+  if (f === 'note') return 'Shown at the top of the details.';
+  return 'Archived on its own after this long, like add --ttl.';
+}
+
+// Form lines in `w` columns: name and type on top, a row per field (the picked one with its input while editing), then its note.
+// `form` = { name, entry (shortcut entry | workspace entries), ws, field, editing, buffer, cursor, kind (type picked, not saved) }.
+export function formLines(form, w, appChoices = [], pick = chalk.bold, now = Date.now()) {
+  const e = form.entry;
+  const rows = formRows(form);
+  // "› " plus the 11-column label.
+  const vw = Math.max(1, w - 13);
+  const none = chalk.dim('none');
+  const openers = openerOptions(appChoices);
+  const openerAt = key => Math.max(0, openers.findIndex(([k]) => k === (key || '')));
+  const value = (f) => {
+    if (form.ws) {
+      if (f === 'name') return form.name;
+      const x = e[f] || {};
+      return `${x.app ? openers.find(([k]) => k === x.app)?.[1] || x.app : 'default'}${x.count > 1 ? ` ×${x.count}` : ''}${x.start ? `  ${chalk.dim(x.start)}` : ''}`;
+    }
+    if (f === 'name') return form.name;
+    if (f === 'target') {
+      const t = targetOf(e);
+      const folder = kindOf(e) === 'folder';
+      const missing = folder && !fs.existsSync(t);
+      // A long one keeps its end, the folder name.
+      const shown = clipStart(folder ? tidyPath(t) : t, vw - (missing ? 9 : 0));
+      return (folder ? ui.dimParent(shown) : shown) + (missing ? `  ${chalk.red('missing')}` : '');
+    }
+    if (f === 'type') return optionRow(KINDS.map(k => KIND_NAMES[k]), KINDS.indexOf(form.kind || kindOf(e)), vw, null, pick);
+    if (f === 'opener') return optionRow(openers.map(([, l]) => l), openerAt(e.opener), vw, null, pick);
+    if (f === 'tags') return e.tags?.length ? `#${e.tags.join(' #')}` : none;
+    if (f === 'aliases') return aliasesOf(e).join(' ') || none;
+    if (f === 'note') return oneLine(e.note) || none;
+    const x = expiryOptions(e, now);
+    return optionRow(x.labels, x.at, vw, null, pick);
+  };
+  const label = f => (form.ws && f !== 'name' ? clipName(String(e[f]?.shortcut ?? '?'), 9).text : f);
+  const out = [lr(chalk.bold(form.name), chalk.dim(form.ws ? 'workspace' : KIND_NAMES[kindOf(e)]), w, 10), ''];
+  rows.forEach((f, i) => {
+    const sel = i === form.field;
+    const v = sel && form.editing ? inputLine(form.buffer, form.cursor, vw) : value(f);
+    const l = label(f);
+    out.push(`${sel ? pick('›') : ' '} ${(sel ? chalk.bold : chalk.dim)(l)}${' '.repeat(Math.max(1, 11 - vis(l)))}${v}`);
+  });
+  if (form.ws && !e.length) out.push(chalk.dim('  no entries: mark shortcuts with space, then ^a here'));
+  out.push('', ...ui.wrap([[formNote(rows[form.field], form), chalk.dim]], Math.max(1, w - 2)).map(l => `  ${l}`));
+  return out.map(l => ui.truncate(l, w));
+}
+
+// The form's key row; `inputRow` while a field is being typed in.
+function formKeys(form, inputRow) {
+  if (form.editing) return inputRow;
+  const f = formRows(form)[form.field];
+  const entry = form.ws && f !== 'name';
+  const enter = form.kind ? 'new target' : entry ? 'start command' : isTextRow(f, form.ws) && 'edit';
+  const change = entry ? 'opener' : f === 'type' ? 'type' : ['opener', 'expires'].includes(f) && 'change (saved)';
+  return keyHint([enter && ['↵', enter], change && ['←→', change], ['↑↓', 'field'], entry && ['^d', 'remove'],
+    form.history?.length && ['^z', 'undo'], ['esc', form.kind ? 'keep type' : 'done']]);
+}
 
 const VIEWS = { shortcuts: 'Shortcuts', apps: 'Apps', workspaces: 'Workspaces', settings: 'Settings' };
 // Tab cycles the tabs the views setting shows; Settings sits outside the cycle on Shift+Tab, so Tab from it goes to Shortcuts.
@@ -478,6 +604,38 @@ function settingNote(key, s, wt) {
   if (s.terminalShell !== 'profile') return 'The shell terminal openers start.';
   return wt ? 'Your Windows Terminal default profile. A start command (like claude) runs in cmd.' : 'Windows Terminal (wt) not found, so cmd opens instead.';
 }
+
+// Settings rows after the settings: what Enter does and the note under the list.
+const STALE_DAYS = 60;
+const EXTRA_KEYS = { opener: 'edit command', newOpener: 'add', broken: 'prune', stale: 'archive all', stats: 'show', doctor: 'run', export: 'export', import: 'import', archived: 'restore' };
+const EXTRA_NOTES = {
+  opener: 'A custom opener: upex runs this command with the folder. It shows in the opener row, like upex app.',
+  newOpener: 'Adds an opener from a command that opens a folder, like cursor or subl, like upex app <name> <command>.',
+  broken: 'Folder shortcuts whose path is gone. Enter removes them (one with an app keeps it), like upex check --prune. ^z undoes.',
+  stale: `Not opened in ${STALE_DAYS}+ days. Enter archives them all, like upex stale --yes. ^z undoes, or restore one under Archived.`,
+  stats: 'Most opened in the last 30 days. Enter shows more, like upex stats.',
+  doctor: 'Checks the store, openers, shell wrapper and completion, like upex doctor.',
+  export: 'Shortcuts and settings as one JSON file, like upex export.',
+  import: 'Merges a file from Export: new names are added, same names updated, like upex import.',
+};
+
+// Lines under Settings > Stats: most opened in the last 30 days, top openers, opens per week.
+export function statLines(appMap = {}, history = loadHistory(), now = Date.now()) {
+  const s = statsFrom(history, { since: now - 30 * 86400000, now });
+  if (!s.total) return [chalk.dim('No opens in the last 30 days.')];
+  const top = s.shortcuts.slice(0, 8);
+  const nw = nameCol(top.map(([name]) => ({ name })));
+  return [...top.map(([n, c]) => { const t = clipName(n, nw).text; return `${t}${' '.repeat(nw - vis(t) + 2)}${c}`; }),
+    ...(s.shortcuts.length > top.length ? [chalk.dim(`+ ${s.shortcuts.length - top.length} more, see upex stats`)] : []),
+    '',
+    `${chalk.dim('openers ')} ${s.openers.slice(0, 4).map(([o, c]) => `${appMap[o]?.displayName || o} ${chalk.dim(c)}`).join(chalk.dim(' · '))}`,
+    `${chalk.dim('8 weeks ')} ${sparkline(s.perWeek)}`];
+}
+// Lines under Settings > Doctor from runChecks rows [status, check, detail].
+export const doctorLines = rows => rows.map(([s, name, detail]) => {
+  const mark = { ok: chalk.green('ok  '), warn: chalk.yellow('warn'), fail: chalk.red('fail') }[s] || chalk.dim('skip');
+  return `${mark}  ${name}${' '.repeat(Math.max(1, 16 - vis(name)))}${chalk.dim(detail)}`;
+});
 
 // "● upex ui running  http://host/?t=…": host bright, scheme and token dim, the whole link stays clickable.
 function webStatus(url, w) {
@@ -663,6 +821,11 @@ export function renderInteractiveView({
   settings = {},
   settingIndex = 0,
   archived = [], // Settings: archived shortcuts [{ name, path }]
+  extras = [], // Settings: rows before Archived [{ section, kind, name, text }] (openers, maintenance)
+  expanded = null, // Settings: { kind, lines } shown under that extra row (stats, doctor)
+  ask = '', // confirm question, else the delete / archive one
+  inputName = null, // name in the input prompt, else the selected row's
+  form = null, // edit form (mode 'form'), see formLines
   wt = null,
   counts = {},
   webUrl = '', // upex ui started with ^u
@@ -683,21 +846,23 @@ export function renderInteractiveView({
   const isWs = view === 'workspaces';
   const isSettings = view === 'settings';
   const isScripts = mode === 'scripts' && !!scripts;
+  const isForm = mode === 'form' && !!form;
   const currentChoice = (isWs ? workspaces : choices)[isWs ? wsIndex : selectedIndex];
   // `width` leaves the terminal's last column free.
   const pane = !isSettings && paneShown(width + 1, full, paneOpen || settings.narrowPane === 'always');
   const toggles = !isSettings && paneToggles(width + 1, full, settings);
-  // Scripts go in the pane when there is one, else they replace the list.
+  // Scripts and the edit form go in the pane when there is one, else they replace the list.
   const listScripts = isScripts && !pane;
+  const listForm = isForm && !pane;
   const list = listScripts ? scripts.list : isWs ? workspaces : choices;
   const index = listScripts ? scriptIndex : isWs ? wsIndex : selectedIndex;
   // Workspace and script rows: plain text, no badges.
   const plain = isWs || listScripts;
   // With marks, the pane lists them instead of the selected row.
-  const marking = pane && !isWs && !isScripts && marked.length > 0;
-  const goals = pane && !isWs && !marking ? folderGoals(currentChoice, settings.goals) : null;
+  const marking = pane && !isWs && !isScripts && !isForm && marked.length > 0;
+  const goals = pane && !isWs && !marking && !isForm ? folderGoals(currentChoice, settings.goals) : null;
   const isGoals = mode === 'goals' && !!goals?.next.length;
-  const git = pane && !isWs && !isScripts && !marking ? folderGit(currentChoice, settings.git, gitFor) : null;
+  const git = pane && !isWs && !isScripts && !marking && !isForm ? folderGit(currentChoice, settings.git, gitFor) : null;
   const w = Math.max(width, 20);
   const pw = pane ? paneWidthOf(w, settings.paneWidth) : 0; // pane width
   const lw = pane ? w - pw - 3 : w; // list width, " │ " between
@@ -736,14 +901,19 @@ export function renderInteractiveView({
 
   // Prompt line: filter, or the live action (input / delete confirm).
   if (mode === 'input') {
-    const label = PROMPT_LABEL[action](clipName(currentChoice?.name || '', 24).text);
+    const label = PROMPT_LABEL[action](clipName(String(inputName ?? currentChoice?.name ?? ''), 24).text);
     // Keep the end of a long value in view, where the cursor is.
     lines.push(`  ${chalk.bold(pick('›'))} ${label} ${inputLine(inputBuffer, inputCursor, Math.max(1, w - vis(label) - 5))}`);
   } else if (mode === 'confirm') {
     const what = `  ? ${action === 'archive' ? 'archive' : 'delete'} ${isWs ? 'workspace ' : ''}`;
     // Clip the name, not the line, so "y / n" stays visible.
     const name = clipName(currentChoice?.name || '', Math.max(1, w - vis(what) - 10)).text;
-    lines.push(chalk.yellow(!isWs && marks.size && action !== 'archive' ? `${what}${marks.size} marked?` : `${what}"${name}"?`) + chalk.dim('  y / n'));
+    const q = ask ? `  ? ${ui.truncate(ask, Math.max(1, w - 12))}` : !isWs && marks.size && action !== 'archive' ? `${what}${marks.size} marked?` : `${what}"${name}"?`;
+    lines.push(chalk.yellow(q) + chalk.dim('  y / n'));
+  } else if (isForm) {
+    const left = `  ${chalk.bold(pick('›'))} ${chalk.dim(form.ws ? 'edit workspace' : 'edit')} ${chalk.bold(clipName(form.name, 24).text)}`;
+    const right = chalk.dim('saved as you go');
+    lines.push(left + (vis(left) + vis(right) + 2 <= w ? ' '.repeat(w - vis(left) - vis(right)) + right : ''));
   } else if (isScripts) {
     const name = clipName(currentChoice?.name || '', 24).text;
     lines.push(`  ${chalk.bold(pick('›'))} ${chalk.dim('run a script of')} ${chalk.bold(name)} ${chalk.dim(`(${scripts.pm})`)}`);
@@ -775,6 +945,7 @@ export function renderInteractiveView({
   const escKey = ['esc', isScripts ? 'back' : mode !== 'browse' ? 'cancel' : query ? 'clear' : many ? 'unmark' : toggles && pane ? 'hide details' : 'quit'];
   const undoKey = undo && ['^z', 'undo'];
   const uiKey = ['^u', webUrl ? 'stop web ui' : 'web ui'];
+  const inputRow = keyHint([['↵', 'save'], isForm && formRows(form)[form.field] === 'tags' && ['tab', 'complete'], ['←→', 'cursor'], ['^⌫', 'word'], ['^u', 'clear'], ['esc', 'cancel']]);
   // Blank row first, so the link sits apart from the key hints.
   const webRows = webUrl ? [...gap, webStatus(webUrl, w)] : [];
 
@@ -794,16 +965,21 @@ export function renderInteractiveView({
       const hits = [...spans.map(s => [20 + s.from, 20 + s.to, { setting: i, option: s.index }]), [0, w, { setting: i }]];
       body.push({ text: `  ${sel ? pick('›') : ' '} ${(sel ? chalk.bold : chalk.dim)(row.label.padEnd(16))}${picker}`, hits, i });
     });
-    // Archived shortcuts last, their index after the setting rows; Enter restores one.
-    if (archived.length) body.push(...gap.map(text => ({ text })), { text: `  ${chalk.bold('Archived')} ${chalk.dim(archived.length)}` });
-    archived.forEach((a, k) => {
+    // Openers and maintenance, then archived shortcuts last, their index after the setting rows; Enter acts on one.
+    const more = [...extras, ...archived.map(a => ({ section: 'Archived', kind: 'archived', name: a.name, text: chalk.dim(tidyPath(a.path)) }))];
+    more.forEach((x, k) => {
+      if (x.section !== more[k - 1]?.section) {
+        body.push(...gap.map(text => ({ text })), { text: `  ${chalk.bold(x.section)}${x.kind === 'archived' ? ` ${chalk.dim(archived.length)}` : ''}` });
+      }
       const i = rows.length + k;
       const sel = i === settingIndex;
-      const name = clipName(a.name, 15).text;
-      const text = `  ${sel ? pick('›') : ' '} ${(sel ? chalk.bold : chalk.dim)(name)}${' '.repeat(16 - vis(name))}${chalk.dim(ui.truncate(tidyPath(a.path), w - 20))}`;
+      const name = clipName(x.name, 15).text;
+      const text = `  ${sel ? pick('›') : ' '} ${(sel ? chalk.bold : chalk.dim)(name)}${' '.repeat(16 - vis(name))}${ui.truncate(x.text, w - 20)}`;
       body.push({ text, hits: [[0, w, { setting: i }]], i });
+      if (expanded?.kind === x.kind) body.push(...expanded.lines.map(l => ({ text: `      ${ui.truncate(l, w - 8)}` })));
     });
-    const onArchived = archived[settingIndex - rows.length];
+    const onExtra = more[settingIndex - rows.length];
+    const onArchived = onExtra?.kind === 'archived';
     // Too tall for the terminal: scroll so the picked row stays in view (note + footer take the rest).
     const room = height - lines.length - gap.length - 3 - webRows.length;
     const { start, end } = getVisibleWindow(body, body.findIndex(b => b.i === settingIndex), Math.max(1, room));
@@ -811,9 +987,13 @@ export function renderInteractiveView({
       for (const [from, to, t] of b.hits || []) hit(lines.length, from, to, t);
       lines.push(b.text);
     }
-    const note = onArchived ? `Enter or a second click brings it back to its tab, like upex restore ${onArchived.name}.` : settingNote(rows[settingIndex].key, settings, wt);
+    const note = onArchived ? `Enter or a second click brings it back to its tab, like upex restore ${onExtra.name}.`
+      : onExtra ? EXTRA_NOTES[onExtra.kind] : settingNote(rows[settingIndex].key, settings, wt);
     lines.push(...gap, chalk.dim(`    ${note}`));
-    return footer([keyHint([['↑↓', 'setting'], onArchived ? ['↵', 'restore'] : ['←→', 'change (saved)'], tabKey, ['S-Tab', 'back'], ['esc', 'quit'], uiKey]), ...webRows]);
+    const enter = onExtra && ['↵', expanded && expanded.kind === onExtra.kind ? 'hide' : EXTRA_KEYS[onExtra.kind]];
+    const keys = mode === 'input' ? inputRow
+      : keyHint([['↑↓', 'setting'], enter || ['←→', 'change (saved)'], onExtra?.kind === 'opener' && ['^d', 'remove'], undoKey, tabKey, ['S-Tab', 'back'], ['esc', 'quit'], uiKey]);
+    return footer([keys, ...webRows]);
   }
 
   const openerSpans = [];
@@ -830,25 +1010,27 @@ export function renderInteractiveView({
   const paneKey = toggles && (pane ? ['S-←', 'hide details'] : ['S-→', 'details']);
   // Esc already says "hide details": no second hint, so goals and ^g still fit on narrow screens.
   const navRow = [openKey, scriptsKey, ['↑↓', 'move'], opener, windows, tabKey, escKey, escKey[1] !== paneKey[1] && paneKey, movePin, markKey, goalsKey, webKey];
-  const actRow = [isShortcuts && ['^a', 'add'], isShortcuts && ['^e', 'edit path'], !isWs && ['^r', 'rename'],
+  const actRow = [(isShortcuts || isWs) && ['^a', isWs ? 'add marked' : 'add'], list.length > 0 && ['^e', 'edit'], !isWs && ['^r', 'rename'],
     !isWs && list.length > 0 && ['^p', currentChoice?.pinned ? 'unpin' : 'pin'], ['^d', many ? `delete ${many} marked` : 'delete'], undoKey];
   // Last in their rows, so a narrow terminal drops them first.
   const copyKey = !isWs && list.length > 0 && ['^y', 'copy'];
-  const inputRow = keyHint([['↵', 'save'], ['←→', 'cursor'], ['^⌫', 'word'], ['^u', 'clear'], ['esc', 'cancel']]);
   // Key hints setting. Full: two rows (typing: input keys, same height so the list stays put). Short: one row
   // without the keys you learn first (↑↓, tab, esc), cut to the width. Off: none.
   const hints = settings.keyHints === 'off' ? []
     : settings.keyHints === 'short' ? [mode === 'input' ? inputRow : fitHint([openKey, opener, windows, ...actRow, markKey, scriptsKey, goalsKey, webKey, paneKey, uiKey, copyKey, movePin], w)]
       : mode === 'input' ? [inputRow, ''] : [fitHint(navRow, w), fitHint([...actRow, uiKey, copyKey], w)];
-  const foot = isScripts ? (hints.length ? [keyHint([['↵', 'run in a terminal'], ['↑↓', 'move'], escKey])] : [])
+  const foot = isForm ? (hints.length ? [formKeys(form, inputRow), ...(settings.keyHints === 'short' ? [] : [''])] : [])
+    : isScripts ? (hints.length ? [keyHint([['↵', 'run in a terminal'], ['↑↓', 'move'], escKey])] : [])
     : isGoals ? (hints.length ? [keyHint([['↵', 'copy'], ['↑↓', 'move'], ['esc', 'back']])] : [])
     : [...(isShortcuts ? [`  ${chalk.dim('open with')}  ${openers}`, ...(hints.length ? gap : [])] : []), ...hints];
   // No footer rows above it: no blank row under the rule.
   foot.push(...(foot.length ? webRows : webRows.slice(-1)));
 
-  if (list.length === 0) {
+  if (listForm) {
+    lines.push(...formLines(form, cw, appChoices, pick).map(l => `  ${l}`));
+  } else if (list.length === 0) {
     const empty = {
-      workspaces: 'No workspaces yet. Add one: upex ws add <name> <shortcut> [app], or use upex ui',
+      workspaces: 'No workspaces yet. Mark shortcuts with space, then ^a here',
       apps: 'No app or URL shortcuts yet. Add one: upex add <name> <exe> --app',
       shortcuts: 'No folder shortcuts yet. Add one with ^A (uses the current folder)',
     };
@@ -903,7 +1085,7 @@ export function renderInteractiveView({
   // Detail pane: the selected row's details right of the list, top-aligned.
   if (pane) {
     const sel = isGoals ? Math.min(goalIndex, goals.next.length - 1) : -1;
-    const detail = isScripts ? scriptLines(scripts, scriptIndex, pw, lines.length - bodyStart, pick)
+    const detail = isForm ? formLines(form, pw, appChoices, pick) : isScripts ? scriptLines(scripts, scriptIndex, pw, lines.length - bodyStart, pick)
       : marking ? markLines(marked, pw, lines.length - bodyStart, appChoices, pick)
       : detailLines(currentChoice, pw, appChoices, Date.now(), { goals, sel, pick, git });
     // Picking and taller than the pane: scroll to its end (the goals), the picked one in view.
@@ -920,25 +1102,31 @@ export function renderInteractiveView({
     }
   }
   // The opener row is the first footer row, after its rule; "  open with  " is 13 wide.
-  if (isShortcuts && !isScripts && !isGoals) for (const s of openerSpans) hit(lines.length + 1, 13 + s.from, 13 + s.to, { opener: s.index });
+  if (isShortcuts && !isScripts && !isGoals && !isForm) for (const s of openerSpans) hit(lines.length + 1, 13 + s.from, 13 + s.to, { opener: s.index });
   return footer(foot);
 }
 
 export async function runInteractiveMode({ preferredApp, stdin = process.stdin, stdout = process.stdout } = {}) {
   let allChoices = buildChoices();
-  const appChoices = getInteractiveAppChoices();
-  // A default opener outside the usual row (e.g. "open") still needs a slot to preselect.
-  const appMap = getAppMap();
+  let appChoices = [];
+  let appMap = getAppMap();
   let fallback = defaultOpener();
   const config = loadConfig();
   // Start view 'last' also brings back the opener picked last time.
   // Copy left the opener row (^y now): a remembered copy is dropped.
   const lastOpener = !preferredApp && setting('startView', config) === 'last' && config.lastOpener !== 'copy' && Object.hasOwn(appMap, String(config.lastOpener)) ? config.lastOpener : null;
-  for (const key of new Set([fallback, lastOpener, ...allChoices.map(c => c.opener)])) {
-    if (key && Object.hasOwn(appMap, key) && !appChoices.some(c => c.key === key)) {
-      appChoices.push({ key, label: appMap[key].displayName });
+  // The opener row, again after Settings changes a custom opener.
+  // A default opener outside the usual row (e.g. "open") still needs a slot to preselect.
+  const loadApps = () => {
+    appMap = getAppMap();
+    appChoices = getInteractiveAppChoices();
+    for (const key of new Set([fallback, lastOpener, ...allChoices.map(c => c.opener)])) {
+      if (key && Object.hasOwn(appMap, key) && !appChoices.some(c => c.key === key)) {
+        appChoices.push({ key, label: appMap[key].displayName });
+      }
     }
-  }
+  };
+  loadApps();
 
   if (allChoices.length === 0) {
     ui.blank();
@@ -964,21 +1152,26 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
     let cmdCount = 1;
     let frame = [];   // inline mode: lines drawn last time
     let alt = false;  // on the alternate screen
-    let mode = 'browse';   // 'browse' | 'input' | 'confirm' | 'scripts' | 'goals'
+    let mode = 'browse';   // 'browse' | 'input' | 'confirm' | 'scripts' | 'goals' | 'form'
     let paneOpen = false;  // Shift+Right on a narrow screen
     let goalIndex = 0;     // goal picker
     let scripts = null;    // script picker: { pm, list }
     let scriptIndex = 0;
-    let action = null;     // 'edit' | 'rename' | 'add', confirm: 'delete' | 'archive'
+    let action = null;     // input: a PROMPT_LABEL key, confirm: 'delete' | 'archive' | 'prune' | 'stale' | 'removeOpener'
     let inputBuffer = '';
     let inputCursor = 0;
     let flash = '';
-    let undo = null; // last delete or archive: [{ name, entry, ws?, archived? }]
+    let undo = null; // last delete or archive: [{ name, entry, ws?, archived? }]; prune: { before, after } links
     const marks = new Set(); // Space-marked shortcut names, across filtering and tabs
     let backView = view; // where Shift+Tab returns from Settings
     let settings = readSettings(); // appearance applies on every tab
     let settingIndex = 0;
     let archived = []; // Settings: archived shortcuts, read when it opens
+    let extras = []; // Settings: openers and maintenance rows, read when it opens
+    let expanded = null; // Settings: { kind, lines } of stats or doctor
+    let ask = ''; // confirm question for the Settings actions
+    let inputName = null; // the prompt's name when it isn't the selected row's (an opener, a count)
+    let form = null; // edit form: { name, ws, field, editing, buffer, cursor, kind, history }
     let wt = null;
     const appIndex = (key) => appChoices.findIndex(choice => choice.key === key);
     // A folder's own opener, else the default.
@@ -1023,6 +1216,8 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
       }
       // Goal picker whose pane or goals went away (resize): back to browse.
       if (mode === 'goals' && !paneGoals()?.next.length) mode = 'browse';
+      // Edit form whose shortcut or workspace went away meanwhile.
+      if (mode === 'form' && !formEntry()) { mode = 'browse'; form = null; }
       // Clip to terminal width: a wrapped line takes 2+ rows and would leave stale rows behind.
       const width = Math.max(1, (stdout.columns || 80) - 1);
       // Inline: the trailing newline takes a row, and the list keeps its old compact size.
@@ -1047,6 +1242,11 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
         settings,
         settingIndex,
         archived,
+        extras,
+        expanded,
+        ask,
+        inputName,
+        form: mode === 'form' && form ? { ...form, entry: formEntry() } : null,
         wt,
         webUrl: web?.url,
         scripts,
@@ -1291,11 +1491,200 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
       }
     };
 
-    const startAction = (name) => {
+    const startAction = (name, buffer = prefill(name, filteredChoices[selectedIndex]), who = null) => {
       action = name;
-      inputBuffer = prefill(name, filteredChoices[selectedIndex]);
+      inputBuffer = buffer;
       inputCursor = inputBuffer.length;
+      inputName = who;
       mode = 'input';
+    };
+
+    // ── Edit form (^e) ──
+    const formEntry = () => {
+      const all = form.ws ? loadWorkspaces() : loadLinks();
+      const e = Object.hasOwn(all, form.name) ? all[form.name] : null;
+      return form.ws && e ? (Array.isArray(e) ? e : []) : e;
+    };
+    const fieldNow = () => formRows({ ws: form.ws, entry: formEntry() })[form.field];
+    const openForm = (name, ws = false, field = 'name') => {
+      form = { name, ws, field: 0, editing: false, buffer: '', cursor: 0, kind: null, history: [] };
+      form.field = Math.max(0, formRows({ ws, entry: formEntry() }).indexOf(field));
+      mode = 'form';
+    };
+    const editField = (text) => {
+      Object.assign(form, { editing: true, buffer: text, cursor: text.length });
+    };
+    const closeForm = () => {
+      const { name, ws } = form;
+      form = null;
+      mode = 'browse';
+      rebuild(ws ? null : name, ws ? name : null);
+      // A new type can move it to the other tab.
+      const c = !ws && allChoices.find(x => x.name === name);
+      const to = c && (c.isApp || c.isUrl ? 'apps' : 'shortcuts');
+      if (c && view !== to && view !== 'workspaces' && shownTabs(settings.views).includes(to)) {
+        switchTo(to);
+        reselect(name);
+      }
+    };
+    // Saves the form's shortcut as `next`; an unchanged one makes no save (and no backup for ^z).
+    const saveShortcut = (next, msg) => {
+      const cur = formEntry();
+      if (JSON.stringify(next) === JSON.stringify(cur)) return;
+      setLink(form.name, next);
+      form.history.push(form.name);
+      rebuild(form.name);
+      done(msg);
+    };
+    // Saves all workspaces, the form's one now under `name`; ^z puts the old set back.
+    const saveWs = (all, name, msg) => {
+      const before = loadWorkspaces();
+      if (JSON.stringify(all) === JSON.stringify(before)) return;
+      form.history.push({ name: form.name, all: before });
+      saveWorkspaces(all);
+      form.name = name;
+      rebuild(null, name);
+      done(msg);
+    };
+    // A store message as a flash: no capital, no full stop.
+    const nameFlash = msg => { flash = msg.replace(/\.$/, '').replace(/^./, c => c.toLowerCase()); return false; };
+
+    // Enter while typing in a field: true when saved (or unchanged), false + flash when not.
+    const commitField = () => {
+      const buf = form.buffer.trim();
+      const f = fieldNow();
+      if (form.ws) {
+        const all = loadWorkspaces();
+        if (f === 'name') {
+          if (buf === form.name) return true;
+          const bad = nameError(buf) || (Object.hasOwn(all, buf) && `Workspace "${buf}" already exists.`);
+          if (bad) return nameFlash(bad);
+          // Rebuilt so it keeps its place.
+          saveWs(Object.fromEntries(Object.entries(all).map(([k, v]) => [k === form.name ? buf : k, v])), buf, `renamed to "${buf}"`);
+          return true;
+        }
+        const list = [...formEntry()];
+        list[f] = setField(list[f], 'start', buf);
+        saveWs({ ...all, [form.name]: list }, form.name, buf ? `"${list[f].shortcut}" starts ${buf}` : 'start command removed');
+        return true;
+      }
+      const links = loadLinks();
+      const cur = formEntry();
+      if (f === 'name') {
+        if (buf === form.name) return true;
+        const bad = nameError(buf);
+        if (bad) return nameFlash(bad);
+        const r = renameLink(form.name, buf);
+        if (!r.ok) return nameFlash(r.message || 'not found');
+        if (marks.delete(form.name)) marks.add(buf);
+        form.history.push(form.name);
+        form.name = buf;
+        rebuild(buf);
+        done(`renamed to "${buf}"`);
+        return true;
+      }
+      if (f === 'target') {
+        const kind = form.kind || kindOf(cur);
+        const t = kind === 'folder' ? (buf ? path.resolve(expandHome(buf)) : process.cwd()) : buf;
+        if (kind === 'folder' && !fs.existsSync(t)) return nameFlash('path not found');
+        if (!t) return nameFlash(`${KIND_NAMES[kind]} can't be empty`);
+        const next = form.kind ? retyped(cur, kind, t) : { ...cur, [KIND_FIELD[kind]]: t };
+        form.kind = null;
+        saveShortcut(next, `target saved${kindOf(cur) !== kind ? `, now ${KIND_NAMES[kind]}` : ''}`);
+        return true;
+      }
+      if (f === 'aliases') {
+        const r = checkAliases(links, form.name, fieldWords(buf));
+        if (r.error) return nameFlash(r.error);
+        saveShortcut(setField(cur, 'aliases', r.aliases), 'aliases saved');
+        return true;
+      }
+      if (f === 'tags') saveShortcut(setField(cur, 'tags', fieldWords(buf)), 'tags saved');
+      if (f === 'note') saveShortcut(setField(cur, 'note', oneLine(buf)), 'note saved');
+      return true;
+    };
+
+    // ←→ on a choice row: type (picked, saved with its target), opener or expiry (saved now).
+    const cycleField = (d) => {
+      const f = fieldNow();
+      const cur = formEntry();
+      const step = (list, at) => list[(at + d + list.length) % list.length];
+      if (form.ws) {
+        if (f === 'name') return;
+        const keys = openerOptions(appChoices).map(([k]) => k);
+        const list = [...cur];
+        const app = step(keys, Math.max(0, keys.indexOf(list[f].app || '')));
+        list[f] = setField(list[f], 'app', app);
+        saveWs({ ...loadWorkspaces(), [form.name]: list }, form.name, `"${list[f].shortcut}" opens in ${app ? appMap[app]?.displayName || app : 'its default'}`);
+      } else if (f === 'type') {
+        const k = step(KINDS, KINDS.indexOf(form.kind || kindOf(cur)));
+        form.kind = k === kindOf(cur) ? null : k;
+      } else if (f === 'opener') {
+        const keys = openerOptions(appChoices).map(([k]) => k);
+        const key = step(keys, Math.max(0, keys.indexOf(cur.opener || '')));
+        saveShortcut(setField(cur, 'opener', key), key ? `opens in ${appMap[key]?.displayName || key}` : 'opens in the default opener');
+      } else if (f === 'expires') {
+        const { labels, at } = expiryOptions(cur);
+        const pick = EXPIRES[(at + d + labels.length) % labels.length];
+        saveShortcut(setField(cur, 'expires', pick !== 'never' && Date.now() + parseDuration(pick)), pick === 'never' ? 'never expires' : `expires in ${pick}`);
+      }
+    };
+
+    const handleForm = (str, key) => {
+      // Gone (the redraw closes the form) or shorter since the last key: upex ui or another upex changed it.
+      if (!formEntry()) return;
+      const n = formRows({ ws: form.ws, entry: formEntry() }).length;
+      form.field = clamp(form.field, n);
+      const f = fieldNow();
+      if (form.editing) {
+        if (key.name === 'escape') {
+          form.editing = false;
+          // Esc on the new target keeps the old type.
+          if (form.kind) { form.kind = null; form.field = formRows({ entry: formEntry() }).indexOf('type'); }
+        } else if (key.name === 'return') {
+          if (commitField()) form.editing = false;
+        } else if (key.name === 'tab' && f === 'tags') {
+          const known = [...new Set(allChoices.flatMap(c => c.tags))];
+          editField(completeTag(form.buffer, known));
+        } else {
+          const edit = editLine({ text: form.buffer, cur: form.cursor }, str, key);
+          if (edit) ({ text: form.buffer, cur: form.cursor } = edit);
+        }
+        return;
+      }
+      if (key.name === 'escape') {
+        if (form.kind) form.kind = null;
+        else closeForm();
+      } else if (key.name === 'up' || key.name === 'down') {
+        form.kind = null;
+        form.field = (form.field + (key.name === 'up' ? n - 1 : 1)) % n;
+      } else if (key.name === 'left' || key.name === 'right') {
+        cycleField(key.name === 'left' ? -1 : 1);
+      } else if (key.name === 'return') {
+        const cur = formEntry();
+        if (form.ws) editField(f === 'name' ? form.name : cur[f].start || '');
+        else if (f === 'type' && form.kind) {
+          // app <-> command keep the line; a folder path, URL or command won't fit another type.
+          const keep = ['app', 'cmd'].includes(form.kind) && ['app', 'cmd'].includes(kindOf(cur));
+          form.field = formRows({ entry: cur }).indexOf('target');
+          editField(keep ? targetOf(cur) : '');
+        } else if (isTextRow(f)) {
+          editField(f === 'name' ? form.name : f === 'target' ? targetOf(cur) : f === 'tags' ? (cur.tags || []).join(' ')
+            : f === 'aliases' ? aliasesOf(cur).join(' ') : oneLine(cur.note));
+        }
+      } else if (key.ctrl && key.name === 'd' && form.ws && f !== 'name') {
+        const list = formEntry().filter((_, i) => i !== f);
+        saveWs({ ...loadWorkspaces(), [form.name]: list }, form.name, `removed "${formEntry()[f].shortcut}" (^z undo)`);
+        form.field = Math.min(form.field, list.length);
+      } else if (key.ctrl && key.name === 'z') {
+        const last = form.history.pop();
+        if (last === undefined) flash = 'nothing to undo here';
+        else if (form.ws) { saveWorkspaces(last.all); form.name = last.name; rebuild(null, last.name); done('undone'); }
+        else if (!undoLast()) flash = 'no backup left to undo';
+        else { form.name = last; rebuild(last); done('undone'); }
+        // Same row again: an undone type change adds or drops the opener row.
+        if (formEntry()) form.field = Math.max(0, formRows({ ws: form.ws, entry: formEntry() }).indexOf(f));
+      }
     };
 
     // Commit the pending input action; returns false + sets flash on validation error.
@@ -1310,18 +1699,66 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
         setLink(buf, { path: process.cwd(), added: Date.now() });
         rebuild(buf);
         done(`added "${buf}"`);
+        // Straight on to its type, target, tags and the rest.
+        openForm(buf, false, 'target');
         return true;
       }
 
-      if (action === 'edit') {
-        const resolved = buf ? path.resolve(expandHome(buf)) : process.cwd();
-        if (!fs.existsSync(resolved)) { flash = 'path not found'; return false; }
-        const links = loadLinks();
-        if (links[target]?.path === resolved) return true;
-        setLink(target, { ...(links[target] || {}), path: resolved });
-        rebuild(target);
-        done(`"${target}" now points to ${tidyPath(resolved)}`);
+      if (action === 'wsadd') {
+        const all = loadWorkspaces();
+        const old = Object.hasOwn(all, buf);
+        const bad = !old && nameError(buf);
+        if (bad) return nameFlash(bad);
+        // A picked opener goes with folders; else each opens in its own when the workspace opens.
+        const add = markedPlan().map(({ c, app, count }) => ({ shortcut: c.name, ...(appPicked && app && { app }), ...(count > 1 && { count }) }));
+        saveWorkspaces({ ...all, [buf]: [...(old ? all[buf] : []), ...add] });
+        marks.clear();
+        rebuild(null, buf);
+        done(old ? `added ${add.length} to "${buf}"` : `created "${buf}", ^e edits it`);
         return true;
+      }
+
+      if (action === 'opener' || action === 'openerCmd') {
+        const r = applyOpener(configApps(), { name: inputName, command: buf }, action === 'openerCmd');
+        if (r.error) return nameFlash(r.error);
+        saveConfig({ ...loadConfig(), apps: r.apps });
+        reloadOpeners();
+        done(`${action === 'opener' ? 'saved' : 'added'} opener "${inputName}"`);
+        return true;
+      }
+
+      if (action === 'openerName') {
+        // Checks the name alone; the command comes next.
+        const r = applyOpener(configApps(), { name: buf, command: '-' }, true);
+        if (r.error) return nameFlash(r.error);
+        startAction('openerCmd', '', buf);
+        return false;
+      }
+
+      if (action === 'export' || action === 'import') {
+        if (!buf) return nameFlash('type a file path');
+        const file = path.resolve(expandHome(buf));
+        try {
+          if (action === 'export') {
+            const bundle = bundleOf();
+            fs.writeFileSync(file, JSON.stringify(bundle, null, 2), 'utf-8');
+            done(`exported ${Object.keys(bundle.links).length} shortcuts to ${tidyPath(file)}`);
+            return true;
+          }
+          const r = importBundle(JSON.parse(fs.readFileSync(file, 'utf-8')));
+          if (r.error) return nameFlash(r.error);
+          // The bundle's config can bring other settings too.
+          settings = readSettings();
+          rebuild();
+          reloadOpeners();
+          done(`imported: ${r.added.length} added, ${r.updated.length} updated${r.clashes.length ? `, names used twice: ${r.clashes.join('; ')}` : ''}`);
+          return true;
+        } catch (err) {
+          // A store error must not pass as a bad file.
+          if (err instanceof StoreError) throw err;
+          flash = `can't ${action}: ${err.message.split('\n')[0]}`;
+          return false;
+        }
       }
 
       if (action === 'rename') {
@@ -1346,9 +1783,9 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
       if (to === 'settings') {
         backView = view;
         settings = readSettings();
-        archived = archivedList(loadLinks());
+        expanded = null;
         // The pane split row or archived ones may have gone since last time.
-        settingIndex = Math.min(settingIndex, settingCount() - 1);
+        refreshSettings();
         wt = hasWindowsTerminal();
       }
       view = to;
@@ -1367,20 +1804,83 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
     };
 
     const clamp = (i, n) => Math.max(0, Math.min(i, n - 1));
-    // Settings rows plus the archived shortcuts under them.
-    const settingCount = () => visibleRows(settings).length + archived.length;
+    // Settings rows plus the openers, maintenance and archived shortcuts under them.
+    const settingCount = () => visibleRows(settings).length + extras.length + archived.length;
+    // The picked row past the settings ({ kind, name }), or null.
+    const extraAt = () => {
+      const k = settingIndex - visibleRows(settings).length;
+      return k < 0 ? null : extras[k] || (archived[k - extras.length] && { kind: 'archived', ...archived[k - extras.length] });
+    };
+    // Maintenance rows with their counts now; doctor keeps its last result.
+    let doctorSummary = '';
+    const buildExtras = () => {
+      const links = loadLinks();
+      const broken = pruneBroken(links).removed;
+      const stale = staleLinks(links, STALE_DAYS);
+      const top = statsFrom(loadHistory(), { since: Date.now() - 30 * 86400000 }).shortcuts.slice(0, 3);
+      const row = (section, kind, name, text) => ({ section, kind, name, text });
+      return [
+        ...Object.entries(configApps()).map(([name, command]) => row('Openers', 'opener', name, chalk.dim(String(command)))),
+        row('Openers', 'newOpener', '+ add opener', ''),
+        row('Maintenance', 'broken', 'Broken paths', broken.length ? chalk.yellow(`${broken.length} missing: ${broken.join(' ')}`) : chalk.dim('none')),
+        row('Maintenance', 'stale', 'Stale', stale.length ? chalk.yellow(`${stale.length} not opened in ${STALE_DAYS}+ days`) : chalk.dim('none')),
+        row('Maintenance', 'stats', 'Stats', top.length ? top.map(([n, c]) => `${n} ${chalk.dim(c)}`).join(chalk.dim(' · ')) : chalk.dim('no opens in 30 days')),
+        row('Maintenance', 'doctor', 'Doctor', doctorSummary || chalk.dim('store, openers, shell setup')),
+        row('Maintenance', 'export', 'Export', chalk.dim('shortcuts and settings to a file')),
+        row('Maintenance', 'import', 'Import', chalk.dim('from an exported file')),
+      ];
+    };
+    const refreshSettings = () => {
+      archived = archivedList(loadLinks());
+      extras = buildExtras();
+      settingIndex = clamp(settingIndex, settingCount());
+    };
+    // After a custom opener changed: the opener row and Settings again, the picked opener kept.
+    const reloadOpeners = () => {
+      const key = appChoices[selectedAppIndex]?.key;
+      fallback = defaultOpener();
+      loadApps();
+      selectedAppIndex = Math.max(0, appIndex(key));
+      if (view === 'settings') refreshSettings();
+    };
     // Enter / a second click on an archived row in Settings.
     const restore = () => {
-      const a = archived[settingIndex - visibleRows(settings).length];
-      const entry = a && loadLinks()[a.name];
+      const a = extraAt();
+      const entry = a?.kind === 'archived' && loadLinks()[a.name];
       if (!entry?.archived) return;
       setLink(a.name, unarchived(entry));
       // A ^z for its archive would only be refused now.
-      if (undo?.some(u => u.archived && u.name === a.name)) undo = null;
+      if (Array.isArray(undo) && undo.some(u => u.archived && u.name === a.name)) undo = null;
       rebuild();
-      archived = archivedList(loadLinks());
-      settingIndex = clamp(settingIndex, settingCount());
+      refreshSettings();
       done(`restored "${a.name}"`);
+    };
+    const confirmAsk = (what, q) => { mode = 'confirm'; action = what; ask = q; };
+    // Enter on an opener, maintenance or archived row.
+    const runExtra = (x) => {
+      const toggle = (lines) => { expanded = expanded?.kind === x.kind ? null : { kind: x.kind, lines }; };
+      if (x.kind === 'archived') restore();
+      else if (x.kind === 'opener') startAction('opener', String(configApps()[x.name] ?? ''), x.name);
+      else if (x.kind === 'newOpener') startAction('openerName', '');
+      else if (x.kind === 'export') startAction('export', tidyPath(path.join(HOME, 'upex-export.json')));
+      else if (x.kind === 'import') startAction('import', '');
+      else if (x.kind === 'broken') {
+        const n = pruneBroken(loadLinks()).removed.length;
+        if (!n) done('no broken paths');
+        else confirmAsk('prune', `remove ${n} broken shortcut${n > 1 ? 's' : ''}?`);
+      } else if (x.kind === 'stale') {
+        const n = staleLinks(loadLinks(), STALE_DAYS).length;
+        if (!n) done(`all opened in the last ${STALE_DAYS} days`);
+        else confirmAsk('stale', `archive ${n} not opened in ${STALE_DAYS}+ days?`);
+      } else if (x.kind === 'stats') toggle(statLines(appMap));
+      else if (x.kind === 'doctor') {
+        if (expanded?.kind === 'doctor') { expanded = null; return; }
+        const rows = runChecks();
+        const n = s => rows.filter(r => r[0] === s).length;
+        doctorSummary = [chalk.green(`${n('ok')} ok`), n('warn') && chalk.yellow(`${n('warn')} warn`), n('fail') && chalk.red(`${n('fail')} fail`)].filter(Boolean).join(chalk.dim(' · '));
+        extras = buildExtras();
+        toggle(doctorLines(rows));
+      }
     };
 
     // Mouse is only on in full screen; ignored while typing or confirming.
@@ -1451,6 +1951,37 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
 
       // ── Confirm-delete mode ──
       if (mode === 'confirm') {
+        const yes = key.name === 'y';
+        if (yes && action === 'prune') {
+          const before = loadLinks();
+          const { kept, removed } = pruneBroken(before);
+          saveLinks(kept);
+          // Some only lost their path, so ^z puts the whole set back, not a re-add.
+          undo = { before, after: kept };
+          rebuild();
+          done(removed.length ? `removed ${howMany(removed)} (^z undo)` : 'no broken paths');
+        } else if (yes && action === 'stale') {
+          const links = loadLinks();
+          const gone = staleLinks(links, STALE_DAYS).map(({ name, entry }) => ({ name, entry, archived: true }));
+          for (const { name } of gone) links[name] = { ...links[name], archived: true };
+          saveLinks(links);
+          // An empty list would crash ^z.
+          if (gone.length) undo = gone;
+          rebuild();
+          done(gone.length ? `archived ${howMany(gone.map(g => g.name))} (^z undo)` : 'nothing stale');
+        } else if (yes && action === 'removeOpener') {
+          const { [inputName]: _gone, ...apps } = configApps();
+          saveConfig({ ...loadConfig(), apps });
+          reloadOpeners();
+          done(`removed opener "${inputName}"`);
+        }
+        if (ask) {
+          ask = '';
+          if (view === 'settings') refreshSettings();
+          mode = 'browse';
+          redraw();
+          return;
+        }
         if (key.name === 'y' && action === 'archive') {
           archive();
         } else if (key.name === 'y' && view === 'workspaces') {
@@ -1477,7 +2008,7 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
         return;
       }
 
-      // ── Inline input mode (edit / rename / add) ──
+      // ── Inline input mode (add, rename, workspace, opener, export / import) ──
       if (mode === 'input') {
         const target = filteredChoices[selectedIndex]?.name;
 
@@ -1487,7 +2018,8 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
           return;
         }
         if (key.name === 'return') {
-          if (commitInput(target)) mode = 'browse';
+          // An add goes on to the edit form, an opener name to its command.
+          if (commitInput(target) && mode === 'input') mode = 'browse';
           redraw();
           return;
         }
@@ -1516,6 +2048,13 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
         if (!g.length || key.name === 'escape' || key.name === 'left') mode = 'browse';
         else if (key.name === 'return') { copy(goalText(g[goalIndex]), `copied "${oneLine(g[goalIndex].id ?? g[goalIndex].title)}"`); mode = 'browse'; }
         else if (key.name === 'up' || key.name === 'down') goalIndex = (goalIndex + (key.name === 'up' ? g.length - 1 : 1)) % g.length;
+        redraw();
+        return;
+      }
+
+      // ── Edit form (the pane when wide, else the list) ──
+      if (mode === 'form') {
+        handleForm(str, key);
         redraw();
         return;
       }
@@ -1565,30 +2104,23 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
         return;
       }
 
-      // Settings: Up/Down picks a row, Left/Right changes and saves it, Enter restores an archived one; everything else is ignored.
-      if (view === 'settings') {
-        const rows = visibleRows(settings);
-        if (key.name === 'up' || key.name === 'down') {
-          const n = settingCount();
-          settingIndex = (settingIndex + (key.name === 'up' ? n - 1 : 1)) % n;
-          redraw();
-        } else if (key.name === 'return' && settingIndex >= rows.length) {
-          restore();
-          redraw();
-        } else if ((key.name === 'left' || key.name === 'right') && settingIndex < rows.length) {
-          // Only the layout row changes which rows show, and pane split comes after it, so the index stays put.
-          const row = rows[settingIndex];
-          const keys = rowOptions(row, appChoices, settings).map(([k]) => k);
-          const at = Math.max(0, keys.indexOf(pickedOf(row, settings)));
-          chooseSetting(row, keys[(at + (key.name === 'left' ? keys.length - 1 : 1)) % keys.length]);
-          redraw();
-        }
-        return;
-      }
-
-      // Undo the last delete (either kind) unless its name was taken since.
+      // Undo the last delete (either kind), archive or prune, unless its name was taken since.
       if (key.ctrl && key.name === 'z') {
         if (!undo) return;
+        if (!Array.isArray(undo)) {
+          // Prune: the links before it, only while nothing else changed since (opens don't count).
+          const links = loadLinks();
+          if (!sameLinks(keepUsage(undo.after, links), links)) flash = "can't undo, shortcuts changed since";
+          else {
+            saveLinks(keepUsage(undo.before, links));
+            undo = null;
+            rebuild();
+            if (view === 'settings') refreshSettings();
+            done('undone');
+          }
+          redraw();
+          return;
+        }
         const links = loadLinks();
         const err = undoError(undo, links, loadWorkspaces());
         if (err) {
@@ -1599,8 +2131,33 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
           // All in one save, like the delete.
           else saveLinks(undoneLinks(undo, links));
           rebuild(ws ? null : name, ws ? name : null);
+          if (view === 'settings') refreshSettings();
           done(`restored ${howMany(undo.map(u => u.name))}`);
           undo = null;
+        }
+        redraw();
+        return;
+      }
+
+      // Settings: Up/Down picks a row, Left/Right changes and saves it, Enter acts on an opener, maintenance or archived row,
+      // ^d removes a custom opener; everything else is ignored.
+      if (view === 'settings') {
+        const rows = visibleRows(settings);
+        const x = extraAt();
+        if (key.name === 'up' || key.name === 'down') {
+          const n = settingCount();
+          settingIndex = (settingIndex + (key.name === 'up' ? n - 1 : 1)) % n;
+        } else if (key.name === 'return' && x) {
+          runExtra(x);
+        } else if (key.ctrl && key.name === 'd' && x?.kind === 'opener') {
+          inputName = x.name;
+          confirmAsk('removeOpener', `remove opener "${x.name}"?`);
+        } else if ((key.name === 'left' || key.name === 'right') && settingIndex < rows.length) {
+          // Only the layout row changes which rows show, and pane split comes after it, so the index stays put.
+          const row = rows[settingIndex];
+          const keys = rowOptions(row, appChoices, settings).map(([k]) => k);
+          const at = Math.max(0, keys.indexOf(pickedOf(row, settings)));
+          chooseSetting(row, keys[(at + (key.name === 'left' ? keys.length - 1 : 1)) % keys.length]);
         }
         redraw();
         return;
@@ -1610,6 +2167,18 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
         const n = filteredWs.length;
         if (key.ctrl && key.name === 'd') {
           if (n > 0) { mode = 'confirm'; action = 'delete'; redraw(); }
+          return;
+        }
+        // ^a: the marked shortcuts into a new or existing workspace; ^e edits the selected one.
+        if (key.ctrl && key.name === 'a') {
+          if (!marks.size) flash = 'mark shortcuts with space first (Shortcuts or Apps tab)';
+          else startAction('wsadd', '', marks.size);
+          redraw();
+          return;
+        }
+        if (key.ctrl && key.name === 'e') {
+          if (filteredWs[wsIndex]) openForm(filteredWs[wsIndex].name, true);
+          redraw();
           return;
         }
         if (key.name === 'return') {
@@ -1646,7 +2215,8 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
       }
       if (key.ctrl && key.name === 'e') {
         const target = filteredChoices[selectedIndex];
-        if (target && !target.isApp && !target.isUrl) { startAction('edit'); redraw(); }
+        // A missing folder opens on its path, to fix it.
+        if (target) { openForm(target.name, false, target.exists === false ? 'target' : 'name'); redraw(); }
         return;
       }
       if (key.ctrl && key.name === 'r') {
