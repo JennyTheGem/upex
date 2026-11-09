@@ -1276,6 +1276,42 @@
       "note": "^o cycles sort (most used, A to Z, last opened, recently added) on Shortcuts/Apps, flash names it, saved like Settings > Sort"
     },
     {
+      "id": "show-the-matched-alias",
+      "section": 3,
+      "title": "Show the matched alias",
+      "body": "When a filter hits an alias, not the name, the row shows a dim via-alias hint (e.g. via api) so it is clear why it matched.",
+      "phase": "next",
+      "status": "done",
+      "size": "S",
+      "created": "2026-11-09",
+      "updated": "2026-11-09",
+      "note": "filterChoices sets via when an alias matched instead of the name; selector row shows dim 'via x'"
+    },
+    {
+      "id": "add-from-no-matches",
+      "section": 3,
+      "title": "Add from no matches",
+      "body": "When the filter shows no matches, Enter offers to add the typed text as a new shortcut (cwd as path) or to search archived shortcuts.",
+      "phase": "next",
+      "status": "done",
+      "size": "S",
+      "created": "2026-11-09",
+      "updated": "2026-11-09",
+      "note": "noMatchOffers: no-match rows 'add \"x\" here' (cwd, Shortcuts) and 'search archived' (opens Settings filtered); Enter, arrows or click"
+    },
+    {
+      "id": "expiry-badge-on-temporary-rows",
+      "section": 3,
+      "title": "Expiry badge on temporary rows",
+      "body": "Rows from add --ttl show a dim expires-in badge (e.g. 2d). Today the expiry is only visible inside the ^e form, so temp shortcuts vanish by surprise.",
+      "phase": "next",
+      "status": "done",
+      "size": "S",
+      "created": "2026-11-09",
+      "updated": "2026-11-09",
+      "note": "expiryText '2d left' in selector badge, shared with upex ls"
+    },
+    {
       "id": "cd-support-via-wrapper-hidden-resolve-public-go",
       "section": 4,
       "title": "`cd` support via wrapper + hidden `__resolve` / public `go`",
@@ -1581,6 +1617,17 @@
       "created": "2026-11-07",
       "updated": "2026-11-07",
       "note": "Out of scope"
+    },
+    {
+      "id": "web-ui-undo-toast",
+      "section": 7,
+      "title": "Web UI: undo toast",
+      "body": "After delete, archive or prune, a short toast with an Undo button that calls undoLast. Today undo is CLI or TUI only.",
+      "phase": "next",
+      "status": "planned",
+      "size": "S",
+      "created": "2026-11-09",
+      "updated": "2026-11-09"
     },
     {
       "id": "publish-to-npm",
@@ -2088,6 +2135,17 @@
       "created": "2026-11-09",
       "updated": "2026-11-09",
       "note": "^a reads the clipboard async (Windows: Explorer file copy or text); an existing absolute path (quotes, ~ ok) becomes the path, name prefilled from its folder, prompt shows the path"
+    },
+    {
+      "id": "f2-renames-del-archives",
+      "section": 10,
+      "title": "F2 renames, Del archives",
+      "body": "Familiar Windows keys as aliases for ^r rename and archive in the selector. Shown in the ^k overlay.",
+      "phase": "next",
+      "status": "planned",
+      "size": "S",
+      "created": "2026-11-09",
+      "updated": "2026-11-09"
     }
   ]
 }

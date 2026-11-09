@@ -7,7 +7,7 @@ import fs from 'node:fs';
 import chalk from 'chalk';
 import { loadLinks, activeLinks, aliasesOf } from '../store.js';
 import { gitStatus } from '../git.js';
-import { printRows, tidyPath, showsDetail, PIN, badgeText } from '../interactive.js';
+import { printRows, tidyPath, showsDetail, PIN, badgeText, expiryText } from '../interactive.js';
 import { setting } from '../launcher.js';
 import * as ui from '../ui.js';
 
@@ -51,10 +51,9 @@ export function registerList(program) {
       const badgesOn = showsDetail(details, 'badges');
       printRows(entries.map(([name, entry]) => {
         const exists = entry.path ? fs.existsSync(entry.path) : !!(entry.app || entry.url);
-        const left = entry.expires && !entry.archived ? entry.expires - Date.now() : 0;
         const kind = entry.terminal ? 'cmd' : entry.app ? 'app' : entry.url ? 'url' : entry.opener;
         const badge = !badgesOn ? '' : !exists ? chalk.red('missing')
-          : chalk.dim(badgeText([entry.pinned && PIN, kind, left > 0 && `${ui.span(left, Math.ceil)} left`]));
+          : chalk.dim(badgeText([entry.pinned && PIN, kind, !entry.archived && expiryText(entry.expires)]));
         const aliases = aliasesOf(entry);
         const right = [
           aliases.length && chalk.dim(`(${aliases.join(', ')})`),

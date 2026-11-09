@@ -166,7 +166,7 @@ export const settingShown = key => platform === 'win32' || !WINDOWS_ONLY.include
 export const isHex = v => typeof v === 'string' && /^#[0-9a-f]{6}$/i.test(v);
 const valid = (key, v) => SETTINGS[key].includes(v) || (key === 'accent' && isHex(v));
 // Defaults that aren't the first value, so options keep their natural order.
-const DEFAULTS = { staleAfter: '60', confirmMany: '5' };
+const DEFAULTS = { staleAfter: '60', confirmMany: '5', usage: 'off' };
 // Dropped values that still read as a current one.
 const LEGACY = { recentStrip: { on: '3' } };
 export const setting = (key, config = loadConfig()) => {

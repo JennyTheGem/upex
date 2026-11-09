@@ -179,14 +179,37 @@ export function filterChoices(choices, query, { fuzzy, searchIn, staleAfter = '6
   if (!trimmed) return pool;
 
   const fuse = new Fuse(pool, {
-    keys: searchIn === 'names' ? ['name', 'aliases'] : ['name', 'path', 'searchText'],
+    keys: searchIn === 'names' ? ['name', 'aliases'] : ['name', 'aliases', 'path', 'searchText'],
     includeMatches: true,
     ...fuseOpts(fuzzy, 0.35),
   });
 
-  // `hits` = matched char ranges in the name, for highlighting.
-  return fuse.search(trimmed).map(({ item, matches = [] }) => ({ ...item, hits: matches.find(m => m.key === 'name')?.indices }));
+  // `hits` = matched char ranges in the name, for highlighting; `via` = the alias that matched instead of the name.
+  const t = trimmed.toLowerCase();
+  const has = s => s.toLowerCase().includes(t);
+  return fuse.search(trimmed).map(({ item, matches = [] }) => {
+    const name = matches.find(m => m.key === 'name');
+    const aliases = matches.filter(m => m.key === 'aliases');
+    const alias = aliases.find(m => has(m.value)) || aliases[0];
+    const via = alias && (!name || (!has(item.name) && has(alias.value))) ? alias.value : undefined;
+    return { ...item, hits: name?.indices, via };
+  });
 }
+
+// No matches for the typed filter: what Enter offers. Add it as a folder shortcut on the cwd (Shortcuts tab,
+// no #@is: tokens), or the archived ones whose name or path has the text, in Settings.
+export function noMatchOffers(query, view, archived = [], cwd = process.cwd()) {
+  const q = query.trim();
+  if (!q || (view !== 'shortcuts' && view !== 'apps')) return [];
+  const n = archived.filter(a => `${a.name} ${a.path}`.toLowerCase().includes(q.toLowerCase())).length;
+  return [
+    view === 'shortcuts' && !/[#@]|is:/i.test(q) && { kind: 'add', name: q, label: `add "${q}" here`, text: tidyPath(cwd), key: 'add here' },
+    n > 0 && { kind: 'archived', label: 'search archived', text: `${n} match`, key: 'search archived' },
+  ].filter(Boolean);
+}
+
+// Badge text for a shortcut from add --ttl: "2d left", '' without one or once past.
+export const expiryText = (expires, now = Date.now()) => (expires > now ? `${ui.span(expires - now, Math.ceil)} left` : '');
 
 const HOME = os.homedir();
 
@@ -983,6 +1006,8 @@ export function renderInteractiveView({
   paneOpen = false, // detail pane opened with Shift+Right on a narrow screen
   targets = null, // optional out: clickable { line, from, to, tab | row | opener | web | copy + msg | setting [+ option] }
   picker = false, // upex pick: Enter prints paths
+  offers = [], // no matches: noMatchOffers
+  offerIndex = 0,
 }) {
   asciiHints = settings.glyphs === 'ascii';
   const isWs = view === 'workspaces';
@@ -1148,7 +1173,8 @@ export function renderInteractiveView({
   const openerSpans = [];
   const openers = optionRow(appChoices.map(c => `${c.label}${isTerminalApp(c.key) && cmdCount > 1 ? ` ×${cmdCount}` : ''}`), selectedAppIndex, w - 13, openerSpans, pick);
   const isShortcuts = view === 'shortcuts';
-  const openKey = ['↵', picker ? (many || isWs ? 'print paths' : 'print path') : many ? `open ${many} marked` : isShortcuts ? 'open' : isWs ? 'open all' : currentChoice?.isUrl ? 'open in browser' : 'launch app'];
+  const offer = list.length === 0 && mode === 'browse' && offers[offerIndex];
+  const openKey = ['↵', offer ? offer.key : picker ? (many || isWs ? 'print paths' : 'print path') : many ? `open ${many} marked` : isShortcuts ? 'open' : isWs ? 'open all' : currentChoice?.isUrl ? 'open in browser' : 'launch app'];
   const markKey = !isWs && list.length > 0 && ['space', 'mark'];
   const opener = isShortcuts && ['←→', 'opener'];
   const windows = isShortcuts && terminal && ['S-↑↓', 'windows'];
@@ -1214,6 +1240,12 @@ export function renderInteractiveView({
       shortcuts: 'No folder shortcuts yet. Add one with ^A (uses the current folder)',
     };
     lines.push(query ? chalk.yellow('    no matches') : chalk.dim(`    ${empty[view]}`));
+    // What Enter offers instead, as rows; a click runs one. Not while typing a name or confirming.
+    const nameWidth = Math.max(...offers.map(o => vis(o.label)));
+    if (offer) offers.forEach((o, i) => {
+      hit(lines.length, 0, lw, { offer: i });
+      lines.push(renderRow({ sel: i === offerIndex, name: o.label, nameWidth, text: o.text, style: o.kind === 'add' ? 'path' : 'dim', cw, pick }));
+    });
   } else {
     const nameWidth = nameCol(list);
     // Rows left after the header and the footer (its rule included).
@@ -1243,7 +1275,8 @@ export function renderInteractiveView({
       const c = list[i];
       const tags = tagsOn && c.tags?.length ? chalk.dim(`#${c.tags.join(' #')}`) : '';
       const kind = c.isCmd ? 'cmd' : c.isApp ? 'app' : c.isUrl ? 'url' : '';
-      const badge = !badgesOn ? '' : !c.exists ? chalk.red('missing') : chalk.dim(badgeText([c.pinned && group(c) !== 'Pinned' && PIN, kind]));
+      const badge = !badgesOn ? '' : !c.exists ? chalk.red('missing') : chalk.dim(badgeText([c.pinned && group(c) !== 'Pinned' && PIN, kind, expiryText(c.expires, now)]));
+      const via = c.via ? chalk.dim(`via ${c.via}`) : '';
       // Picking in the pane: its rows are the clickable ones.
       if (!isScripts || listScripts) hit(lines.length, 0, lw, { row: i });
       lines.push(renderRow(pathLook({
@@ -1254,7 +1287,7 @@ export function renderInteractiveView({
         hits: c.hits,
         text: plain || c.isUrl ? c.path : tidyPath(c.path),
         style: plain ? 'dim' : c.isUrl ? 'url' : 'path',
-        right: [tags, badge].filter(Boolean).join('  '),
+        right: [via, tags, badge].filter(Boolean).join('  '),
         cw,
         pick,
         dot: ui.colorDot(c.color),
@@ -1356,6 +1389,8 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
     let settings = readSettings(); // appearance applies on every tab
     let settingIndex = 0;
     let archived = []; // Settings: archived shortcuts, read when it opens
+    let offers = []; // no matches: noMatchOffers for the typed filter
+    let offerIndex = 0;
     let extras = []; // Settings: openers and maintenance rows, read when it opens
     let expanded = null; // Settings: { kind, lines } of stats or doctor
     let ask = ''; // confirm question for the Settings actions
@@ -1456,6 +1491,8 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
         paneOpen,
         targets,
         picker,
+        offers,
+        offerIndex,
       });
       // Never taller than the screen, or the top scrolls away and frames stack up.
       let shown = output.split('\n').slice(0, height).map(line => ui.truncate(line, width));
@@ -1484,6 +1521,8 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
         if (settings.groups === 'tags') filteredChoices = withGroups(base, settings.sort === 'name');
         if (settings.recentStrip !== 'off') filteredChoices = withRecent(base, Number(settings.recentStrip), filteredChoices);
       }
+      offers = filteredChoices.length || !query.trim() ? [] : noMatchOffers(query, view, archivedList(loadLinks()));
+      offerIndex = 0;
       if (filteredChoices.length === 0) {
         selectedIndex = 0;
         return;
@@ -2191,6 +2230,21 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
       finish({ status: 'selected', name: selected.name, app: appKey, count });
     };
 
+    // Enter or a click on a no-matches offer: add the typed name here, or show matching archived ones in Settings.
+    const runOffer = (o) => {
+      if (o?.kind === 'add') {
+        startAction('add', o.name);
+        // A bad name stays in the prompt to fix.
+        if (commitInput() && mode === 'input') mode = 'browse';
+      } else if (o?.kind === 'archived') {
+        const q = query;
+        switchTo('settings');
+        query = q;
+        settingIndex = Math.max(0, settingItems().findIndex(x => x.kind === 'archived'));
+      }
+      redraw();
+    };
+
     // Mouse is only on in full screen; ignored while typing or confirming.
     // Presses are skipped: the second press of a double-click must not wipe the first one's flash.
     const handleMouse = ({ x, y, wheel, click, right }) => {
@@ -2253,6 +2307,10 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
       if (t?.tab) {
         mode = 'browse';
         if (t.tab !== view) switchTo(t.tab);
+      } else if (t?.offer != null) {
+        lastClick = { y, at: now, opened: true };
+        runOffer(offers[t.offer]);
+        return;
       } else if (once) {
         if (t.web) openWeb();
         else if (t.archive) askArchive();
@@ -2673,6 +2731,11 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
         return;
       }
 
+      // No matches: Enter runs the picked offer (its key hint), also with marks.
+      if (key.name === 'return' && !filteredChoices.length && offers.length) {
+        runOffer(offers[offerIndex]);
+        return;
+      }
       if (key.name === 'return' && marks.size) {
         const entries = markedPlan().map(({ c, app, count }) => ({ shortcut: c.name, app, count }));
         openMany(entries, () => {
@@ -2685,6 +2748,11 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
 
       if (key.name === 'return') {
         openSelected();
+        return;
+      }
+      if ((key.name === 'up' || key.name === 'down') && !key.ctrl && !key.shift && !filteredChoices.length && offers.length > 1) {
+        offerIndex = (offerIndex + 1) % offers.length;
+        redraw();
         return;
       }
 

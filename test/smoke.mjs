@@ -23,7 +23,7 @@ import { COMMAND_NAMES } from '../src/fast.js';
 import { createProgram } from '../src/index.js';
 import { readScripts, detectPm } from '../src/commands/run.js';
 import { pickedNames, pickedPaths } from '../src/commands/pick.js';
-import { usageText, stepColor, renderInteractiveView, nextView, backTo, accentOf, pathLook, inView, tidyPath, byOrder, optionRow, listRows, readMouse, hitTest, rowClick, undoFlash, clipName, prefill, editLine, kindOf, retyped, setField, fieldWords, completeTag, expiryOptions, formRows, formLines, statLines, doctorLines, inputLine, missingFlash, staysOpen, expandHome, underlineHits, movePinned, sameGroup, withRecent, withGroups, filterChoices, maxListOf, jumpIndex, isAlt, detailLines, rowOptions, pickedOf, settingsList, goalSummary, goalsOf, goalText, oneLine, scriptLines, markLines, paneShown, paneToggles, paneWidthOf, withSamePath, archivedList, clipPath, asksMany, dotLines, lr, wrapHint, splice, overlayMenu } from '../src/interactive.js';
+import { usageText, stepColor, renderInteractiveView, nextView, backTo, accentOf, pathLook, inView, tidyPath, byOrder, optionRow, listRows, readMouse, hitTest, rowClick, undoFlash, clipName, prefill, editLine, kindOf, retyped, setField, fieldWords, completeTag, expiryOptions, formRows, formLines, statLines, doctorLines, inputLine, missingFlash, staysOpen, expandHome, underlineHits, movePinned, sameGroup, withRecent, withGroups, filterChoices, noMatchOffers, expiryText, maxListOf, jumpIndex, isAlt, detailLines, rowOptions, pickedOf, settingsList, goalSummary, goalsOf, goalText, oneLine, scriptLines, markLines, paneShown, paneToggles, paneWidthOf, withSamePath, archivedList, clipPath, asksMany, dotLines, lr, wrapHint, splice, overlayMenu } from '../src/interactive.js';
 import { parseStatus, parseDiff, parseLog, gitOf, stopGit } from '../src/git.js';
 import chalk from 'chalk';
 import { resolveTarget, resolveName, suggestNames } from '../src/fuzzy.js';
@@ -864,6 +864,32 @@ await run;
   const cfg = JSON.parse(fs.readFileSync(path.join(shome, '.upex', 'config.json'), 'utf-8'));
   assert.deepEqual([r.stderr, cfg.updateCheck, cfg.fullScreen, cfg.startView, cfg.narrowPane], ['', 'off', 'on', undefined, undefined], 'settings filter keeps the picked row');
 }
+// -- no-match offers on fake streams: ↓ Enter shows archived in Settings; with a mark, Enter adds the typed name (not opens marked) --
+{
+  const shome = fs.mkdtempSync(path.join(os.tmpdir(), 'upex-offer-'));
+  const file = path.join(shome, '.upex', 'links.json');
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.writeFileSync(file, JSON.stringify({ one: { path: shome }, qqqold: { path: shome, archived: true } }));
+  const drive = path.join(shome, 'drive.mjs');
+  fs.writeFileSync(drive, String.raw`
+import { PassThrough } from 'node:stream';
+import { runInteractiveMode } from '${new URL('../src/interactive.js', import.meta.url).href}';
+const stdin = Object.assign(new PassThrough(), { isTTY: true, setRawMode() {} });
+const stdout = Object.assign(new PassThrough(), { isTTY: true, columns: 100, rows: 40 });
+let out = '';
+stdout.on('data', d => { out += d; });
+const send = async s => { stdin.write(s); await new Promise(r => setTimeout(r, 30)); };
+const run = runInteractiveMode({ stdin, stdout });
+for (const k of [' ', 'qqqold', '\x1b[B', '\r']) await send(k);
+console.log(out.slice(out.lastIndexOf('\x1b[H')).replace(/\x1b\[[\d;?<]*[A-Za-z]/g, ''));
+for (const k of ['\x1b[Z', 'qqq', '\r', '\x03']) await send(k);
+console.log(JSON.stringify(await run));
+`);
+  const r = spawnSync(process.execPath, [drive], { encoding: 'utf-8', cwd: shome, env: { ...process.env, USERPROFILE: shome, HOME: shome } });
+  const left = JSON.parse(fs.readFileSync(file, 'utf-8'));
+  assert.deepEqual([r.stderr, typeof left.qqq?.path, JSON.parse(r.stdout.trim().split('\n').at(-1)).status], ['', 'string', 'cancelled'], 'Enter on a no-match offer adds, marks stay unopened');
+  assert.ok(r.stdout.includes('› qqqold'), 'search archived: Settings with the archived row picked');
+}
 const zs = new PassThrough();
 readline.emitKeypressEvents(zs);
 const zkey = await new Promise(r => { zs.once('keypress', (_, k) => r(k)); zs.write('\x1a'); });
@@ -1073,6 +1099,18 @@ assert.equal(names('api'), 'website', 'all: paths are searched');
 assert.equal(names('api', { searchIn: 'names' }), '', 'names only: paths are not');
 assert.equal(names('ws', { searchIn: 'names' }), 'website', 'names only: aliases are');
 assert.deepEqual([names('wbkt'), names('wbkt', { fuzzy: 'loose' })], ['', 'other'], 'loose: more typos');
+// via: the alias that matched instead of the name.
+const via = (q, s) => filterChoices(fz, q, s)[0]?.via;
+assert.deepEqual([via('ws'), via('ws', { searchIn: 'names' }), via('ws', { fuzzy: 'exact' }), via('website'), via('webs')], ['ws', 'ws', 'ws', undefined, undefined], 'via alias only when the name did not match');
+// No matches: add here (Shortcuts, no tokens) and archived ones with the text.
+const arch = [{ name: 'fooold', path: '/x' }, { name: 'b', path: '/y/foo' }, { name: 'c', path: '/z' }];
+const offerKinds = (q, v, a = arch) => noMatchOffers(q, v, a, '/cwd').map(o => o.kind).join();
+assert.deepEqual([offerKinds('foo', 'shortcuts'), offerKinds('FOO', 'apps'), offerKinds('foo', 'workspaces'), offerKinds('#foo', 'shortcuts'), offerKinds('is:p', 'shortcuts'), offerKinds('nope', 'shortcuts'), offerKinds('  ', 'shortcuts')],
+  ['add,archived', 'archived', '', '', '', 'add', ''], 'no-match offers per tab, tokens and archived');
+assert.deepEqual([noMatchOffers(' foo ', 'shortcuts', arch, '/cwd')[0].name, noMatchOffers('foo', 'shortcuts', arch, '/cwd')[1].text], ['foo', '2 match'], 'offer name trimmed, archived count');
+const noMatchFrame = renderInteractiveView({ query: 'foo', choices: [], selectedIndex: 0, appChoices: [], selectedAppIndex: 0, cmdCount: 1, offers: noMatchOffers('foo', 'shortcuts', arch, '/cwd'), offerIndex: 1 });
+assert.ok(noMatchFrame.includes('add "foo" here') && noMatchFrame.includes('search archived') && noMatchFrame.includes('2 match'), 'no-match offers render');
+assert.deepEqual([expiryText(Date.now() + 2 * 86400000 - 5000), expiryText(Date.now() - 1), expiryText(undefined), expiryText(Date.now() + 90 * 60000)], ['2d left', '', '', '2h left'], 'expiry badge text');
 assert.deepEqual(movePinned([{ name: 'a', tags: ['web'] }, { name: 'b', tags: ['vel'] }, { name: 'c', tags: ['web'] }], 'a', 1, sameGroup({ group: '#web' })), ['c', 'b', 'a'], 'groups: a pin moves past the next pin of its tag group');
 assert.deepEqual([maxListOf('12'), maxListOf(undefined)], [12, 8], 'max rows setting');
 assert.equal(setting('maxRows', { maxRows: 'fill' }), 'auto', 'a dropped fill reads as auto');
@@ -1316,7 +1354,7 @@ try {
   assert.equal(cfg2.paneSplit, 'horizontal', 'refused request saved nothing, later one did');
   assert.equal(cfg2.defaultOpener, 'vscode', 'default opener stored as its key');
   const st2 = await (await fetch(base + '/api/state', { headers: { 'x-upex-token': token } })).json();
-  assert.deepEqual(st2.settings, { startView: 'apps', sort: 'name', terminalLayout: 'panes', paneSplit: 'horizontal', terminalShell: 'powershell', fullScreen: 'on', mouse: 'on', theme: 'system', accent: 'default', density: 'comfortable', paths: 'dim', keyHints: 'full', maxRows: 'auto', recentStrip: 'off', staleAfter: '60', views: 'all', enter: 'quit', numberKeys: 'off', confirmMany: '5', fuzzy: 'normal', searchIn: 'all', flash: '3', updateCheck: 'on', usage: 'ago', rowDetails: 'both', pinned: 'top', groups: 'off', narrowPane: 'toggle', paneWidth: 'normal', goals: 'off', git: 'off', glyphs: 'unicode', defaultOpener: 'vscode' }, 'state reports settings');
+  assert.deepEqual(st2.settings, { startView: 'apps', sort: 'name', terminalLayout: 'panes', paneSplit: 'horizontal', terminalShell: 'powershell', fullScreen: 'on', mouse: 'on', theme: 'system', accent: 'default', density: 'comfortable', paths: 'dim', keyHints: 'full', maxRows: 'auto', recentStrip: 'off', staleAfter: '60', views: 'all', enter: 'quit', numberKeys: 'off', confirmMany: '5', fuzzy: 'normal', searchIn: 'all', flash: '3', updateCheck: 'on', usage: 'off', rowDetails: 'both', pinned: 'top', groups: 'off', narrowPane: 'toggle', paneWidth: 'normal', goals: 'off', git: 'off', glyphs: 'unicode', defaultOpener: 'vscode' }, 'state reports settings');
   assert.deepEqual(Object.keys(cfg2.workspaces), ['work'], 'settings save keeps workspaces');
   const note = path.join(webHome, 'note.txt');
   fs.writeFileSync(note, '');
