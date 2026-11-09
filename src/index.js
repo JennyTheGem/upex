@@ -33,6 +33,7 @@ import { registerConfig } from './commands/config.js';
 import { registerPin } from './commands/pin.js';
 import { registerUndo } from './commands/undo.js';
 import { registerNote } from './commands/note.js';
+import { registerPick } from './commands/pick.js';
 import { runInteractiveMode } from './interactive.js';
 import { setting } from './launcher.js';
 import { VERSION as version, updateNotice } from './update.js';
@@ -90,6 +91,7 @@ export function createProgram() {
   registerPin(program);
   registerUndo(program);
   registerNote(program);
+  registerPick(program);
 
   // Archive expired temporary shortcuts. Skipped where stdout feeds a shell wrapper.
   program.hook('preAction', (_root, cmd) => {
@@ -106,10 +108,10 @@ export function createProgram() {
     }
   });
 
-  // Update notice: not for the selector (no name), wrappers, completion (shell startup), ui (still starting) or non-terminals.
+  // Update notice: not for the selector (no name, pick), wrappers, completion (shell startup), ui (still starting) or non-terminals.
   program.hook('postAction', (_root, cmd) => {
     if (!process.stderr.isTTY || (cmd === program && !cmd.args.length)) return;
-    if (cmd.name().startsWith('__') || ['go', 'ui', 'completion'].includes(cmd.name())) return;
+    if (cmd.name().startsWith('__') || ['go', 'pick', 'ui', 'completion'].includes(cmd.name())) return;
     try {
       if (setting('updateCheck') === 'off') return;
     } catch { return; }

@@ -22,6 +22,7 @@ import { applyShortcut, applyOpener, cleanEntries, startServer } from '../src/co
 import { COMMAND_NAMES } from '../src/fast.js';
 import { createProgram } from '../src/index.js';
 import { readScripts, detectPm } from '../src/commands/run.js';
+import { pickedNames, pickedPaths } from '../src/commands/pick.js';
 import { renderInteractiveView, nextView, backTo, accentOf, pathLook, inView, tidyPath, byOrder, optionRow, listRows, readMouse, hitTest, rowClick, undoFlash, clipName, prefill, editLine, kindOf, retyped, setField, fieldWords, completeTag, expiryOptions, formRows, formLines, statLines, doctorLines, inputLine, missingFlash, staysOpen, expandHome, underlineHits, movePinned, sameGroup, withRecent, withGroups, filterChoices, maxListOf, jumpIndex, isAlt, detailLines, rowOptions, pickedOf, settingsList, goalSummary, goalsOf, goalText, oneLine, scriptLines, markLines, paneShown, paneToggles, paneWidthOf, withSamePath, archivedList, dotLines, lr, wrapHint, splice, overlayMenu } from '../src/interactive.js';
 import { parseStatus, parseDiff, parseLog, gitOf, stopGit } from '../src/git.js';
 import chalk from 'chalk';
@@ -783,6 +784,31 @@ await send('\x03'); await run;
   const left = JSON.parse(fs.readFileSync(file, 'utf-8'));
   assert.deepEqual([r.stderr, left.a1, left.a2, left.a3], ['', { path: 'A', archived: true, expires: 1 }, { path: 'B' }, { path: 'C' }], 'Enter, then a double-click restore one each');
   assert.ok(r.stdout.includes('restored "a2"') && r.stdout.includes('Archived 1') && r.stdout.includes('› a1'), 'flash kept, list and selection follow');
+}
+// -- upex pick: Enter finishes even with After open = Stay; names map to path, url, app --
+{
+  const shome = fs.mkdtempSync(path.join(os.tmpdir(), 'upex-pick-'));
+  fs.mkdirSync(path.join(shome, '.upex'), { recursive: true });
+  fs.writeFileSync(path.join(shome, '.upex', 'links.json'), JSON.stringify({ one: { path: shome } }));
+  fs.writeFileSync(path.join(shome, '.upex', 'config.json'), JSON.stringify({ enter: 'stay' }));
+  const drive = path.join(shome, 'drive.mjs');
+  fs.writeFileSync(drive, String.raw`
+import { PassThrough } from 'node:stream';
+import { runInteractiveMode } from '${new URL('../src/interactive.js', import.meta.url).href}';
+const stdin = Object.assign(new PassThrough(), { isTTY: true, setRawMode() {} });
+const stdout = Object.assign(new PassThrough(), { isTTY: true, columns: 100, rows: 40 });
+stdout.resume();
+const run = runInteractiveMode({ stdin, stdout, picker: true });
+await new Promise(r => setTimeout(r, 30)); stdin.write('\r');
+console.log(JSON.stringify(await run));
+`);
+  const r = spawnSync(process.execPath, [drive], { encoding: 'utf-8', env: { ...process.env, USERPROFILE: shome, HOME: shome } });
+  assert.deepEqual([r.stderr, JSON.parse(r.stdout).status], ['', 'selected'], 'picker Enter finishes despite Stay open');
+  const links = { f: { path: '/f', aliases: ['ff'] }, u: { url: 'https://x' }, a: { app: 'x.exe' } };
+  assert.deepEqual(pickedPaths(pickedNames({ status: 'marked', entries: [{ shortcut: 'f' }, { shortcut: 'gone' }, { shortcut: 'u' }] }), links), ['/f', 'https://x'], 'marked: paths in order, gone skipped');
+  assert.deepEqual(pickedPaths(pickedNames({ status: 'workspace', name: 'w' }, { w: [{ shortcut: 'a' }, { shortcut: 'ff' }, { shortcut: 'f/src' }, { shortcut: 'u/x' }] }), links),
+    ['x.exe', '/f', path.join('/f', 'src')], 'workspace entries: app command, alias, subpath; no subpath of a url');
+  assert.deepEqual(pickedNames({ status: 'cancelled' }), [], 'Esc picks nothing');
 }
 // -- right-click menu on fake streams: click "pin" on one row, then ↑ (wraps to archive) Enter y on another --
 {

@@ -10,7 +10,7 @@ Closed sections: §1 Shortcut management · §2 Opening · §3 Resolution & UX �
 
 ## 4. Shell integration
 
-- Plus 2 maybe: `upgo list --section 4 --phase maybe`
+- Plus 1 maybe: `upgo list --section 4 --phase maybe`
 
 ## 6. Quality
 

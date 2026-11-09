@@ -950,6 +950,7 @@ export function renderInteractiveView({
   full = false, // full screen: footer at the bottom, detail pane when wide
   paneOpen = false, // detail pane opened with Shift+Right on a narrow screen
   targets = null, // optional out: clickable { line, from, to, tab | row | opener | web | copy + msg | setting [+ option] }
+  picker = false, // upex pick: Enter prints paths
 }) {
   asciiHints = settings.glyphs === 'ascii';
   const isWs = view === 'workspaces';
@@ -1114,11 +1115,11 @@ export function renderInteractiveView({
   const openerSpans = [];
   const openers = optionRow(appChoices.map(c => `${c.label}${isTerminalApp(c.key) && cmdCount > 1 ? ` ×${cmdCount}` : ''}`), selectedAppIndex, w - 13, openerSpans, pick);
   const isShortcuts = view === 'shortcuts';
-  const openKey = ['↵', many ? `open ${many} marked` : isShortcuts ? 'open' : isWs ? 'open all' : currentChoice?.isUrl ? 'open in browser' : 'launch app'];
+  const openKey = ['↵', picker ? (many || isWs ? 'print paths' : 'print path') : many ? `open ${many} marked` : isShortcuts ? 'open' : isWs ? 'open all' : currentChoice?.isUrl ? 'open in browser' : 'launch app'];
   const markKey = !isWs && list.length > 0 && ['space', 'mark'];
   const opener = isShortcuts && ['←→', 'opener'];
   const windows = isShortcuts && terminal && ['S-↑↓', 'windows'];
-  const scriptsKey = isShortcuts && ['^s', 'scripts'];
+  const scriptsKey = isShortcuts && !picker && ['^s', 'scripts'];
   const movePin = !isWs && !query?.trim() && currentChoice?.pinned && ['A-↑↓', 'move pin'];
   const goalsKey = goals?.next.length && ['S-→', 'goals'];
   const webKey = git?.web && ['^g', hostName(git.web)];
@@ -1250,7 +1251,8 @@ export function renderInteractiveView({
   return footer(foot);
 }
 
-export async function runInteractiveMode({ preferredApp, stdin = process.stdin, stdout = process.stdout } = {}) {
+// picker (upex pick): Enter always finishes, never opens in place; the caller prints the paths.
+export async function runInteractiveMode({ preferredApp, stdin = process.stdin, stdout = process.stdout, picker = false } = {}) {
   let allChoices = buildChoices();
   let appChoices = [];
   let appMap = getAppMap();
@@ -1408,6 +1410,7 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
         full: alt,
         paneOpen,
         targets,
+        picker,
       });
       // Never taller than the screen, or the top scrolls away and frames stack up.
       let shown = output.split('\n').slice(0, height).map(line => ui.truncate(line, width));
@@ -1507,9 +1510,10 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
         redraw();
       }), fail);
     };
-    const tabsOn = appKey => staysOpen(appKey, setting('terminalLayout'), hasWindowsTerminal);
+    const tabsOn = appKey => !picker && staysOpen(appKey, setting('terminalLayout'), hasWindowsTerminal);
     // Layout 'here' hands this terminal over, so the selector has to quit even with Stay open.
-    const stay = (appKey, n = 1) => settings.enter === 'stay' && !(isTerminalApp(appKey) && n === 1 && setting('terminalLayout') === 'here');
+    const staying = () => !picker && settings.enter === 'stay';
+    const stay = (appKey, n = 1) => staying() && !(isTerminalApp(appKey) && n === 1 && setting('terminalLayout') === 'here');
 
     // Safety net: a crash must not leave the terminal on the alt screen or without a cursor.
     const onExit = () => {
@@ -1585,7 +1589,7 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
     // ^s: the highlighted folder's package.json scripts, or a flash why not.
     const openScripts = () => {
       const c = filteredChoices[selectedIndex];
-      if (view !== 'shortcuts' || !c) return;
+      if (view !== 'shortcuts' || !c || picker) return;
       flash = missingFlash(c) || '';
       const found = !flash && readScripts(c.path);
       if (flash) return;
@@ -1655,9 +1659,10 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
     // Right-click menu of the selected row: its keys, one click each. Acts on that row only, never the marks.
     const menuItems = () => {
       const ctrl = name => () => handleKey(undefined, { ctrl: true, name });
-      if (view === 'workspaces') return [{ label: 'open all', run: () => handleKey(undefined, { name: 'return' }) }, { label: 'edit', run: ctrl('e') }, { label: 'delete', run: ctrl('d') }];
+      if (view === 'workspaces') return [{ label: picker ? 'print paths' : 'open all', run: () => handleKey(undefined, { name: 'return' }) }, { label: 'edit', run: ctrl('e') }, { label: 'delete', run: ctrl('d') }];
       const c = filteredChoices[selectedIndex];
-      const opens = c.isApp || c.isUrl ? [{ label: c.isUrl ? 'open in browser' : 'launch', run: () => openSelected() }]
+      const opens = picker ? [{ label: 'print path', run: () => openSelected() }]
+        : c.isApp || c.isUrl ? [{ label: c.isUrl ? 'open in browser' : 'launch', run: () => openSelected() }]
         : appChoices.map(a => ({ label: `open in ${a.label}`, run: () => openSelected(a.key) }));
       return [
         ...opens,
@@ -2474,7 +2479,7 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
         if (key.name === 'return') {
           const name = filteredWs[wsIndex]?.name;
           if (!name) return;
-          if (settings.enter === 'stay') openHere(loadWorkspaces()[name] || [], `opened workspace "${name}"`, [null, name]);
+          if (staying()) openHere(loadWorkspaces()[name] || [], `opened workspace "${name}"`, [null, name]);
           else finish({ status: 'workspace', name });
           return;
         }
@@ -2565,7 +2570,7 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
       if (key.name === 'return' && marks.size) {
         const entries = markedPlan().map(({ c, app, count }) => ({ shortcut: c.name, app, count }));
         marks.clear();
-        if (settings.enter === 'stay') { openHere(entries, `opened ${howMany(entries.map(e => e.shortcut))}`, [filteredChoices[selectedIndex]?.name]); return; }
+        if (staying()) { openHere(entries, `opened ${howMany(entries.map(e => e.shortcut))}`, [filteredChoices[selectedIndex]?.name]); return; }
         finish({ status: 'marked', entries });
         return;
       }

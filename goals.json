@@ -1260,7 +1260,7 @@
       "title": "upex pick",
       "body": "Selector that prints the chosen path to stdout for scripts and pipes.",
       "phase": "maybe",
-      "status": "planned",
+      "status": "done",
       "size": "S",
       "scope": [
         "cli",
@@ -1272,7 +1272,8 @@
         ]
       },
       "created": "2026-11-06",
-      "updated": "2026-11-06"
+      "updated": "2026-11-09",
+      "note": "upex pick: selector on stderr, Enter prints path(s) to stdout (marked rows / workspace one per line), Esc exits 1; picker mode ignores Stay open and hides ^s"
     },
     {
       "id": "global-hotkey-launcher",
