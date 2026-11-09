@@ -698,7 +698,7 @@ function settingNote(key, s, wt) {
   if (key === 'paneWidth') return 'How much of the screen the pane takes: Narrow leaves the list more room, Wide shows more details.';
   if (key === 'goals') return 'Pane right of the list (full screen): open upgo goals of a folder, up to this many. S-→ picks one to copy, a click copies it.';
   if (key === 'git') return 'Pane right of the list (full screen): branch, ahead/behind, changes and last commit of a folder in git. ^g opens its web page.';
-  if (key === 'keyHints') return 'Key rows under the list. Short: one row of the main keys, ^k shows them all. Off: more room for the list. Settings keeps its keys.';
+  if (key === 'keyHints') return 'Key rows under the list. Short: one row of the main keys. ? on an empty filter shows every key (Full and Off too). Off: more room for the list. Settings keeps its keys.';
   if (key === 'glyphs') return 'ASCII swaps arrows, pointers, lines and the ellipsis for plain characters, for fonts that show boxes.';
   if (key === 'theme') return 'Colors of upex ui. The terminal keeps its own.';
   if (key === 'terminalLayout') {
@@ -932,7 +932,7 @@ export function renderInteractiveView({
   extras = [], // Settings: rows before Archived [{ section, kind, name, text }] (openers, maintenance)
   expanded = null, // Settings: { kind, lines } shown under that extra row (stats, doctor)
   ask = '', // confirm question, else the delete / archive one
-  keysHelp = false, // ^k: every key over the list
+  keysHelp = false, // ? or ^k: every key over the list
   inputName = null, // name in the input prompt, else the selected row's
   form = null, // edit form (mode 'form'), see formLines
   wt = null,
@@ -1150,9 +1150,9 @@ export function renderInteractiveView({
   });
   const padTo = (rows, n) => [...rows, ...Array(Math.max(0, n - rows.length)).fill('')];
   // Key hints setting. Full: the rows above (typing: input keys, same height so the list stays put). Short: one row
-  // without the keys you learn first (↑↓, tab, esc), cut to the width; ^k shows them all. Off: none.
+  // without the keys you learn first (↑↓, tab, esc), cut to the width; ? shows them all. Off: none.
   const hints = settings.keyHints === 'off' ? []
-    : settings.keyHints === 'short' ? [mode === 'input' ? inputRow : fitHint([['^k', 'keys'], openKey, opener, windows, ...editKeys, pinKey, dropKey, undoKey, markKey, scriptsKey, goalsKey, webKey, paneKey, uiKey, copyKey, movePin], w)]
+    : settings.keyHints === 'short' ? [mode === 'input' ? inputRow : fitHint([['?', 'keys'], openKey, opener, windows, ...editKeys, pinKey, dropKey, undoKey, markKey, scriptsKey, goalsKey, webKey, paneKey, uiKey, copyKey, movePin], w)]
       : padTo(mode === 'input' ? [inputRow] : fullRows(), widest.length);
   const foot = isForm ? (hints.length ? padTo([formKeys(form, inputRow)], settings.keyHints === 'short' ? 1 : widest.length) : [])
     : isScripts ? (hints.length ? [keyHint([['↵', 'run in a terminal'], ['↑↓', 'move'], escKey])] : [])
@@ -1162,7 +1162,7 @@ export function renderInteractiveView({
   foot.push(...(foot.length ? webRows : webRows.slice(-1)));
 
   if (keysHelp) {
-    // ^k: every key of this tab in groups, over the list.
+    // ? or ^k: every key of this tab in groups, over the list.
     const groups = [
       ['Move', [openKey, ['↑↓', 'move'], ['PgUp/Dn Home/End', 'jump'], opener, windows, tabKey, escKey, paneHint, markKey, !isWs && ['A-↑↓', 'move pin']]],
       ['Edit', [...editKeys, pinKey, dropKey, ['^z', 'undo'], copyKey]],
@@ -1313,7 +1313,7 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
     let extras = []; // Settings: openers and maintenance rows, read when it opens
     let expanded = null; // Settings: { kind, lines } of stats or doctor
     let ask = ''; // confirm question for the Settings actions
-    let keysHelp = false; // ^k key overlay, any key closes it
+    let keysHelp = false; // ? (empty filter) or ^k key overlay, any key closes it
     let inputName = null; // the prompt's name when it isn't the selected row's (an opener, a count)
     let form = null; // edit form: { name, ws, field, editing, buffer, cursor, kind, history }
     let wt = null;
@@ -2129,7 +2129,7 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
       const picking = mode === 'scripts';
       const goalPick = mode === 'goals';
       if (!alt || (mode !== 'browse' && !picking && !goalPick) || !(wheel || click || right)) return;
-      // The ^k overlay: a click closes it, the wheel does nothing.
+      // The key overlay: a click closes it, the wheel does nothing.
       if (keysHelp) {
         if (click || right) { keysHelp = false; redraw(); }
         return;
@@ -2410,7 +2410,8 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
         return;
       }
 
-      if (key.ctrl && key.name === 'k' && mode === 'browse' && view !== 'settings') {
+      // ? with an empty filter (else it types), or ^k.
+      if (((key.ctrl && key.name === 'k') || (str === '?' && !query)) && mode === 'browse' && view !== 'settings') {
         keysHelp = true;
         redraw();
         return;

@@ -281,7 +281,7 @@
       "title": "ls --dirty",
       "body": "Only show repos with uncommitted changes or unpushed commits.",
       "phase": "maybe",
-      "status": "planned",
+      "status": "dropped",
       "size": "M",
       "scope": [
         "cli"
@@ -295,7 +295,8 @@
         ]
       },
       "created": "2026-11-06",
-      "updated": "2026-11-06"
+      "updated": "2026-11-09",
+      "note": "Out of scope"
     },
     {
       "id": "web-ui-drag-and-drop",
@@ -314,10 +315,11 @@
       "title": "upex scan <dir>",
       "body": "Find git repos/projects under a folder and bulk-add them as shortcuts (pick which in a checklist). Fast setup on a new PC.",
       "phase": "maybe",
-      "status": "planned",
+      "status": "dropped",
       "size": "M",
       "created": "2026-11-06",
-      "updated": "2026-11-06"
+      "updated": "2026-11-09",
+      "note": "Out of scope"
     },
     {
       "id": "add-with-no-name-uses-cwd",
@@ -522,22 +524,6 @@
       "created": "2026-11-06",
       "updated": "2026-11-07",
       "note": "Out of scope"
-    },
-    {
-      "id": "commandexists-without-spawning-where-which",
-      "section": 2,
-      "title": "commandExists without spawning where/which",
-      "body": "launchApp spawns 'where X' per launch (Windows ~30 to 50ms, not measured). Scan PATH (+PATHEXT on win32) in-process with fs instead.",
-      "phase": "maybe",
-      "status": "planned",
-      "size": "S",
-      "pointers": {
-        "files": [
-          "src/launcher.js"
-        ]
-      },
-      "created": "2026-11-07",
-      "updated": "2026-11-07"
     },
     {
       "id": "exact-then-fuzzy-name-resolution-fuse-js",
@@ -900,10 +886,11 @@
       "title": "Keybind help overlay",
       "body": "? shows every keybind in one screen, so the footer can stay short.",
       "phase": "maybe",
-      "status": "planned",
+      "status": "done",
       "size": "S",
       "created": "2026-11-07",
-      "updated": "2026-11-07"
+      "updated": "2026-11-09",
+      "note": "? on an empty filter opens the existing key overlay (^k still works) in any Key hints mode; Short's row now starts with '? keys'"
     },
     {
       "id": "reorder-pinned-shortcuts",
@@ -1186,10 +1173,11 @@
       "title": "Settings: changed dot and per-row reset",
       "body": "Dim dot on rows that differ from the default; Backspace resets that row, like upex config reset <key>. Undo with ^z.",
       "phase": "next",
-      "status": "planned",
+      "status": "dropped",
       "size": "S",
       "created": "2026-11-08",
-      "updated": "2026-11-08"
+      "updated": "2026-11-09",
+      "note": "Out of scope"
     },
     {
       "id": "settings-scope-tag-per-row",
@@ -1294,22 +1282,6 @@
       "phase": "maybe",
       "status": "planned",
       "size": "L",
-      "created": "2026-11-07",
-      "updated": "2026-11-07"
-    },
-    {
-      "id": "resolve-exits-1-at-once-for-command-names-and",
-      "section": 4,
-      "title": "__resolve exits 1 at once for command names and flags",
-      "body": "Wrapper sends 'upex ls' to __resolve first; fastPath falls through to the full CLI (~190ms) just to exit 1, then runs upex ls again. Every wrapped command except go runs node twice (~380ms). Exit 1 in fastPath instead, saves ~190ms.",
-      "phase": "maybe",
-      "status": "planned",
-      "size": "S",
-      "pointers": {
-        "files": [
-          "src/fast.js"
-        ]
-      },
       "created": "2026-11-07",
       "updated": "2026-11-07"
     },

@@ -512,10 +512,10 @@ assert.deepEqual(wrapHint([['a', 'one'], '|', false], 40).map(strip), ['  a one'
   assert.ok([60, 99].every(width => states.every(s => footOf({ width, ...s }) === footOf({ width }))), 'key rows keep their count when the selection, marks, filter or mode change');
   const apps = { view: 'apps', width: 89, choices: [{ name: 'x', path: 'x.exe', isApp: true, exists: true }, { name: 'u', path: 'http://x', isUrl: true, exists: true }] };
   assert.equal(footOf(apps), footOf({ ...apps, selectedIndex: 1 }), 'apps: launch app and open in browser rows count the same');
-  assert.ok(withHints('short').at(-1).trim().startsWith('^k keys'), 'short: ^k first');
+  assert.ok(withHints('short').at(-1).trim().startsWith('? keys'), 'short: ? first');
   const help = withHints('short', { keysHelp: true }).join('\n');
-  assert.ok(help.includes('Move') && help.includes('tab apps') && help.includes('^x archive') && help.includes('any key closes') && !help.includes('p0 '), '^k overlay lists every key over the list');
-  assert.deepEqual(['on', 'off'].map(mouse => withHints('short', { keysHelp: true, full: true, settings: { keyHints: 'short', mouse } }).join(' ').includes('right-click')), [true, false], '^k: right-click only with the mouse on');
+  assert.ok(help.includes('Move') && help.includes('tab apps') && help.includes('^x archive') && help.includes('any key closes') && !help.includes('p0 '), 'key overlay lists every key over the list');
+  assert.deepEqual(['on', 'off'].map(mouse => withHints('short', { keysHelp: true, full: true, settings: { keyHints: 'short', mouse } }).join(' ').includes('right-click')), [true, false], 'key overlay: right-click only with the mouse on');
   assert.ok(withHints('full', { view: 'workspaces', workspaces: [{ name: 'w', entries: [] }] }).join(' ').includes('^d delete'), 'workspaces keep ^d delete');
 }
 // row details + pinned section

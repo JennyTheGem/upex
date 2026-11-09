@@ -6,24 +6,11 @@ a personal CLI to register named aliases for folder/app paths and instantly open
 
 Open work only. Full item: `upgo show <id>`. Any slice: `upgo list --phase later,wayLater,maybe`, `--status done,dropped`, `--section <n>`, `--search <text>`.
 
-Closed sections: §5 Platform support · §7 Web UI · §9 Detail pane · §10 TUI editing
-
-## 1. Shortcut management
-
-- Plus 2 maybe: `upgo list --section 1 --phase maybe`
-
-## 2. Opening
-
-- Plus 1 maybe: `upgo list --section 2 --phase maybe`
-
-## 3. Resolution & UX
-
-- `settings-changed-dot-and-per-row-reset` Settings: changed dot and per-row reset (next)
-- Plus 1 maybe: `upgo list --section 3 --phase maybe`
+Closed sections: §1 Shortcut management · §2 Opening · §3 Resolution & UX · §5 Platform support · §7 Web UI · §9 Detail pane · §10 TUI editing
 
 ## 4. Shell integration
 
-- Plus 3 maybe: `upgo list --section 4 --phase maybe`
+- Plus 2 maybe: `upgo list --section 4 --phase maybe`
 
 ## 6. Quality
 
