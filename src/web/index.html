@@ -118,7 +118,7 @@ input[aria-invalid="true"] { border-color: var(--danger); }
   transition: background-color .15s ease-out, border-color .15s ease-out, color .15s ease-out;
 }
 .btn:hover { border-color: var(--muted); }
-.btn:disabled { opacity: .5; cursor: default; }
+.btn:disabled, .btn[aria-disabled="true"] { opacity: .5; cursor: default; }
 .btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); font-weight: 600; }
 .btn.primary:hover { filter: brightness(1.08); }
 .btn.danger { color: var(--danger); }
@@ -193,6 +193,23 @@ main { max-width: 1600px; padding: 20px 32px 96px; }
 .set-ctl select { min-width: 200px; }
 .set-note { margin: 0; padding: 10px 16px; color: var(--muted); font-size: 13px; background: color-mix(in srgb, var(--raise) 50%, transparent); }
 .set-panel > .list { border: 0; border-radius: 0; background: none; }
+/* Insights: stats bars and doctor checks */
+.ins { padding: 12px 16px; display: grid; gap: 6px; }
+.ins + .ins { border-top: 1px solid var(--line); }
+.ins h3 { font-size: 13px; margin: 0 0 4px; color: var(--muted); font-weight: 600; }
+.ins p { margin: 0; color: var(--muted); font-size: 13px; }
+.ins .err { color: var(--danger); }
+.st-row { display: grid; grid-template-columns: minmax(80px, 180px) minmax(40px, 1fr) 3ch minmax(0, 130px); gap: 12px; align-items: center; }
+.st-row .name, .st-row .when { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.st-bar { height: 6px; border-radius: 3px; background: var(--accent); min-width: 2px; }
+.st-n { text-align: right; font-variant-numeric: tabular-nums; }
+.weeks { display: flex; align-items: flex-end; gap: 3px; height: 32px; }
+.weeks span { width: 14px; border-radius: 2px 2px 0 0; background: var(--accent); min-height: 2px; }
+.weeks span.z { background: var(--line-strong); }
+.dr-row { display: grid; grid-template-columns: 44px minmax(100px, 160px) minmax(0, 1fr); gap: 12px; align-items: baseline; }
+.dr-row .detail { color: var(--muted); overflow-wrap: anywhere; font-size: 13px; }
+.dr-s { font: 11.5px var(--mono); text-transform: uppercase; color: var(--muted); }
+.dr-s.ok { color: var(--accent); } .dr-s.warn { color: var(--warn); } .dr-s.fail { color: var(--danger); }
 
 /* Shortcut list */
 .list { border: 1px solid var(--line); border-radius: var(--r); background: var(--panel); overflow: hidden; }
@@ -228,6 +245,11 @@ main { max-width: 1600px; padding: 20px 32px 96px; }
 .menu > button kbd { margin-left: auto; font: 11px var(--mono); color: var(--muted); }
 .menu > button.danger { color: var(--danger); }
 .menu > hr { border: 0; border-top: 1px solid var(--line); margin: 4px 0; }
+.menu { max-height: calc(100vh - 16px); overflow-y: auto; }
+.menu-h { padding: 4px 8px 2px; font-size: 12px; color: var(--muted); }
+.menu > button.mono { font-size: 12.5px; }
+/* Open upgo goals of a folder, one line under the name */
+.goals .gn { color: var(--accent); font-variant-numeric: tabular-nums; margin-right: 2px; }
 .item > .kind { display: flex; color: var(--muted); }
 .item.broken > .kind { color: var(--warn); }
 .name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -316,6 +338,10 @@ main { max-width: 1600px; padding: 20px 32px 96px; }
   .ws-entry .start { grid-column: 1 / 3; }
   .fields { grid-template-columns: minmax(0, 1fr); }
   .set-row { grid-template-columns: minmax(0, 1fr); padding: 12px; }
+  .st-row { grid-template-columns: minmax(0, 1fr) 60px 3ch; }
+  .st-row .when { display: none; }
+  .dr-row { grid-template-columns: 44px minmax(0, 1fr); }
+  .dr-row .detail { grid-column: 2; }
 }
 @media (prefers-reduced-motion: no-preference) { html { scroll-behavior: smooth; } }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
@@ -400,6 +426,8 @@ const SETTING_OPTS = {
   usage: { ago: 'Last opened', opens: 'Opens', off: 'Off' },
   pinned: { top: 'On top', section: 'Own section' },
   groups: { off: 'Off', tags: 'By tag' },
+  // Pairs, as an object would list numeric keys before off.
+  goals: [['off', 'Off'], ['3', '3'], ['5', '5'], ['10', '10']],
 };
 // Row details setting: does `what` ('tags' | 'badges') show?
 const shows = what => [undefined, 'both', what].includes(S.settings.rowDetails);
@@ -431,7 +459,7 @@ const S = {
   // Keyed by user names, so no prototype ("constructor" etc.).
   openWith: Object.create(null), openCount: Object.create(null), openStart: Object.create(null),
   wsDraft: Object.create(null), newWs: false, newWsName: '',
-  opDraft: { name: '', command: '' }, editOp: null, editOpCmd: '', confirmOp: null,
+  opDraft: { name: '', command: '' }, editOp: null, editOpCmd: '', confirmOp: null, insights: null,
 };
 
 // DOM builder; text always goes in as text nodes, never HTML.
@@ -744,6 +772,9 @@ function row(l, again) {
         ['pin', l.pinned ? 'Unpin' : 'Pin to top', 'P', () => act(() => api('PUT', 'pin', { name: l.name, pinned: !l.pinned }), `${l.pinned ? 'Unpinned' : 'Pinned'} ${l.name}`)],
         ['copy', 'Copy ' + COPY_WORD[l.kind], '', copy],
         ['edit', 'Edit', 'E', edit],
+        // package.json scripts, each runs in a terminal like upex run.
+        ...(l.scripts.length ? [null, h('div', { class: 'menu-h' }, `Scripts (${l.pm})`),
+          ...l.scripts.map(([n, c]) => ['cmd', n, '', () => act(() => api('POST', 'run', { name: l.name, script: n }), `Running ${l.pm} run ${n} in ${l.name}`), 'mono', c])] : []),
         null,
         ['archive', 'Archive', 'Del', () => archive(true)],
         ['trash', 'Delete…', '', confirmDelete, 'danger'],
@@ -765,7 +796,10 @@ function row(l, again) {
       ((shows('tags') && l.tags.length > 0) || l.aliases.length > 0) && h('div', { class: 'tags' },
         l.aliases.length > 0 && h('span', { class: 'tag', title: 'Aliases' }, 'aka ' + l.aliases.join(', ')),
         shows('tags') && l.tags.map(t => h('span', { class: 'tag' }, '#' + t))),
-      l.note && h('div', { class: 'note', title: l.note }, l.note)),
+      l.note && h('div', { class: 'note', title: l.note }, l.note),
+      // Goals setting: done/total and the next open goals from the folder's goals.json.
+      l.goals && h('div', { class: 'note goals', title: l.goals.next.join('\n') || 'All goals done' },
+        h('span', { class: 'sr' }, 'Goals done: '), h('span', { class: 'gn' }, `${l.goals.done}/${l.goals.total}`), ' ', l.goals.next.join(' · ') || 'all done')),
     h('div', { class: 'target mono', title: l.target }, l.broken && shows('badges') && h('span', { class: 'miss' }, 'missing'), ...splitLeaf(l)),
     h('div', { class: 'when', title: S.settings.usage === 'opens' ? 'Times opened' : 'Last opened' }, usage(l)),
     actions);
@@ -788,7 +822,7 @@ function moreMenu(name, items) {
       } },
     items.filter(x => x !== false && x !== undefined).map(x => (x === null ? h('hr')
       : x instanceof Node ? x
-      : h('button', { type: 'button', class: x[4] || null, onclick: () => { menu.hidePopover(); x[3](); } },
+      : h('button', { type: 'button', class: x[4] || null, title: x[5] || null, onclick: () => { menu.hidePopover(); x[3](); } },
         icon(x[0]), x[1], x[2] && h('kbd', null, x[2])))));
   const more = h('button', { type: 'button', class: 'btn icon ghost', 'aria-label': `More for ${name}`, title: 'More',
     popovertarget: id, 'data-k': 'more', onclick: () => place(more, menu) }, icon('more'));
@@ -1054,7 +1088,7 @@ function settingsView() {
   const seg = (key, title, help, msg, deco, extra) => setRow(key, title, help,
     h('div', { class: 'seg', role: 'radiogroup', 'aria-labelledby': 'lbl-' + key, 'aria-describedby': 'help-' + key },
       // Off Windows (wt null) there are no tabs or panes.
-      Object.entries(SETTING_OPTS[key]).filter(([k]) => S.wt !== null || key !== 'terminalLayout' || k === 'here' || k === 'windows').map(([k, label]) => [
+      (Array.isArray(SETTING_OPTS[key]) ? SETTING_OPTS[key] : Object.entries(SETTING_OPTS[key])).filter(([k]) => S.wt !== null || key !== 'terminalLayout' || k === 'here' || k === 'windows').map(([k, label]) => [
         h('input', { type: 'radio', name: key, id: `${key}-${k}`, checked: s[key] === k, onchange: () =>
           act(() => api('PUT', 'settings', { [key]: k }), msg(label))
             .then(() => document.getElementById(`${key}-${S.settings[key]}`)?.focus()) }),
@@ -1090,13 +1124,14 @@ function settingsView() {
       seg('searchIn', 'Search in', 'What plain search text matches. #tag, @opener and is: always work.', l => `Search: ${l.toLowerCase()}`),
       seg('staleAfter', 'Stale after', 'Not opened for this long counts as stale (is:stale).', l => `is:stale: not opened in ${l}`)),
     sec('set-list', 'List', 'How shortcut lists are ordered and what each row shows, here and in the selector.',
-      ['sort', 'pinned', 'groups', 'paths', 'rowDetails', 'usage'],
+      ['sort', 'pinned', 'groups', 'paths', 'rowDetails', 'usage', 'goals'],
       seg('sort', 'Sort', 'Order of the list.', l => `Sorted: ${l}`),
       seg('pinned', 'Pinned', 'Pinned shortcuts on top, or under their own heading.', l => `Pinned: ${l}`),
       seg('groups', 'Groups', 'Headings per tag while not searching.', l => `Groups: ${l}`),
       seg('paths', 'Paths', 'How a row shows its folder path.', l => `Paths: ${l}`),
       seg('rowDetails', 'Row details', 'Tags and badges (pinned, app, missing) on a row.', l => `Row details: ${l}`),
-      seg('usage', 'Usage', 'Last opened or open count at the right of a row.', l => `Usage: ${l}`)),
+      seg('usage', 'Usage', 'Last opened or open count at the right of a row.', l => `Usage: ${l}`),
+      seg('goals', 'Goals', 'Open upgo goals of a folder with a goals.json, up to this many, on one line under its name.', l => `Goals: ${l}`)),
     sec('set-look', 'Look', 'Theme is this page only. Accent and density also apply to the selector.', ['theme', 'accent', 'density'],
       seg('theme', 'Theme', 'Light or dark for this page.', l => `Theme: ${l}`),
       seg('accent', 'Accent', 'Highlight color.', l => `Accent: ${l}`, k => h('span', { class: 'swatch ac-' + k, 'aria-hidden': 'true' }), customAccent),
@@ -1115,8 +1150,105 @@ function settingsView() {
       notes.map(n => h('p', { class: 'set-note' }, n))),
     sec('set-apps', 'Custom openers', 'More apps to open folders in, like Cursor or Sublime. upex runs the command with the folder path after it. Same list as upex app in the terminal.', null,
       h('div', { class: 'list' }, S.openers.map(openerRow), openerAdd())),
+    sec('set-backup', 'Backup', 'Move shortcuts to another PC: download a bundle here, import it there. Import merges, a shortcut with the same name is replaced. Like upex export and upex import.', null,
+      setRow('export', 'Download bundle', 'Shortcuts, openers, workspaces and settings in one JSON file.', btn('Download', '', exportBundle, 'down')),
+      setRow('import', 'Import bundle', 'A bundle from upex export or this page.',
+        h('input', { type: 'file', id: 'import-file', accept: '.json,application/json', hidden: true, onchange: importFile }),
+        btn('Import…', '', () => document.getElementById('import-file').click(), 'up'))),
+    sec('set-insights', 'Insights', 'Read only: what you opened in the last 30 days (upex stats) and the checks of upex doctor.', null,
+      h('div', { id: 'insights' }, insightsBody())),
   ];
+  if (!S.insights) loadInsights();
   return [h('div', { class: 'set-main' }, sections)];
+}
+
+// ---------- Backup ----------
+
+async function exportBundle() {
+  try {
+    const b = await api('GET', 'export');
+    const url = URL.createObjectURL(new Blob([JSON.stringify(b, null, 2)], { type: 'application/json' }));
+    const a = h('a', { href: url, download: `upex-bundle-${new Date().toISOString().slice(0, 10)}.json` });
+    document.body.append(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    say(`Downloaded ${Object.keys(b.links).length} shortcuts`);
+  } catch (e) { say(e.message, true); }
+}
+
+async function importFile(e) {
+  const f = e.target.files[0];
+  // Cleared, so picking the same file again still fires change.
+  e.target.value = '';
+  if (!f) return;
+  let bundle;
+  try { bundle = JSON.parse(await f.text()); } catch { return say(`${f.name} is not a JSON file.`, true); }
+  await act(async () => {
+    const r = await api('POST', 'import', { bundle });
+    // Doctor checks run again on the coming re-render.
+    S.insights = null;
+    const n = (k, w) => `${r[k].length} ${w}`;
+    // Undo only when links.json changed, else it would step back an older change.
+    say(`Imported ${f.name}: ${n('added', 'added')}, ${n('updated', 'updated')}` + (r.clashes.length ? `. Names used twice: ${r.clashes.join('; ')}` : ''), r.clashes.length > 0, r.changed);
+  });
+  document.getElementById('import-file')?.nextElementSibling?.focus();
+}
+
+// ---------- Insights ----------
+
+// Stats and doctor load on their own (doctor takes a moment) into #insights, so focus elsewhere in Settings stays.
+function loadInsights() {
+  const ins = S.insights = { stats: null, doctor: null };
+  const fill = (k, v) => { ins[k] = v; if (S.insights === ins) showInsights(); };
+  api('GET', 'stats').then(v => fill('stats', v), e => fill('stats', { error: e.message }));
+  api('GET', 'doctor').then(v => fill('doctor', v), e => fill('doctor', { error: e.message }));
+}
+
+// Redraw #insights, keeping focus on Run again.
+function showInsights() {
+  const again = document.activeElement?.id === 'dr-again';
+  // replaceChildren, unlike h(), would print a false or undefined part as text.
+  document.getElementById('insights')?.replaceChildren(...insightsBody().filter(Boolean));
+  if (again) document.getElementById('dr-again')?.focus();
+}
+
+function insightsBody() {
+  const { stats: s, doctor: d } = S.insights || {};
+  const opens = c => `${c} open${c === 1 ? '' : 's'}`;
+  const max = s?.top?.[0]?.count || 1;
+  const peak = Math.max(0, ...(s?.perWeek || []));
+  const statsPart = !s ? h('p', null, 'Loading stats…') : s.error ? h('p', { class: 'err' }, s.error) : !s.total
+    ? h('p', null, s.recorded ? 'No opens in the last 30 days.' : 'No opens recorded yet. Every open from now on counts.')
+    : [
+      s.top.map(t => h('div', { class: 'st-row' },
+        h('span', { class: 'name', title: t.name }, t.name),
+        h('span', { class: 'st-bar', style: `width:${Math.round((t.count / max) * 100)}%`, 'aria-hidden': 'true' }),
+        h('span', { class: 'st-n', 'aria-label': opens(t.count) }, String(t.count)),
+        h('span', { class: 'when' }, t.note))),
+      s.more > 0 && h('p', null, `+ ${s.more} more, see upex stats`),
+      s.openers.length > 0 && h('p', null, 'Opened with ', s.openers.slice(0, 5).map(o => `${o.name} ${o.count}`).join(' · ')),
+    ];
+  const weeks = s?.perWeek && peak > 0 && h('div', { class: 'ins' }, h('h3', null, `Opens per week, last ${s.perWeek.length} weeks (peak ${peak})`),
+    h('div', { class: 'weeks', role: 'img', 'aria-label': s.perWeek.join(', ') + ' opens per week, oldest first' },
+      s.perWeek.map(c => h('span', { class: c ? null : 'z', style: `height:${Math.max(6, Math.round((c / peak) * 100))}%`, title: opens(c) }))));
+  const warns = Array.isArray(d) ? d.filter(r => r.status === 'warn' || r.status === 'fail').length : 0;
+  const doctorPart = !d ? h('p', null, 'Running checks…') : d.error ? h('p', { class: 'err' }, d.error) : [
+    d.map(r => h('div', { class: 'dr-row' },
+      h('span', { class: 'dr-s ' + r.status }, r.status),
+      h('span', { class: 'set-name' }, r.check),
+      h('span', { class: 'detail' }, r.detail))),
+    h('p', null, warns ? `${warns} to look at, everything else is fine.` : 'All good.'),
+  ];
+  return [
+    h('div', { class: 'ins' }, h('h3', null, s?.total ? `Top shortcuts, ${opens(s.total)} in 30 days` : 'Top shortcuts'), statsPart),
+    weeks,
+    h('div', { class: 'ins' },
+      h('div', { class: 'set-head' }, h('h3', null, 'Doctor'),
+        // Stays while checks run, so keyboard focus is kept; a click then does nothing.
+        btn('Run again', 'ghost', () => { if (d) { loadInsights(); showInsights(); } }, null, { id: 'dr-again', 'aria-disabled': d ? null : 'true' })),
+      doctorPart),
+  ];
 }
 
 // Custom openers (config.json apps): add, change the command, delete. No rename, shortcuts point at the name.
@@ -1192,6 +1324,8 @@ function applyLook() {
 function resetTab() {
   S.adding = false; S.addErr = ''; S.tag = null; S.editing = null; S.confirming = null; S.archived = false;
   S.editWs = null; S.renamingWs = null; S.confirmWs = null; S.editOp = null; S.confirmOp = null;
+  // Stats and doctor load again on the next visit to Settings.
+  S.insights = null;
   if (TAB_KINDS[S.view]) S.addKind = TAB_KINDS[S.view][0];
 }
 

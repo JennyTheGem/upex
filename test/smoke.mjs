@@ -1554,6 +1554,41 @@ try {
   assert.equal((await send('DELETE', 'opener', { name: 'subl' })).status, 404, 'deleting a missing opener 404s');
   const cfg3 = JSON.parse(fs.readFileSync(path.join(webHome, '.upex', 'config.json'), 'utf-8'));
   assert.deepEqual([cfg3.apps, Object.keys(cfg3.workspaces)], [{}, ['work']], 'opener edits keep the rest of config');
+  // scripts and goals on folder rows, run refuses what upex run would
+  const pkDir = fs.mkdtempSync(path.join(os.tmpdir(), 'upex-pk-'));
+  fs.writeFileSync(path.join(pkDir, 'package.json'), JSON.stringify({ scripts: { dev: 'vite\n--open' } }));
+  fs.writeFileSync(path.join(pkDir, 'goals.json'), JSON.stringify({ items: [{ id: 'a', title: 'A', status: 'done' }, { id: 'b', title: 'B', status: 'planned', phase: 'next' }] }));
+  await send('POST', 'links', { kind: 'folder', name: 'pk', target: pkDir });
+  const pkRow = async () => (await (await fetch(base + '/api/state', { headers: { 'x-upex-token': token } })).json()).links.find(l => l.name === 'pk');
+  assert.deepEqual(await pkRow().then(l => [l.scripts, l.pm, l.goals]), [[['dev', 'vite --open']], 'npm', null], 'folder row lists its scripts, goals off by default');
+  await send('PUT', 'settings', { goals: '3' });
+  assert.deepEqual((await pkRow()).goals, { done: 1, total: 2, next: ['B'] }, 'goals setting puts open goals on the row');
+  assert.equal((await send('POST', 'run', { name: 'pk', script: 'nope' })).status, 404, 'unknown script refused');
+  assert.equal((await send('POST', 'run', { name: 'pk', script: 'constructor' })).status, 404, 'prototype key is no script');
+  assert.equal((await send('POST', 'run', { name: 'gh', script: 'dev' })).status, 404, 'run needs a folder shortcut');
+  // export / import: merge, counts, changed only when links.json changed, junk refused
+  const exp = await (await send('GET', 'export')).json();
+  assert.ok(exp.upex === 'bundle' && Object.hasOwn(exp.links, 'pk'), 'export gives the bundle');
+  const imp = b => send('POST', 'import', { bundle: b });
+  const imp1 = await (await imp({ upex: 'bundle', version: 1, links: { im: { url: 'example.com' } } })).json();
+  assert.deepEqual([imp1.added, imp1.updated, imp1.changed], [['im'], [], true], 'import merges and reports');
+  assert.ok(webLinks().pk && webLinks().im, 'import keeps the rest');
+  assert.equal((await (await imp({ im: { url: 'example.com' } })).json()).changed, false, 'same import again changes nothing');
+  for (const bad of [[1], { upex: 'bundle' }, { a: 5 }, 'x', { a: {} }, { a: { path: 5 } }, { a: { url: 'u', tags: 'y' } }]) assert.equal((await imp(bad)).status, 400, `junk bundle refused: ${JSON.stringify(bad)}`);
+  // only the upex marker makes a bundle: a bare map may name shortcuts config and links
+  const cfgText = fs.readFileSync(webCfg, 'utf-8');
+  assert.deepEqual((await (await imp({ config: { url: 'example.org' }, links: { url: 'example.net' } })).json()).added, ['config', 'links'], 'bare map: config and links are shortcuts');
+  assert.equal(fs.readFileSync(webCfg, 'utf-8'), cfgText, 'bare map leaves config.json alone');
+  await imp({ upex: 'bundle', links: {}, config: { apps: 'xy', workspaces: { w: 5, v: [{ shortcut: 'pk' }] } } });
+  const cfgImp = JSON.parse(fs.readFileSync(webCfg, 'utf-8'));
+  assert.deepEqual([cfgImp.apps, Object.keys(cfgImp.workspaces)], [{}, ['work', 'v']], 'bundle config: only maps merge, workspaces as lists');
+  // hand-edited entries: no path keeps the page up, path plus url is no folder to run in
+  fs.writeFileSync(path.join(webHome, '.upex', 'links.json'), JSON.stringify({ ...webLinks(), bare: { tags: [] }, both: { path: pkDir, url: 'example.com' } }));
+  assert.equal((await send('GET', 'state')).status, 200, 'entry without a path keeps state up');
+  assert.equal((await send('POST', 'run', { name: 'both', script: 'dev' })).status, 404, 'run skips a url shortcut with a path');
+  const stats = await (await send('GET', 'stats')).json();
+  assert.deepEqual([stats.total, stats.top, stats.perWeek.length], [0, [], 8], 'stats with no opens');
+  fs.rmSync(pkDir, { recursive: true, force: true });
 } finally {
   // Already exited (e.g. crashed on start): waiting for 'exit' again would never settle.
   if (srv.exitCode === null && srv.signalCode === null) {

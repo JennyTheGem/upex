@@ -105,7 +105,7 @@ const INTERACTIVE_APP_KEYS = [
 // Openers that open terminal windows (and so take a window count).
 export const isTerminalApp = key => key === 'cmd' || key === 'claude';
 
-// Settings in config.json; the first value is the default unless DEFAULTS says. Start view, views, sort, searchIn, staleAfter, pinned, groups and usage are shared by the selector and upex ui; fullScreen, mouse, keyHints, maxRows, recentStrip, enter, numberKeys, confirmMany, flash, narrowPane, paneWidth, goals, git and glyphs are selector only.
+// Settings in config.json; the first value is the default unless DEFAULTS says. Start view, views, sort, searchIn, staleAfter, pinned, groups, usage and goals are shared by the selector and upex ui; fullScreen, mouse, keyHints, maxRows, recentStrip, enter, numberKeys, confirmMany, flash, narrowPane, paneWidth, git and glyphs are selector only.
 // Layout: separate windows, or tabs/panes in one Windows Terminal window. Shell 'profile' = wt default profile.
 export const SETTINGS = {
   // last = the tab (and opener) the selector or upex ui was left on.
@@ -160,7 +160,7 @@ export const SETTINGS = {
   narrowPane: ['toggle', 'always'],
   // Detail pane (selector) width: share of the screen.
   paneWidth: ['normal', 'narrow', 'wide'],
-  // Detail pane (selector): off, or how many open upgo goals of a folder with a goals.json.
+  // Detail pane (selector) and upex ui rows: off, or how many open upgo goals of a folder with a goals.json.
   goals: ['off', '3', '5', '10'],
   // Detail pane (selector): git status of a folder in a repo.
   git: ['off', 'on'],

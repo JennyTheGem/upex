@@ -13,16 +13,27 @@ import * as ui from '../ui.js';
 
 export const bundleOf = () => ({ upex: 'bundle', version: 1, links: loadLinks(), config: loadConfig() });
 
+const isMap = v => Boolean(v) && typeof v === 'object' && !Array.isArray(v);
+const TARGETS = ['path', 'app', 'url'];
+// A path string (legacy), or an entry with a string target and a tag list.
+const isEntry = e => typeof e === 'string' || (isMap(e) && TARGETS.some(k => e[k])
+  && TARGETS.every(k => e[k] == null || typeof e[k] === 'string') && (e.tags == null || Array.isArray(e.tags)));
+// Only maps merge (a string or list would spread into junk keys), keeping the values `ok` accepts.
+const mapOf = (v, ok = () => true) => (isMap(v) ? Object.fromEntries(Object.entries(v).filter(([, x]) => ok(x))) : {});
+
 /**
  * Merge a bundle (or a bare links map) into the store; `replace` swaps it in instead.
  * Returns { added, updated, clashes }, or { error } when nothing in it is importable.
  */
 export function importBundle(bundle, replace = false) {
-  // Accept a full bundle or a bare links map.
-  const incoming = bundle?.links && typeof bundle.links === 'object' ? bundle.links : bundle;
-  if (!incoming || typeof incoming !== 'object') return { error: 'Nothing importable in that file.' };
+  // Only the marker makes a bundle, so a bare map may hold shortcuts named "links" or "config".
+  const isBundle = bundle?.upex === 'bundle';
+  const incoming = isBundle ? bundle.links : bundle;
+  if (!isMap(incoming)) return { error: 'Nothing importable in that file.' };
+  const bad = Object.keys(incoming).find(n => !isEntry(incoming[n]));
+  if (bad !== undefined) return { error: `Nothing imported: "${bad}" is no shortcut (needs a path, app or url).` };
 
-  const hasConfig = bundle.config && typeof bundle.config === 'object';
+  const hasConfig = isBundle && isMap(bundle.config);
   // Read config before saving links, so a corrupt config.json aborts without a partial import.
   const current = hasConfig ? loadConfig() : null;
   const { merged, added, updated } = mergeLinks(loadLinks(), incoming, { replace });
@@ -34,8 +45,8 @@ export function importBundle(bundle, replace = false) {
     saveConfig(replace ? inc : {
       ...current,
       ...inc,
-      apps: { ...(current.apps || {}), ...(inc.apps || {}) },
-      workspaces: { ...(current.workspaces || {}), ...(inc.workspaces || {}) },
+      apps: { ...mapOf(current.apps), ...mapOf(inc.apps, c => typeof c === 'string') },
+      workspaces: { ...mapOf(current.workspaces), ...mapOf(inc.workspaces, Array.isArray) },
     });
   }
   return { added, updated, clashes: aliasClashes(merged) };

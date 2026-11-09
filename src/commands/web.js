@@ -8,16 +8,21 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import crypto from 'node:crypto';
-import { loadLinks, saveLinks, loadWorkspaces, saveWorkspaces, pruneBroken, targetField, nameError, takenError, checkAliases, aliasesOf, frecency, parseColor, colorOf, loadConfig, saveConfig, withPinned, undoLast, topSuggestion, hideVisit } from '../store.js';
-import { getInteractiveAppChoices, launchUrl, openerKey, isTerminalApp, checkSettings, readSettings, resetSettings, startTab, SETTING_KEYS, hasWindowsTerminal, configApps } from '../launcher.js';
+import { loadLinks, saveLinks, loadWorkspaces, saveWorkspaces, pruneBroken, targetField, nameError, takenError, checkAliases, aliasesOf, frecency, parseColor, colorOf, loadConfig, saveConfig, withPinned, undoLast, topSuggestion, hideVisit, loadHistory, statsFrom, LINKS_FILE } from '../store.js';
+import { getInteractiveAppChoices, launchUrl, openerKey, isTerminalApp, checkSettings, readSettings, resetSettings, startTab, SETTING_KEYS, hasWindowsTerminal, configApps, getAppMap } from '../launcher.js';
 import { handleOpen, isFile } from './open.js';
 import { openEntries } from './workspace.js';
 import { parseTags, defaultName } from './add.js';
-import { oneLine } from '../interactive.js';
+import { readScripts, detectPm, scriptLine } from './run.js';
+import { bundleOf, importBundle } from './transfer.js';
+import { runChecks } from './doctor.js';
+import { TOP, allTime } from './stats.js';
+import { oneLine, goalsOf } from '../interactive.js';
 import { VERSION, PKG, cachedLatest, isNewer, updateNotice } from '../update.js';
 import * as ui from '../ui.js';
 
 const PAGE = new URL('../web/index.html', import.meta.url);
+const readText = f => { try { return fs.readFileSync(f, 'utf-8'); } catch { return ''; } };
 const DEFAULT_PORT = 4545;
 
 /**
@@ -118,6 +123,17 @@ export function cleanEntries(list) {
   return out;
 }
 
+// package.json scripts ([name, command]) and open upgo goals (up to the goals setting) of a folder shortcut.
+function folderExtras(e, goals) {
+  const g = Number(goals) > 0 && goalsOf(e.path);
+  const scripts = readScripts(e.path);
+  return {
+    scripts: scripts ? Object.entries(scripts).map(([n, c]) => [n, oneLine(c)]) : [],
+    pm: scripts ? detectPm(e.path) : '',
+    goals: g ? { done: g.done, total: g.total, next: g.next.slice(0, Number(goals)).map(i => oneLine(i.title || i.id)) } : null,
+  };
+}
+
 function state() {
   const links = loadLinks();
   const config = loadConfig();
@@ -132,7 +148,11 @@ function state() {
     suggest: tip && { name: defaultName(tip.path), path: tip.path, uses: tip.uses },
     links: Object.entries(links).map(([name, e]) => {
       const field = targetField(e);
+      const broken = Boolean(e.path) && !fs.existsSync(e.path);
+      const file = field === 'path' && isFile(e.path);
       return {
+        // A hand-edited entry may lack a path string; goalsOf would throw on it.
+        ...(field === 'path' && typeof e.path === 'string' && !broken && !file && !e.archived ? folderExtras(e, settings.goals) : { scripts: [], pm: '', goals: null }),
         name,
         kind: field === 'path' ? 'folder' : e.terminal ? 'cmd' : field,
         // Same split as the terminal selector: anything that launches directly lives on Apps.
@@ -151,9 +171,9 @@ function state() {
         added: e.added || 0,
         expires: e.expires || 0,
         score: frecency(e),
-        broken: Boolean(e.path) && !fs.existsSync(e.path),
+        broken,
         // A file opens in its default app, not the default opener.
-        file: field === 'path' && isFile(e.path),
+        file,
       };
     }),
     workspaces: loadWorkspaces(),
@@ -211,6 +231,46 @@ const routes = {
     if (!ok) throw new HttpError(422, `Could not open "${b.name}". Details are in the upex ui terminal.`);
     return {};
   },
+
+  // A package.json script of a folder shortcut in a terminal, like upex run.
+  'POST /api/run': async (b) => {
+    const name = String(b.name ?? '');
+    const script = String(b.script ?? '');
+    const links = loadLinks();
+    const e = Object.hasOwn(links, name) && links[name];
+    // targetField: an entry that also has a url would open that instead.
+    const dir = e && !e.archived && targetField(e) === 'path' && e.path;
+    if (!dir || !fs.existsSync(dir)) throw new HttpError(404, `No folder shortcut named "${name}".`);
+    const scripts = readScripts(dir);
+    if (!scripts || !Object.hasOwn(scripts, script)) throw new HttpError(404, `No "${script}" script in ${name}.`);
+    const ok = await handleOpen(name, 'cmd', 1, scriptLine(dir, script), { batch: true });
+    if (!ok) throw new HttpError(422, `Could not run "${script}". Details are in the upex ui terminal.`);
+    return {};
+  },
+
+  'GET /api/export': () => bundleOf(),
+
+  // Merge only, like upex import without --replace; the links part is one upex undo step.
+  'POST /api/import': (b) => {
+    const before = readText(LINKS_FILE);
+    const r = importBundle(b.bundle);
+    if (r.error) throw new HttpError(400, r.error);
+    // A save that changes nothing makes no backup, so the page's Undo would step back an older change.
+    return { ...r, changed: readText(LINKS_FILE) !== before };
+  },
+
+  // Read-only Insights: upex stats (30 days) and upex doctor.
+  'GET /api/stats': () => {
+    const now = Date.now();
+    const history = loadHistory();
+    const s = statsFrom(history, { since: now - 30 * 86400000, now });
+    const links = loadLinks();
+    const top = s.shortcuts.slice(0, TOP).map(([name, count]) => ({ name, count, note: allTime(links, name) }));
+    const names = getAppMap();
+    const openers = s.openers.map(([o, count]) => ({ name: names[o]?.displayName || o, count }));
+    return { total: s.total, recorded: history.length, more: s.shortcuts.length - top.length, top, openers, perWeek: s.perWeek };
+  },
+  'GET /api/doctor': () => runChecks().map(([status, check, detail]) => ({ status, check, detail })),
 
   // Any subset of settings; all are checked before any is saved.
   'PUT /api/settings': (b) => {

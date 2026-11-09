@@ -21,6 +21,9 @@ export function detectPm(dir) {
   return 'npm';
 }
 
+// What `upex run` types in the terminal.
+export const scriptLine = (dir, script) => `${detectPm(dir)} run ${script}`;
+
 export function readScripts(dir) {
   try {
     const pkg = JSON.parse(fs.readFileSync(path.join(dir, 'package.json'), 'utf-8'));
@@ -79,6 +82,6 @@ export function registerRun(program) {
         process.exit(1);
       }
 
-      return handleOpen(resolved.name, 'cmd', 1, `${pm} run ${script}`);
+      return handleOpen(resolved.name, 'cmd', 1, scriptLine(dir, script));
     });
 }

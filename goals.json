@@ -1616,6 +1616,17 @@
       "note": "dim v<version> next to upex in the selector header, dropped when the tabs would not fit; also in the Update check setting note"
     },
     {
+      "id": "validate-links-json-entries",
+      "section": 6,
+      "title": "Validate links.json entries",
+      "body": "normalizeLinks keeps any object, so a hand edit or sync merge with a wrong type (path as array, uses as string) crashes later. doctor lists bad entries by name and field; load skips or coerces them with a one-line warning.",
+      "phase": "next",
+      "status": "planned",
+      "size": "S",
+      "created": "2026-11-09",
+      "updated": "2026-11-09"
+    },
+    {
       "id": "upex-ui-local-web-page-to-add-edit-rename-tag",
       "section": 7,
       "title": "upex ui: local web page to add, edit, rename, tag, delete and open shortcuts, manage workspaces, prune missing paths",
@@ -1758,6 +1769,42 @@
       "note": "Enter in search opens top row, arrow/Home/End row focus, Enter/e/F2/p/Del on a row, focus kept across re-renders; plus More menu, labelled forms, workspace/opener undo and last-entry confirm, search hint, fixed empty states (impeccable critique pass)"
     },
     {
+      "id": "web-ui-scripts-and-goals-on-rows",
+      "section": 7,
+      "title": "Web UI: scripts and goals on rows",
+      "body": "The TUI runs package.json scripts and shows upgo goals; the web row only has Open and More. Add a Scripts entry in More (via upex run) and an optional compact goals line that follows the goals setting.",
+      "phase": "next",
+      "status": "done",
+      "size": "M",
+      "created": "2026-11-09",
+      "updated": "2026-11-09",
+      "note": "More menu lists package.json scripts (POST /api/run); goals line under the name follows the goals setting, now also in web Settings > List"
+    },
+    {
+      "id": "web-ui-export-and-import-buttons",
+      "section": 7,
+      "title": "Web UI: export and import buttons",
+      "body": "Settings gets Download bundle and Import bundle (file picker, merge, counts in the toast, one undo step), so moving shortcuts between PCs works without a terminal.",
+      "phase": "next",
+      "status": "done",
+      "size": "S",
+      "created": "2026-11-09",
+      "updated": "2026-11-09",
+      "note": "Settings > Backup: Download bundle, Import bundle (merge, counts, one Undo when links.json changed); importBundle validates entries"
+    },
+    {
+      "id": "web-ui-stats-and-doctor-panel",
+      "section": 7,
+      "title": "Web UI: stats and doctor panel",
+      "body": "stats and doctor exist only in the CLI and TUI. A read-only Insights area in upex ui shows top shortcuts and the doctor pass/warn lines, via GET endpoints that reuse the existing functions.",
+      "phase": "next",
+      "status": "done",
+      "size": "M",
+      "created": "2026-11-09",
+      "updated": "2026-11-09",
+      "note": "Settings > Insights: GET /api/stats and /api/doctor, lazy per Settings visit, Run again"
+    },
+    {
       "id": "publish-to-npm",
       "section": 8,
       "title": "Publish to npm so a new PC only needs npm i -g upex",
@@ -1796,6 +1843,18 @@
       "created": "2026-11-08",
       "updated": "2026-11-08",
       "note": "src/update.js: daily detached npm check cached in ~/.upex/update.json, dim stderr line in a postAction hook (TTY only, skips selector, go, ui, __*), setting updateCheck on/off"
+    },
+    {
+      "id": "auto-sync-to-a-cloud-folder",
+      "section": 8,
+      "title": "Auto-sync to a cloud folder",
+      "body": "A syncFile setting (OneDrive/Dropbox path): every save also writes the bundle there; a newer file merges in at startup with mergeLinks, skipping per-PC usage. Pairs with portable paths.",
+      "phase": "later",
+      "status": "dropped",
+      "size": "M",
+      "created": "2026-11-09",
+      "updated": "2026-11-09",
+      "note": "Out of scope"
     },
     {
       "id": "scripts-in-the-detail-pane",

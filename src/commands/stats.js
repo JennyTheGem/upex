@@ -9,7 +9,13 @@ import { printRows } from '../interactive.js';
 import * as ui from '../ui.js';
 
 const BARS = '▁▂▃▄▅▆▇█';
-const TOP = 10;
+export const TOP = 10;
+
+// Right column of a ranked shortcut: removed, or its all-time opens.
+export function allTime(links, name) {
+  const e = Object.hasOwn(links, name) ? links[name] : null;
+  return !e ? 'removed' : `${e.archived ? 'archived, ' : ''}${e.uses || 0} all time`;
+}
 
 // One block per week, scaled to the busiest week; an empty week is a dim dot.
 export function sparkline(counts) {
@@ -51,11 +57,7 @@ export function registerStats(program) {
       } else {
         const links = loadLinks();
         const opens = c => `${c} open${c === 1 ? '' : 's'}`;
-        printRows(stats.shortcuts.slice(0, TOP).map(([name, count]) => {
-          const entry = Object.hasOwn(links, name) ? links[name] : null;
-          const right = !entry ? 'removed' : `${entry.archived ? 'archived, ' : ''}${entry.uses || 0} all time`;
-          return { name, text: opens(count), style: 'plain', right: chalk.dim(right) };
-        }));
+        printRows(stats.shortcuts.slice(0, TOP).map(([name, count]) => ({ name, text: opens(count), style: 'plain', right: chalk.dim(allTime(links, name)) })));
         if (stats.shortcuts.length > TOP) ui.dim(`  + ${stats.shortcuts.length - TOP} more`);
         ui.blank();
 

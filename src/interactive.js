@@ -713,7 +713,7 @@ const SETTING_ROWS = [
   { section: 'Look', key: 'mouse', label: 'Mouse', scope: 'tui', names: { on: 'On', off: 'Off' } },
   { section: 'Detail pane', key: 'narrowPane', label: 'Pane on narrow', scope: 'tui', names: { toggle: 'Shift+→ / ←', always: 'Always' } },
   { section: 'Detail pane', key: 'paneWidth', label: 'Width', scope: 'tui', names: { normal: 'Normal', narrow: 'Narrow', wide: 'Wide' } },
-  { section: 'Detail pane', key: 'goals', label: 'Open goals', scope: 'tui', names: { off: 'Off', 3: '3', 5: '5', 10: '10' } },
+  { section: 'Detail pane', key: 'goals', label: 'Open goals', scope: 'tui+web', names: { off: 'Off', 3: '3', 5: '5', 10: '10' } },
   { section: 'Detail pane', key: 'git', label: 'Git status', scope: 'tui', names: { off: 'Off', on: 'On' } },
 ];
 // Pane split only matters for split panes, mouse for full screen; Windows-only rows hide elsewhere.
@@ -768,7 +768,7 @@ function settingNote(key, s, wt) {
   if (key === 'groups') return 'By tag: Pinned on top, then a #tag heading per tag in the sort order, like folders; two tags show under both, untagged last. Type #tag to filter.';
   if (key === 'narrowPane') return 'Under 140 columns (full screen): Shift+→ opens the pane, Shift+← or Esc closes it, or it always shows. Not under 60.';
   if (key === 'paneWidth') return 'How much of the screen the pane takes: Narrow leaves the list more room, Wide shows more details.';
-  if (key === 'goals') return 'Pane right of the list (full screen): open upgo goals of a folder, up to this many. S-→ picks one to copy, a click copies it.';
+  if (key === 'goals') return 'Pane right of the list (full screen): open upgo goals of a folder, up to this many. S-→ picks one to copy, a click copies it. upex ui shows them on one line under the name.';
   if (key === 'git') return 'Pane right of the list (full screen): branch, ahead/behind, changes and last commit of a folder in git. ^g opens its web page.';
   if (key === 'keyHints') return 'Key rows under the list. Short: one row of the main keys. ? on an empty filter shows every key (Full and Off too). Off: more room for the list. Settings keeps its keys.';
   if (key === 'glyphs') return 'ASCII swaps arrows, pointers, lines and the ellipsis for plain characters, for fonts that show boxes.';
