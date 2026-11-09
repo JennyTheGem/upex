@@ -1647,10 +1647,11 @@
       "title": "Web UI: arrow key navigation",
       "body": "Up/Down move a focus ring through rows, Enter opens, e edits, Del archives. Today only / and n have keys.",
       "phase": "next",
-      "status": "planned",
+      "status": "done",
       "size": "S",
       "created": "2026-11-09",
-      "updated": "2026-11-09"
+      "updated": "2026-11-09",
+      "note": "Enter in search opens top row, arrow/Home/End row focus, Enter/e/F2/p/Del on a row, focus kept across re-renders; plus More menu, labelled forms, workspace/opener undo and last-entry confirm, search hint, fixed empty states (impeccable critique pass)"
     },
     {
       "id": "publish-to-npm",

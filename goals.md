@@ -19,7 +19,6 @@ Closed sections: §1 Shortcut management · §2 Opening · §3 Resolution & UX �
 ## 7. Web UI
 
 - `web-ui-version-and-update-notice` Web UI: version and update notice (next)
-- `web-ui-arrow-key-navigation` Web UI: arrow key navigation (next)
 
 ## 8. Distribution
 

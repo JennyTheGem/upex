@@ -54,31 +54,48 @@ input, select { caret-color: var(--accent); accent-color: var(--accent); }
 .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 .mono { font-family: var(--mono); font-size: 12.5px; }
 
-/* Top bar */
+/* Shell: sidebar with the views (Settings sections nest under it), then a sticky title + search bar over the content */
+.app { display: grid; grid-template-columns: 216px minmax(0, 1fr); min-height: 100vh; }
+.side {
+  position: sticky; top: 0; height: 100vh; overflow-y: auto; display: flex; flex-direction: column; gap: 16px;
+  padding: 14px 10px; background: var(--panel); border-right: 1px solid var(--line);
+}
+.brand { font-weight: 700; font-size: 16px; letter-spacing: -.01em; display: flex; align-items: center; gap: 8px; padding: 4px 10px; }
+.brand::before { content: ""; width: 8px; height: 8px; border-radius: 2px; background: var(--accent); }
+.side nav { display: grid; gap: 2px; }
+.tab {
+  background: none; border: 0; padding: 7px 10px; border-radius: var(--r); width: 100%; text-align: left;
+  color: var(--muted); cursor: pointer; display: flex; gap: 10px; align-items: center;
+}
+.tab:hover { color: var(--text); background: var(--raise); }
+.tab[aria-current="page"] { color: var(--text); background: var(--raise); font-weight: 600; }
+.tab[aria-current="page"] .i { color: var(--accent); }
+.tab .n { margin-left: auto; font-size: 12px; font-weight: 400; color: var(--muted); font-variant-numeric: tabular-nums; }
+.sub { display: grid; gap: 1px; margin: 2px 0 4px 26px; padding-left: 10px; border-left: 1px solid var(--line); }
+.sub a { color: var(--muted); text-decoration: none; padding: 4px 8px; border-radius: 4px; font-size: 13px; }
+.sub a:hover { color: var(--text); background: var(--raise); }
 header {
   position: sticky; top: 0; z-index: 2;
   background: color-mix(in srgb, var(--bg) 92%, transparent);
   backdrop-filter: blur(8px);
   border-bottom: 1px solid var(--line);
 }
-.bar { max-width: 1080px; margin: 0 auto; padding: 12px 24px; display: flex; align-items: center; gap: 16px; }
-.brand { font-weight: 700; font-size: 16px; letter-spacing: -.01em; display: flex; align-items: center; gap: 8px; }
-.brand::before { content: ""; width: 8px; height: 8px; border-radius: 2px; background: var(--accent); }
-nav { display: flex; gap: 2px; }
-.tab {
-  background: none; border: 0; padding: 6px 10px; border-radius: var(--r);
-  color: var(--muted); cursor: pointer; display: flex; gap: 6px; align-items: baseline;
-}
-.tab:hover { color: var(--text); background: var(--raise); }
-.tab[aria-current="page"] { color: var(--text); background: var(--raise); }
-.tab .n { font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
-.search { margin-left: auto; position: relative; width: min(320px, 40vw); }
+.bar { max-width: 1600px; padding: 12px 32px; display: flex; align-items: center; gap: 16px; min-height: 57px; }
+h1 { font-size: 18px; letter-spacing: -.015em; margin: 0; }
+.search { margin-left: auto; position: relative; width: min(440px, 45vw); }
 .search .i { position: absolute; left: 9px; top: 50%; transform: translateY(-50%); color: var(--muted); }
-.search input { width: 100%; padding-left: 32px; padding-right: 28px; }
+.search input[type="search"] { width: 100%; padding-left: 32px; padding-right: 28px; }
 .search kbd {
   position: absolute; right: 7px; top: 50%; transform: translateY(-50%);
   font: 11px var(--mono); color: var(--muted); border: 1px solid var(--line-strong); border-radius: 4px; padding: 0 5px;
 }
+/* Token and key hint, while the empty search has focus */
+.search .hint {
+  display: none; position: absolute; top: calc(100% + 6px); left: 0; right: 0; z-index: 3;
+  background: var(--panel); border: 1px solid var(--line-strong); border-radius: var(--r);
+  padding: 6px 10px; font: 12.5px/1.6 var(--mono); color: var(--muted); box-shadow: 0 6px 18px rgba(0, 0, 0, .14); white-space: pre-wrap;
+}
+.search:focus-within:has(input:placeholder-shown) .hint:not(:empty) { display: block; }
 
 /* Controls */
 input[type="text"], input[type="number"], input[type="search"], select {
@@ -106,8 +123,8 @@ input[aria-invalid="true"] { border-color: var(--danger); }
 .btn.icon[aria-pressed="true"] { color: var(--accent); }
 .btn.ghost.danger:hover { color: var(--danger); background: var(--danger-soft); }
 
-main { max-width: 1080px; margin: 0 auto; padding: 20px 24px 96px; }
-h1 { font-size: 20px; letter-spacing: -.015em; margin: 8px 0 4px; }
+main { max-width: 1600px; padding: 20px 32px 96px; }
+.set-main { max-width: 980px; }
 .lede { color: var(--muted); margin: 0 0 16px; }
 .toolbar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
 .toolbar .grow { flex: 1; }
@@ -139,12 +156,32 @@ h1 { font-size: 20px; letter-spacing: -.015em; margin: 8px 0 4px; }
 .form .row > input { flex: 1 1 160px; }
 .form .row > .wide { flex: 3 1 260px; }
 .form .err { color: var(--danger); margin: 0; font-size: 13px; }
-.form .set-label { min-width: 104px; color: var(--muted); }
-.seg { display: inline-flex; border: 1px solid var(--line-strong); border-radius: var(--r); padding: 2px; gap: 2px; }
-.seg label { display: flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 4px; cursor: pointer; color: var(--muted); }
+/* Labelled fields in the add and edit forms */
+.fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px 12px; }
+.fld { display: grid; gap: 4px; min-width: 0; }
+.fld > span { font-size: 13px; color: var(--muted); }
+.fld.full { grid-column: 1 / -1; }
+.seg { display: inline-flex; flex-wrap: wrap; background: var(--raise); border: 1px solid var(--line); border-radius: var(--r); padding: 2px; gap: 2px; }
+.seg label { display: flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 4px; cursor: pointer; color: var(--muted); transition: background-color .15s ease-out, color .15s ease-out; }
+.seg label:hover { color: var(--text); }
 .seg input { position: absolute; opacity: 0; pointer-events: none; }
-.seg input:checked + label { background: var(--raise); color: var(--text); }
+.seg input:checked + label { background: var(--panel); color: var(--text); box-shadow: 0 0 0 1px var(--line-strong), 0 1px 2px rgba(0, 0, 0, .12); }
 .seg input:focus-visible + label { outline: 2px solid var(--accent); }
+
+/* Settings: one panel of label | control rows per section */
+.set-sec { scroll-margin-top: 76px; margin-bottom: 36px; }
+.set-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.set-head h2 { font-size: 16px; letter-spacing: -.01em; margin: 0; }
+.set-desc { color: var(--muted); margin: 4px 0 12px; max-width: 70ch; }
+.set-panel { border: 1px solid var(--line); border-radius: var(--r); background: var(--panel); }
+.set-row { display: grid; grid-template-columns: minmax(160px, 220px) minmax(0, 1fr); gap: 8px 24px; align-items: center; padding: 12px 16px; }
+.set-row + .set-row, .set-panel > .set-note { border-top: 1px solid var(--line); }
+.set-name { font-weight: 600; display: block; }
+.set-help { color: var(--muted); font-size: 13px; display: block; margin-top: 1px; }
+.set-ctl { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; min-width: 0; }
+.set-ctl select { min-width: 200px; }
+.set-note { margin: 0; padding: 10px 16px; color: var(--muted); font-size: 13px; background: color-mix(in srgb, var(--raise) 50%, transparent); }
+.set-panel > .list { border: 0; border-radius: 0; background: none; }
 
 /* Shortcut list */
 .list { border: 1px solid var(--line); border-radius: var(--r); background: var(--panel); overflow: hidden; }
@@ -156,6 +193,30 @@ h1 { font-size: 20px; letter-spacing: -.015em; margin: 8px 0 4px; }
 .group .n { margin-left: 8px; opacity: .7; font-variant-numeric: tabular-nums; }
 .group { padding: 6px 12px; font-size: 12px; color: var(--muted); border-top: 1px solid var(--line); background: var(--raise); }
 .item:hover { background: color-mix(in srgb, var(--raise) 55%, transparent); }
+.item:focus { outline: none; }
+.item:focus-visible { background: var(--accent-soft); outline: 2px solid var(--accent); outline-offset: -2px; }
+.name > button { all: unset; cursor: pointer; }
+.name > button:hover { text-decoration: underline; text-underline-offset: 3px; }
+.name > button:disabled { cursor: default; text-decoration: none; }
+.name > .i { color: var(--accent); vertical-align: -2px; margin-right: 4px; width: 14px; height: 14px; }
+/* Row "More" menu (native popover, placed by JS under its button) */
+.menu {
+  inset: auto; margin: 0; min-width: 210px; padding: 4px;
+  background: var(--panel); color: var(--text); border: 1px solid var(--line-strong); border-radius: var(--r);
+  box-shadow: 0 8px 28px rgba(0, 0, 0, .22);
+}
+.menu-open { display: flex; flex-wrap: wrap; gap: 6px; padding: 6px 6px 8px; border-bottom: 1px solid var(--line); margin-bottom: 4px; }
+.menu-open select { flex: 1 1 100%; }
+.menu-open input.count { width: 64px; }
+.menu-open input.start { flex: 1; min-width: 0; }
+.menu > button {
+  display: flex; width: 100%; align-items: center; gap: 10px; padding: 6px 8px; border: 0; border-radius: 4px;
+  background: none; cursor: pointer; text-align: left;
+}
+.menu > button:hover, .menu > button:focus-visible { background: var(--raise); outline: none; }
+.menu > button kbd { margin-left: auto; font: 11px var(--mono); color: var(--muted); }
+.menu > button.danger { color: var(--danger); }
+.menu > hr { border: 0; border-top: 1px solid var(--line); margin: 4px 0; }
 .item > .kind { display: flex; color: var(--muted); }
 .item.broken > .kind { color: var(--warn); }
 .name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -169,8 +230,6 @@ h1 { font-size: 20px; letter-spacing: -.015em; margin: 8px 0 4px; }
 :root[data-paths="hidden"] .item > .target { display: none; }
 :root[data-paths="hidden"] .item:not(.editing) { grid-template-columns: 18px minmax(120px, 1fr) 64px auto; }
 .swatch { width: 10px; height: 10px; border-radius: 3px; background: var(--accent); }
-.set-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-.set-head h2 { font-size: 15px; margin: 0; }
 .custom-accent {
   display: inline-flex; align-items: center; gap: 6px; height: var(--h); padding: 0 10px 0 4px; cursor: pointer;
   color: var(--muted); border: 1px solid var(--line-strong); border-radius: var(--r); font-family: var(--mono); font-size: 12.5px;
@@ -185,9 +244,6 @@ h1 { font-size: 20px; letter-spacing: -.015em; margin: 8px 0 4px; }
 .c-gray { color: var(--muted); }
 .when { color: var(--muted); font-size: 12px; text-align: right; font-variant-numeric: tabular-nums; }
 .actions { display: flex; gap: 4px; align-items: center; justify-content: flex-end; }
-.actions select { height: var(--h); width: 122px; }
-.actions input.count { width: 56px; }
-.actions input.start { width: 150px; }
 [hidden] { display: none !important; }
 .item.editing { grid-template-columns: 1fr; background: var(--raise); }
 .item.editing .form { margin: 0; border: 0; padding: 4px 0; background: none; }
@@ -226,6 +282,13 @@ h1 { font-size: 20px; letter-spacing: -.015em; margin: 8px 0 4px; }
 #status.error { color: var(--danger); border-color: color-mix(in srgb, var(--danger) 50%, transparent); }
 
 @media (max-width: 760px) {
+  /* The sidebar turns into a top row of tabs. */
+  .app { grid-template-columns: minmax(0, 1fr); }
+  .side { position: static; height: auto; flex-direction: row; align-items: center; gap: 8px; padding: 8px 12px; border-right: 0; border-bottom: 1px solid var(--line); overflow-x: auto; }
+  .side nav { display: flex; }
+  .brand { padding: 4px 6px; }
+  .tab { width: auto; white-space: nowrap; }
+  .tab .i, .sub { display: none; }
   .bar { flex-wrap: wrap; padding: 10px 16px; gap: 10px; }
   .search { width: 100%; order: 3; }
   .search kbd { display: none; }
@@ -239,7 +302,10 @@ h1 { font-size: 20px; letter-spacing: -.015em; margin: 8px 0 4px; }
   :root[data-paths="hidden"] .item:not(.editing) { grid-template-columns: 18px minmax(0, 1fr) auto; grid-template-areas: "i n w" "a a a"; }
   .ws-entry { grid-template-columns: 1fr 1fr auto; }
   .ws-entry .start { grid-column: 1 / 3; }
+  .fields { grid-template-columns: minmax(0, 1fr); }
+  .set-row { grid-template-columns: minmax(0, 1fr); padding: 12px; }
 }
+@media (prefers-reduced-motion: no-preference) { html { scroll-behavior: smooth; } }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
 </style>
 </head>
@@ -262,27 +328,39 @@ h1 { font-size: 20px; letter-spacing: -.015em; margin: 8px 0 4px; }
   <symbol id="i-archive" viewBox="0 0 24 24"><rect x="3.5" y="4.5" width="17" height="4" rx="1"/><path d="M5 8.5v10a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-10M10 12.5h4"/></symbol>
   <symbol id="i-pin" viewBox="0 0 24 24"><path d="M9 4h6l-1 6 3.5 3.5h-11L10 10zM12 13.5V20"/></symbol>
   <symbol id="i-x" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></symbol>
+  <symbol id="i-ws" viewBox="0 0 24 24"><rect x="3.5" y="4.5" width="12" height="9" rx="1.5"/><path d="M8.5 16.5v1.5a1.5 1.5 0 0 0 1.5 1.5h9a1.5 1.5 0 0 0 1.5-1.5v-6a1.5 1.5 0 0 0-1.5-1.5h-1"/></symbol>
+  <symbol id="i-sliders" viewBox="0 0 24 24"><path d="M4 7h9M17 7h3M4 17h3M11 17h9"/><circle cx="15" cy="7" r="2"/><circle cx="9" cy="17" r="2"/></symbol>
+  <symbol id="i-more" viewBox="0 0 24 24"><path d="M5.5 12h.01M12 12h.01M18.5 12h.01" stroke-width="3"/></symbol>
 </svg>
 
+<div class="app">
+<aside class="side">
+  <div class="brand">upex</div>
+  <nav aria-label="Views">
+    <button class="tab" data-view="links"><svg class="i" aria-hidden="true"><use href="#i-folder"/></svg>Shortcuts <span class="n" id="n-links"></span></button>
+    <button class="tab" data-view="apps"><svg class="i" aria-hidden="true"><use href="#i-app"/></svg>Apps <span class="n" id="n-apps"></span></button>
+    <button class="tab" data-view="ws"><svg class="i" aria-hidden="true"><use href="#i-ws"/></svg>Workspaces <span class="n" id="n-ws"></span></button>
+    <button class="tab" data-view="settings"><svg class="i" aria-hidden="true"><use href="#i-sliders"/></svg>Settings</button>
+    <div class="sub" id="set-links" hidden></div>
+  </nav>
+</aside>
+<div>
 <header>
   <div class="bar">
-    <div class="brand">upex</div>
-    <nav aria-label="Views">
-      <button class="tab" data-view="links">Shortcuts <span class="n" id="n-links"></span></button>
-      <button class="tab" data-view="apps">Apps <span class="n" id="n-apps"></span></button>
-      <button class="tab" data-view="ws">Workspaces <span class="n" id="n-ws"></span></button>
-      <button class="tab" data-view="settings">Settings</button>
-    </nav>
+    <h1 id="title">upex</h1>
     <div class="search">
       <svg class="i" aria-hidden="true"><use href="#i-search"/></svg>
       <label class="sr" for="q">Search shortcuts</label>
-      <input id="q" type="search" placeholder="Search names, paths, tags" autocomplete="off" spellcheck="false">
+      <input id="q" type="search" placeholder="Search names, paths, tags" autocomplete="off" spellcheck="false" aria-describedby="q-hint">
       <kbd>/</kbd>
+      <div class="hint" id="q-hint"></div>
     </div>
   </div>
 </header>
 
 <main id="main" aria-busy="true"><p class="lede">Loading shortcuts…</p></main>
+</div>
+</div>
 <div id="status" role="status" aria-live="polite"></div>
 
 <script nonce="__NONCE__">
@@ -367,6 +445,8 @@ function icon(name) {
 }
 const btn = (label, cls, onclick, ico, extra) =>
   h('button', { type: 'button', class: 'btn ' + (cls || ''), onclick, ...extra }, ico && icon(ico), label);
+// A visible label over a form control.
+const fld = (label, input, full) => h('label', { class: 'fld' + (full ? ' full' : '') }, h('span', null, label), input);
 // Open a panel, then focus its first field (only on open, so re-renders never steal focus).
 function openPanel(key, id) {
   S[key] = true;
@@ -389,12 +469,13 @@ async function api(method, path, body) {
 }
 
 let statusTimer;
-// `undo`: the toast gets an Undo button that steps back one links.json backup, like upex undo.
+// `undo`: the toast gets an Undo button; true steps back one links.json backup like upex undo, a function runs that instead.
 function say(msg, isError, undo) {
   const el = document.getElementById('status');
   el.replaceChildren(msg);
+  const back = typeof undo === 'function' ? undo : () => api('POST', 'undo');
   // Gone on click, so a second Enter can't undo one more step while the request runs.
-  if (undo) el.append(btn('Undo', 'ghost', e => { el.className = ''; e.currentTarget.remove(); act(() => api('POST', 'undo'), 'Undone'); }));
+  if (undo) el.append(btn('Undo', 'ghost', e => { el.className = ''; e.currentTarget.remove(); act(back, 'Undone'); }));
   el.className = 'show' + (isError ? ' error' : '') + (undo ? ' undo' : '');
   clearTimeout(statusTimer);
   statusTimer = setTimeout(() => { el.className = isError ? 'error' : ''; el.querySelector('button')?.remove(); }, isError || undo ? 6000 : 2600);
@@ -458,7 +539,7 @@ const isTerm = key => Boolean((S.apps.find(a => a.key === key) || {}).terminal);
 const dflt = l => l.opener || (!l.file && S.settings.defaultOpener);
 
 // Default opener picker for folder shortcuts ('' = none). Shows the current one even if it's copy or unknown.
-const openerSelect = (value, set) => h('select', { 'aria-label': 'Default opener', onchange: e => set(e.target.value) },
+const openerSelect = (value, set) => h('select', { onchange: e => set(e.target.value) },
   h('option', { value: '' }, 'Default opener'),
   S.apps.filter(a => a.key !== 'copy' || a.key === value).map(a => h('option', { value: a.key, selected: value === a.key }, a.label)),
   !!value && !S.apps.some(a => a.key === value) && h('option', { value, selected: true }, value + ' (unknown)'));
@@ -513,14 +594,15 @@ function addForm() {
   const d = S.add;
   const field = (key, attrs) => h('input', { type: 'text', value: d[key], spellcheck: 'false', autocomplete: 'off',
     oninput: e => (d[key] = e.target.value), ...attrs });
-  const target = field('target', { class: 'wide mono', placeholder: placeholder(S.addKind), 'aria-label': KINDS[S.addKind] + ' target' });
+  const target = field('target', { class: 'mono', placeholder: placeholder(S.addKind) });
+  const targetLabel = h('span', null, KINDS[S.addKind] === 'Folder' ? 'Folder path' : KINDS[S.addKind]);
   const kinds = TAB_KINDS[S.view];
   const seg = kinds.length > 1 && h('div', { class: 'seg', role: 'radiogroup', 'aria-label': 'Kind' },
     kinds.map(k => [k, KINDS[k]]).map(([k, label]) => [
       h('input', { type: 'radio', name: 'kind', id: 'k-' + k, checked: S.addKind === k, onchange: () => {
         S.addKind = k;
         target.placeholder = placeholder(k);
-        target.setAttribute('aria-label', label + ' target');
+        targetLabel.textContent = k === 'folder' ? 'Folder path' : label;
       } }),
       h('label', { for: 'k-' + k }, icon(k), label),
     ]));
@@ -538,11 +620,11 @@ function addForm() {
   };
   const form = h('form', { class: 'form', onsubmit: submit, onkeydown: e => e.key === 'Escape' && close() },
     seg && h('div', { class: 'row' }, seg),
-    h('div', { class: 'row' },
-      field('name', { id: 'add-name', placeholder: 'name', 'aria-label': 'Name' }),
-      target,
-      field('tags', { placeholder: 'tags, comma separated', 'aria-label': 'Tags' }),
-      S.addKind === 'folder' && openerSelect(d.opener, v => (d.opener = v))),
+    h('div', { class: 'fields' },
+      fld('Name', field('name', { id: 'add-name', placeholder: 'e.g. web' })),
+      h('label', { class: 'fld' }, targetLabel, target),
+      fld('Tags', field('tags', { placeholder: 'comma separated' })),
+      S.addKind === 'folder' && fld('Opens in', openerSelect(d.opener, v => (d.opener = v)))),
     h('div', { class: 'row' },
       h('button', { type: 'submit', class: 'btn primary' }, icon('plus'), S.view === 'apps' ? 'Add app' : 'Add shortcut'),
       btn('Cancel', 'ghost', () => close())),
@@ -556,7 +638,7 @@ function editRow(l) {
   const err = h('p', { class: 'err', role: 'alert' }, S.editErr);
   const field = (key, attrs) => h('input', { type: 'text', value: d[key], spellcheck: 'false', autocomplete: 'off',
     oninput: e => (d[key] = e.target.value), ...attrs });
-  const name = field('name', { id: 'edit-name', 'aria-label': 'Name' });
+  const name = field('name', { id: 'edit-name' });
   const save = async (e) => {
     e.preventDefault();
     try {
@@ -569,19 +651,18 @@ function editRow(l) {
     }
   };
   const cancel = () => { S.editing = null; S.editErr = ''; render(); };
-  return h('div', { class: 'item editing' },
+  return h('div', { class: 'item editing', 'data-name': l.name },
     h('form', { class: 'form', onsubmit: save, onkeydown: e => e.key === 'Escape' && cancel() },
-      h('div', { class: 'row' },
-        name,
-        field('target', { class: 'wide mono', 'aria-label': KINDS[l.kind] + ' target', placeholder: placeholder(l.kind) }),
-        field('tags', { 'aria-label': 'Tags', placeholder: 'tags, comma separated' }),
-        field('aliases', { 'aria-label': 'Aliases', placeholder: 'aliases, comma separated' }),
-        field('note', { class: 'wide', 'aria-label': 'Note', placeholder: 'note', spellcheck: 'true' }),
-        field('color', { 'aria-label': 'Color label', placeholder: 'color, #hex or emoji', list: 'colors',
-          title: 'A dot before the name: ' + COLORS.join(', ') + ', #rrggbb or one emoji. Empty: none.' }),
+      h('div', { class: 'fields' },
+        fld('Name', name),
+        fld(l.kind === 'folder' ? 'Folder path' : KINDS[l.kind], field('target', { class: 'mono', placeholder: placeholder(l.kind) })),
+        fld('Tags', field('tags', { placeholder: 'comma separated' })),
+        fld('Aliases', field('aliases', { placeholder: 'other names, comma separated' })),
+        fld('Note', field('note', { placeholder: 'shown under the name', spellcheck: 'true' }), true),
+        fld('Color label', field('color', { placeholder: COLORS.join(', ') + ', #hex or emoji', list: 'colors' })),
         h('datalist', { id: 'colors' }, COLORS.map(c => h('option', { value: c }))),
         // Opener is only sent once changed, so a stale one doesn't block saving other edits.
-        l.kind === 'folder' && openerSelect(d.opener ?? l.opener, v => (d.opener = v))),
+        l.kind === 'folder' && fld('Opens in', openerSelect(d.opener ?? l.opener, v => (d.opener = v)))),
       h('div', { class: 'row' },
         h('button', { type: 'submit', class: 'btn primary' }, icon('check'), 'Save'),
         btn('Cancel', 'ghost', cancel)),
@@ -599,17 +680,24 @@ function splitLeaf(l) {
 function row(l, again) {
   if (S.editing === l.name && !again) return editRow(l);
 
-  let actions;
+  let actions, open;
   const archive = (on) => act(() => api('PUT', 'archive', { name: l.name, archived: on }), `${on ? 'Archived' : 'Restored'} ${l.name}`, on);
+  const confirmDelete = () => { S.confirming = l.name; render(); focusIn(l.name, 'keep'); };
+  const edit = () => {
+    S.editing = l.name; S.editErr = '';
+    S.draft = { name: l.name, target: l.target, tags: l.tags.join(', '), aliases: l.aliases.join(', '), note: l.note, color: l.color };
+    render();
+    document.getElementById('edit-name')?.focus();
+  };
   if (S.confirming === l.name) {
     actions = h('div', { class: 'actions confirm' },
       h('span', null, `Delete ${l.name}?`),
       btn('Delete', 'danger solid', () => { S.confirming = null; act(() => api('DELETE', 'links', { name: l.name }), `Deleted ${l.name}`, true); }),
-      btn('Keep', 'ghost', () => { S.confirming = null; render(); }));
+      btn('Keep', 'ghost', () => { S.confirming = null; render(); }, null, { 'data-k': 'keep' }));
   } else if (l.archived) {
     actions = h('div', { class: 'actions' },
-      btn('Restore', '', () => archive(false), 'archive'),
-      iconBtn('trash', `Delete ${l.name}`, 'danger', () => { S.confirming = l.name; render(); }));
+      btn('Restore', '', () => archive(false), 'archive', { 'data-k': 'restore' }),
+      iconBtn('trash', `Delete ${l.name}`, 'danger', confirmDelete, { 'data-k': 'trash' }));
   } else {
     // Window count and start command only show for a terminal opener.
     const term = isTerm(S.openWith[l.name] || dflt(l));
@@ -617,38 +705,46 @@ function row(l, again) {
       hidden: !term, 'aria-label': `Windows for ${l.name}`, oninput: e => (S.openCount[l.name] = e.target.value) });
     const start = h('input', { type: 'text', class: 'start mono', placeholder: 'start command', value: S.openStart[l.name] || '',
       hidden: !term, spellcheck: 'false', 'aria-label': `Start command for ${l.name}`, oninput: e => (S.openStart[l.name] = e.target.value) });
+    // The Open button names a picked opener, so the choice stays visible with the menu closed.
+    const openLabel = () => (S.openWith[l.name] ? 'Open in ' + appLabel(S.openWith[l.name]) : 'Open');
     const openWith = l.kind === 'folder' && h('select', { 'aria-label': `Open ${l.name} with`, onchange: e => {
         S.openWith[l.name] = e.target.value;
         count.hidden = start.hidden = !isTerm(e.target.value || dflt(l));
+        openBtn.lastChild.textContent = openLabel();
       } },
       h('option', { value: '' }, dflt(l) ? 'Default: ' + appLabel(dflt(l)) : 'Default app'),
       S.apps.map(a => h('option', { value: a.key, selected: S.openWith[l.name] === a.key }, a.label)));
-    const open = () => act(() => api('POST', 'open', {
+    open = () => !l.broken && act(() => api('POST', 'open', {
       name: l.name, app: S.openWith[l.name] || undefined, ...(!count.hidden && { count: count.value, start: start.value }),
     }), `Opened ${l.name}`);
     const copy = () => Promise.resolve().then(() => navigator.clipboard.writeText(l.target))
       .then(() => say('Copied ' + l.target), () => say('Could not copy to the clipboard.', true));
-    actions = h('div', { class: 'actions' },
-      openWith, count, start,
-      btn('Open', '', open, 'open', { disabled: l.broken, title: l.broken ? 'Path is missing. Edit it first.' : null }),
-      iconBtn('pin', l.pinned ? `Unpin ${l.name}` : `Pin ${l.name} to the top`, '',
-        () => act(() => api('PUT', 'pin', { name: l.name, pinned: !l.pinned }), `${l.pinned ? 'Unpinned' : 'Pinned'} ${l.name}`),
-        { 'aria-pressed': String(l.pinned) }),
-      iconBtn('copy', `Copy ${COPY_WORD[l.kind]} of ${l.name}`, '', copy),
-      iconBtn('edit', `Edit ${l.name}`, '', () => {
-        S.editing = l.name; S.editErr = '';
-        S.draft = { name: l.name, target: l.target, tags: l.tags.join(', '), aliases: l.aliases.join(', '), note: l.note, color: l.color };
-        render();
-        document.getElementById('edit-name')?.focus();
-      }),
-      iconBtn('archive', `Archive ${l.name} (hide it, restore any time)`, '', () => archive(true)),
-      iconBtn('trash', `Delete ${l.name}`, 'danger', () => { S.confirming = l.name; render(); }));
+    const openBtn = btn('', '', open, 'open', { 'data-k': 'open', disabled: l.broken, title: l.broken ? 'Path is missing. Edit it first.' : null });
+    openBtn.lastChild.textContent = openLabel();
+    actions = h('div', { class: 'actions' }, openBtn,
+      moreMenu(l.name, [
+        (openWith || !count.hidden) && h('div', { class: 'menu-open' }, openWith, count, start),
+        ['pin', l.pinned ? 'Unpin' : 'Pin to top', 'P', () => act(() => api('PUT', 'pin', { name: l.name, pinned: !l.pinned }), `${l.pinned ? 'Unpinned' : 'Pinned'} ${l.name}`)],
+        ['copy', 'Copy ' + COPY_WORD[l.kind], '', copy],
+        ['edit', 'Edit', 'E', edit],
+        null,
+        ['archive', 'Archive', 'Del', () => archive(true)],
+        ['trash', 'Delete…', '', confirmDelete, 'danger'],
+      ]));
   }
+  // Keys on a focused row; Del archives like the selector. None while it asks to delete.
+  const keys = S.confirming === l.name ? {} : { Enter: open, e: edit, F2: edit, p: !l.archived && (() => act(() => api('PUT', 'pin', { name: l.name, pinned: !l.pinned }), `${l.pinned ? 'Unpinned' : 'Pinned'} ${l.name}`)),
+    Delete: l.archived ? confirmDelete : () => archive(true) };
 
-  return h('div', { class: 'item' + (l.broken ? ' broken' : '') },
+  const el = h('div', { class: 'item' + (l.broken ? ' broken' : ''), tabindex: '-1', 'data-name': l.name,
+      onkeydown: e => {
+        const fn = e.target === e.currentTarget && !e.ctrlKey && !e.metaKey && !e.altKey && keys[e.key];
+        if (fn) { e.preventDefault(); fn(); }
+      } },
     h('span', { class: 'kind', title: l.broken ? 'Path missing' : KINDS[l.kind] }, icon(l.broken ? 'alert' : l.kind)),
     h('div', { class: 'nm' },
-      h('div', { class: 'name', title: l.name }, dot(l.color), l.name),
+      h('div', { class: 'name', title: l.name }, l.pinned && h('span', { class: 'sr' }, 'Pinned: '), l.pinned && icon('pin'), dot(l.color),
+        open ? h('button', { type: 'button', tabindex: '-1', disabled: l.broken, onclick: open }, l.name) : l.name),
       ((shows('tags') && l.tags.length > 0) || l.aliases.length > 0) && h('div', { class: 'tags' },
         l.aliases.length > 0 && h('span', { class: 'tag', title: 'Aliases' }, 'aka ' + l.aliases.join(', ')),
         shows('tags') && l.tags.map(t => h('span', { class: 'tag' }, '#' + t))),
@@ -656,6 +752,39 @@ function row(l, again) {
     h('div', { class: 'target mono', title: l.target }, l.broken && shows('badges') && h('span', { class: 'miss' }, 'missing'), ...splitLeaf(l)),
     h('div', { class: 'when', title: S.settings.usage === 'opens' ? 'Times opened' : 'Last opened' }, usage(l)),
     actions);
+  el.open = open;
+  return el;
+}
+
+let menuSeq = 0;
+// "More" button plus its popover menu: a node goes in as is, [icon, label, key hint, fn, class] is a menu item, null a divider.
+function moreMenu(name, items) {
+  const id = 'menu-' + ++menuSeq;
+  // Focus starts on the first item, not the opener select, where arrows would change the opener.
+  const menu = h('div', { class: 'menu', id, popover: 'auto', role: 'group', 'aria-label': `More for ${name}`,
+      ontoggle: e => { if (e.newState === 'open') menu.querySelector(':scope > button')?.focus(); },
+      onkeydown: e => {
+        if (!['ArrowDown', 'ArrowUp'].includes(e.key) || e.target.parentElement !== menu) return;
+        e.preventDefault();
+        const all = [...menu.querySelectorAll(':scope > button')];
+        all[(all.indexOf(e.target) + (e.key === 'ArrowDown' ? 1 : -1) + all.length) % all.length]?.focus();
+      } },
+    items.filter(x => x !== false && x !== undefined).map(x => (x === null ? h('hr')
+      : x instanceof Node ? x
+      : h('button', { type: 'button', class: x[4] || null, onclick: () => { menu.hidePopover(); x[3](); } },
+        icon(x[0]), x[1], x[2] && h('kbd', null, x[2])))));
+  const more = h('button', { type: 'button', class: 'btn icon ghost', 'aria-label': `More for ${name}`, title: 'More',
+    popovertarget: id, 'data-k': 'more', onclick: () => place(more, menu) }, icon('more'));
+  return [more, menu];
+}
+// Put a popover under its button, flipped up or left when it would leave the window.
+function place(anchor, pop) {
+  requestAnimationFrame(() => {
+    const a = anchor.getBoundingClientRect();
+    const p = pop.getBoundingClientRect();
+    pop.style.left = Math.max(8, Math.min(a.right - p.width, innerWidth - p.width - 8)) + 'px';
+    pop.style.top = (a.bottom + 4 + p.height > innerHeight - 8 ? Math.max(8, a.top - 4 - p.height) : a.bottom + 4) + 'px';
+  });
 }
 
 function linksView() {
@@ -705,7 +834,7 @@ function linksView() {
   } else if (!list.length) {
     out.push(h('div', { class: 'list' }, h('div', { class: 'empty' },
       h('strong', null, 'Nothing matches'),
-      `No shortcut has "${S.q || '#' + S.tag}" in its name, alias, target or tags.`,
+      `No ${S.archived ? 'archived ' : ''}${isApps ? 'app' : 'shortcut'} matches ${[S.q.trim(), S.tag && '#' + S.tag].filter(Boolean).join(' ')}.`,
       h('div', null, btn('Clear filters', '', () => { S.q = ''; S.tag = null; document.getElementById('q').value = ''; render(); })))));
   } else if (S.settings.groups === 'tags' && !S.q.trim() && !S.tag && list.some(l => l.tags.length)) {
     const seen = new Set();
@@ -753,13 +882,22 @@ function entryForm(key, init, onSubmit, editing) {
 }
 
 // prev: the list this page saw (null = new); the server refuses if it changed since.
-const saveWs = (name, entries, msg, prev) => act(() => api('PUT', 'workspace', { name, entries, prev }), msg);
+// `undoable`: the toast's Undo puts `prev` back (workspaces live in config.json, which upex undo doesn't cover).
+// Its own `prev` is the list right after this save, so a change since (CLI, then a reload) refuses instead of being overwritten.
+async function saveWs(name, entries, msg, prev, undoable) {
+  let after;
+  const ok = await act(() => api('PUT', 'workspace', { name, entries, prev }), msg,
+    undoable && (() => api('PUT', 'workspace', { name, entries: prev, prev: after })));
+  after = S.workspaces[name] ?? null;
+  return ok;
+}
+const confirmWsDelete = name => { S.confirmWs = name; render(); document.getElementById('ws-keep')?.focus(); };
 function wsHead(name, entries) {
   if (S.confirmWs === name) {
     return h('div', { class: 'ws-head' }, h('h2', null, name),
       h('div', { class: 'confirm' }, h('span', null, `Delete workspace ${name}?`),
-        btn('Delete', 'danger solid', () => { S.confirmWs = null; saveWs(name, [], `Deleted ${name}`, entries); }),
-        btn('Keep', 'ghost', () => { S.confirmWs = null; render(); })));
+        btn('Delete', 'danger solid', () => { S.confirmWs = null; saveWs(name, [], `Deleted ${name}`, entries, true); }),
+        btn('Keep', 'ghost', () => { S.confirmWs = null; render(); }, null, { id: 'ws-keep' })));
   }
   if (S.renamingWs === name) {
     const cancel = () => { S.renamingWs = null; render(); };
@@ -782,7 +920,7 @@ function wsHead(name, entries) {
       render();
       document.getElementById('ws-rename')?.select();
     }),
-    iconBtn('trash', `Delete workspace ${name}`, 'danger', () => { S.confirmWs = name; render(); }));
+    iconBtn('trash', `Delete workspace ${name}`, 'danger', () => confirmWsDelete(name)));
 }
 
 function wsBlock(name, entries) {
@@ -824,8 +962,9 @@ function wsBlock(name, entries) {
             render();
             document.getElementById('ws-edit-first')?.focus();
           }),
-          iconBtn('x', `Remove ${e.shortcut} from ${name}`, 'danger', () =>
-            saveWs(name, entries.filter((_, j) => j !== i), entries.length === 1 ? `Deleted ${name}` : `Removed ${e.shortcut}`, entries))))),
+          // The last entry going deletes the workspace, so that asks first.
+          iconBtn('x', `Remove ${e.shortcut} from ${name}`, 'danger', () => (entries.length === 1 ? confirmWsDelete(name)
+            : saveWs(name, entries.filter((_, j) => j !== i), `Removed ${e.shortcut}`, entries, true)))))),
     entryForm(name, {}, d => saveWs(name, [...entries, d], `Added ${d.shortcut} to ${name}`, entries)));
 }
 
@@ -857,6 +996,12 @@ function wsView() {
       'A workspace opens several shortcuts at once, like a project in VS Code plus two terminals running claude.',
       h('div', null, btn('Create a workspace', 'primary', () => openPanel('newWs', 'ws-name'), 'plus')))));
   }
+  if (!names.length && Object.keys(S.workspaces).length) {
+    out.push(h('div', { class: 'list' }, h('div', { class: 'empty' },
+      h('strong', null, 'Nothing matches'),
+      `No workspace name has ${S.q.trim()} in it.`,
+      h('div', null, btn('Clear search', '', () => { S.q = ''; document.getElementById('q').value = ''; render(); })))));
+  }
   for (const n of names) out.push(wsBlock(n, S.workspaces[n]));
   return out;
 }
@@ -865,11 +1010,15 @@ function wsView() {
 
 function settingsView() {
   const s = S.settings;
+  // A settings row: name and one help line on the left, the control on the right.
+  const setRow = (key, title, help, ...ctl) => h('div', { class: 'set-row' },
+    h('div', null, h(key === 'defaultOpener' ? 'label' : 'span', { class: 'set-name', id: 'lbl-' + key, for: key === 'defaultOpener' ? 'set-opener' : null }, title),
+      h('span', { class: 'set-help', id: 'help-' + key }, help)),
+    h('div', { class: 'set-ctl' }, ctl));
   // One labelled radio group per setting; saves on change and keeps focus on the picked option.
   // `deco(k)` adds something before an option's label (the accent swatches), `extra` goes after the group.
-  const seg = (key, title, msg, deco, extra) => h('div', { class: 'row' },
-    h('span', { class: 'set-label', id: 'lbl-' + key }, title),
-    h('div', { class: 'seg', role: 'radiogroup', 'aria-labelledby': 'lbl-' + key },
+  const seg = (key, title, help, msg, deco, extra) => setRow(key, title, help,
+    h('div', { class: 'seg', role: 'radiogroup', 'aria-labelledby': 'lbl-' + key, 'aria-describedby': 'help-' + key },
       // Off Windows (wt null) there are no tabs or panes.
       Object.entries(SETTING_OPTS[key]).filter(([k]) => S.wt !== null || key !== 'terminalLayout' || k === 'here' || k === 'windows').map(([k, label]) => [
         h('input', { type: 'radio', name: key, id: `${key}-${k}`, checked: s[key] === k, onchange: () =>
@@ -883,11 +1032,14 @@ function settingsView() {
     S.wt === false && s.terminalShell === 'profile' && 'Without Windows Terminal, the default profile falls back to cmd.',
     S.wt && s.terminalShell === 'profile' && 'A start command (like claude) runs in cmd, since upex cannot know which shell your default profile uses.',
   ].filter(Boolean);
-  // Section heading with a Reset button, off while the section is already at its defaults.
-  const head = (id, title, keys) => h('div', { class: 'set-head' },
-    h('h2', { id }, title),
-    btn('Reset', 'ghost', () => act(() => api('PUT', 'settings/reset', { keys }), `${title} back to defaults`),
-      null, { disabled: keys.every(k => s[k] === S.defaults[k]), title: `Reset ${title} settings to their defaults` }));
+  // A section: heading with a Reset button (off while already at the defaults; none without `keys`), description, one panel.
+  const sec = (id, title, desc, keys, ...rows) => h('section', { class: 'set-sec', id, 'aria-labelledby': id + '-h' },
+    h('div', { class: 'set-head' },
+      h('h2', { id: id + '-h' }, title),
+      keys && btn('Reset', 'ghost', () => act(() => api('PUT', 'settings/reset', { keys }), `${title} back to defaults`),
+        null, { disabled: keys.every(k => s[k] === S.defaults[k]), title: `Reset ${title} settings to their defaults` })),
+    h('p', { class: 'set-desc' }, desc),
+    h('div', { class: 'set-panel' }, rows));
   const hex = isHex(s.accent) ? s.accent : '';
   // Any color: saved when the picker closes, not on every drag.
   const customAccent = h('label', { class: 'custom-accent' + (hex ? ' on' : ''), title: 'Pick any accent color' },
@@ -897,47 +1049,40 @@ function settingsView() {
     hex || 'Custom');
   const pickOpener = e => act(() => api('PUT', 'settings', { defaultOpener: e.target.value }), `Folders open in ${appLabel(e.target.value)}`)
     .then(() => document.getElementById('set-opener')?.focus());
-  return [
-    h('section', { class: 'form', 'aria-labelledby': 'set-gen' },
-      head('set-gen', 'General', ['startView', 'views', 'sort', 'searchIn', 'staleAfter']),
-      h('p', { class: 'lede', style: 'margin:0' }, 'Shared with the upex selector in the terminal.'),
-      seg('startView', 'Start view', l => `upex opens on ${l}`),
-      seg('views', 'Tabs', l => `Tabs: ${l}`),
-      seg('sort', 'Sort', l => `Sorted: ${l}`),
-      seg('searchIn', 'Search in', l => `Search: ${l.toLowerCase()}`),
-      seg('staleAfter', 'Stale after', l => `is:stale: not opened in ${l}`)),
-    h('section', { class: 'form', 'aria-labelledby': 'set-term' },
-      head('set-term', 'Terminals', ['terminalLayout', 'paneSplit', 'terminalShell']),
-      h('p', { class: 'lede', style: 'margin:0' }, S.wt === null ? 'Where terminal openers run: in the terminal upex runs in, or in a new window.'
-        : 'The shell terminal openers start, and whether they run in this terminal, in new windows, or as tabs or split panes in your current Windows Terminal window.'),
-      seg('terminalLayout', 'Layout', l => `Terminals open in ${l.toLowerCase()}`),
-      S.wt !== null && s.terminalLayout === 'panes' && seg('paneSplit', 'Pane split', l => `Panes split: ${l.toLowerCase()}`),
-      S.wt !== null && seg('terminalShell', 'Shell', l => `Terminals start ${l}`),
-      notes.map(n => h('p', { class: 'tag', style: 'margin:0' }, n))),
-    h('section', { class: 'form', 'aria-labelledby': 'set-open' },
-      head('set-open', 'Opening', ['defaultOpener']),
-      h('p', { class: 'lede', style: 'margin:0' }, 'Folder shortcuts without their own opener open in this app. Files still open in their default app.'),
-      h('div', { class: 'row' },
-        h('label', { class: 'set-label', for: 'set-opener' }, 'Default opener'),
-        h('select', { id: 'set-opener', onchange: pickOpener },
+  const sections = [
+    sec('set-gen', 'General', 'Shared with the upex selector in the terminal.', ['startView', 'views', 'searchIn', 'staleAfter'],
+      seg('startView', 'Start view', 'The tab upex and this page open on.', l => `upex opens on ${l}`),
+      seg('views', 'Tabs', 'Which tabs show, here and in the selector.', l => `Tabs: ${l}`),
+      seg('searchIn', 'Search in', 'What plain search text matches. #tag, @opener and is: always work.', l => `Search: ${l.toLowerCase()}`),
+      seg('staleAfter', 'Stale after', 'Not opened for this long counts as stale (is:stale).', l => `is:stale: not opened in ${l}`)),
+    sec('set-list', 'List', 'How shortcut lists are ordered and what each row shows, here and in the selector.',
+      ['sort', 'pinned', 'groups', 'paths', 'rowDetails', 'usage'],
+      seg('sort', 'Sort', 'Order of the list.', l => `Sorted: ${l}`),
+      seg('pinned', 'Pinned', 'Pinned shortcuts on top, or under their own heading.', l => `Pinned: ${l}`),
+      seg('groups', 'Groups', 'Headings per tag while not searching.', l => `Groups: ${l}`),
+      seg('paths', 'Paths', 'How a row shows its folder path.', l => `Paths: ${l}`),
+      seg('rowDetails', 'Row details', 'Tags and badges (pinned, app, missing) on a row.', l => `Row details: ${l}`),
+      seg('usage', 'Usage', 'Last opened or open count at the right of a row.', l => `Usage: ${l}`)),
+    sec('set-look', 'Look', 'Theme is this page only. Accent and density also apply to the selector.', ['theme', 'accent', 'density'],
+      seg('theme', 'Theme', 'Light or dark for this page.', l => `Theme: ${l}`),
+      seg('accent', 'Accent', 'Highlight color.', l => `Accent: ${l}`, k => h('span', { class: 'swatch ac-' + k, 'aria-hidden': 'true' }), customAccent),
+      seg('density', 'Density', 'Row spacing.', l => `Density: ${l}`)),
+    sec('set-open', 'Opening', 'What a folder shortcut opens in when it has no opener of its own.', ['defaultOpener'],
+      setRow('defaultOpener', 'Default opener', 'Files still open in their default app.',
+        h('select', { id: 'set-opener', 'aria-describedby': 'help-defaultOpener', onchange: pickOpener },
           S.apps.filter(a => a.key !== 'copy').map(a => h('option', { value: a.key, selected: s.defaultOpener === a.key }, a.label)),
           !S.apps.some(a => a.key === s.defaultOpener) && h('option', { value: s.defaultOpener, selected: true }, s.defaultOpener)))),
-    h('section', { class: 'form', 'aria-labelledby': 'set-look' },
-      head('set-look', 'Appearance', ['theme', 'accent', 'density', 'paths', 'rowDetails', 'usage', 'pinned', 'groups']),
-      h('p', { class: 'lede', style: 'margin:0' }, 'All but theme also apply to the upex selector. Theme is this page only, the terminal keeps its own colors.'),
-      seg('theme', 'Theme', l => `Theme: ${l}`),
-      seg('accent', 'Accent', l => `Accent: ${l}`, k => h('span', { class: 'swatch ac-' + k, 'aria-hidden': 'true' }), customAccent),
-      seg('density', 'Density', l => `Density: ${l}`),
-      seg('paths', 'Paths', l => `Paths: ${l}`),
-      seg('rowDetails', 'Row details', l => `Row details: ${l}`),
-      seg('usage', 'Usage', l => `Usage: ${l}`),
-      seg('pinned', 'Pinned', l => `Pinned: ${l}`),
-      seg('groups', 'Groups', l => `Groups: ${l}`)),
-    h('section', { class: 'form', 'aria-labelledby': 'set-apps' },
-      h('h2', { id: 'set-apps', style: 'font-size:15px;margin:0' }, 'Custom openers'),
-      h('p', { class: 'lede', style: 'margin:0' }, 'More apps to open folders in, like Cursor or Sublime. upex runs the command with the folder path after it. Same list as upex app in the terminal.'),
+    sec('set-term', 'Terminals', S.wt === null ? 'Where terminal openers run.' : 'Where terminal openers run and which shell they start.',
+      ['terminalLayout', 'paneSplit', 'terminalShell'],
+      seg('terminalLayout', 'Layout', S.wt === null ? 'In the terminal upex runs in, or a new window.' : 'This terminal, new windows, or tabs or panes in Windows Terminal.',
+        l => `Terminals open in ${l.toLowerCase()}`),
+      S.wt !== null && s.terminalLayout === 'panes' && seg('paneSplit', 'Pane split', 'Direction of a new pane.', l => `Panes split: ${l.toLowerCase()}`),
+      S.wt !== null && seg('terminalShell', 'Shell', 'What a new terminal starts.', l => `Terminals start ${l}`),
+      notes.map(n => h('p', { class: 'set-note' }, n))),
+    sec('set-apps', 'Custom openers', 'More apps to open folders in, like Cursor or Sublime. upex runs the command with the folder path after it. Same list as upex app in the terminal.', null,
       h('div', { class: 'list' }, S.openers.map(openerRow), openerAdd())),
   ];
+  return [h('div', { class: 'set-main' }, sections)];
 }
 
 // Custom openers (config.json apps): add, change the command, delete. No rename, shortcuts point at the name.
@@ -962,7 +1107,8 @@ function openerRow(o) {
     return h('div', { class: 'ws-entry op' }, name,
       h('div', { class: 'confirm' },
         h('span', null, `Delete ${o.name}?` + (users.length ? ` Used by ${users.join(' and ')}.` : '')),
-        btn('Delete', 'danger solid', () => { S.confirmOp = null; act(() => api('DELETE', 'opener', { name: o.name }), `Deleted ${o.name}`); }),
+        btn('Delete', 'danger solid', () => { S.confirmOp = null; act(() => api('DELETE', 'opener', { name: o.name }), `Deleted ${o.name}`,
+          () => api('POST', 'opener', { name: o.name, command: o.command })); }),
         btn('Keep', 'ghost', () => { S.confirmOp = null; render(); })));
   }
   return h('div', { class: 'ws-entry op' }, name,
@@ -1031,11 +1177,29 @@ function render() {
   document.getElementById('q').title = S.view === 'ws' ? '' : '#tag, @opener, is:pinned, is:missing, is:stale, is:app narrow the list';
   document.querySelector('.search').hidden = S.view === 'settings';
 
+  document.getElementById('q-hint').textContent = TAB_KINDS[S.view] && !S.archived ? '#tag  @opener  is:pinned  is:missing\n↓ rows   Enter opens the top one' : '';
+
+  // Keyboard focus in a row survives the re-render: the same control, else the row, else the row now at its place.
+  const was = document.activeElement;
+  const at = was?.closest?.('main .item[data-name]');
+  const idx = at ? [...document.querySelectorAll('main .item[data-name]')].indexOf(at) : -1;
   const main = document.getElementById('main');
   main.removeAttribute('aria-busy');
-  main.replaceChildren(
-    h('h1', null, TITLES[S.view]),
-    ...(S.view === 'ws' ? wsView() : S.view === 'settings' ? settingsView() : linksView()));
+  document.getElementById('title').textContent = TITLES[S.view];
+  main.replaceChildren(...(S.view === 'ws' ? wsView() : S.view === 'settings' ? settingsView() : linksView()));
+  // Settings sections as jump links under the Settings tab.
+  const sub = document.getElementById('set-links');
+  sub.hidden = S.view !== 'settings';
+  sub.replaceChildren(...(sub.hidden ? [] : [...main.querySelectorAll('.set-sec')].map(el => h('a', { href: '#' + el.id }, el.querySelector('h2').textContent))));
+  if (at && !document.activeElement?.closest('main')) focusIn(at.dataset.name, was.dataset.k) || rows()[Math.min(idx, rows().length - 1)]?.focus();
+}
+// Focusable rows; an open edit form is skipped, so arrows move past it.
+const rows = () => [...document.querySelectorAll('main .item[data-name]:not(.editing)')];
+// Focus a shortcut's row, or the control in it with data-k `k`. False when the row is gone.
+function focusIn(name, k) {
+  const r = rows().find(el => el.dataset.name === name);
+  (r && k && r.querySelector(`[data-k="${k}"]:enabled`) || r)?.focus();
+  return Boolean(r);
 }
 
 document.querySelectorAll('.tab').forEach(t => t.addEventListener('click', () => {
@@ -1053,6 +1217,20 @@ const busy = () => Boolean(S.adding || S.editing || S.newWs || S.editWs || S.ren
   document.querySelector('main :is(input, select):focus'));
 window.addEventListener('focus', () => { if (!busy()) load(busy); });
 document.getElementById('q').addEventListener('input', e => { S.q = e.target.value; render(); });
+// Search: Enter opens the top row, Down goes into the list. Rows: Up/Down move, Up from the first goes back to search.
+document.getElementById('q').addEventListener('keydown', e => {
+  if (e.key === 'Enter') { e.preventDefault(); rows().find(r => r.open && !r.matches('.broken'))?.open(); }
+  else if (e.key === 'ArrowDown' && rows().length) { e.preventDefault(); rows()[0].focus(); }
+});
+document.getElementById('main').addEventListener('keydown', e => {
+  if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(e.key) || !e.target.matches('.item[data-name]')) return;
+  e.preventDefault();
+  const all = rows();
+  const i = all.indexOf(e.target);
+  const to = { ArrowDown: i + 1, ArrowUp: i - 1, Home: 0, End: all.length - 1 }[e.key];
+  if (to < 0) document.getElementById('q').focus();
+  else all[Math.min(to, all.length - 1)].focus();
+});
 document.addEventListener('keydown', e => {
   const typing = /^(INPUT|SELECT|TEXTAREA)$/.test(document.activeElement?.tagName);
   if (e.key === '/' && !typing && S.view !== 'settings') { e.preventDefault(); document.getElementById('q').focus(); }
