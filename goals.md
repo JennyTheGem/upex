@@ -22,7 +22,6 @@ Closed sections: §2 Opening · §5 Platform support · §7 Web UI · §9 Detail
 
 ## 6. Quality
 
-- `validate-links-json-entries` Validate links.json entries (next)
 - Plus 1 maybe: `upgo list --section 6 --phase maybe`
 
 ## 8. Distribution

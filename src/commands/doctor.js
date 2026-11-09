@@ -8,7 +8,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import chalk from 'chalk';
-import { loadLinks, loadConfig, loadWorkspaces, aliasClashes, LINKS_FILE } from '../store.js';
+import { loadLinks, loadConfig, loadWorkspaces, aliasClashes, linkIssues, LINKS_FILE } from '../store.js';
 import { getAppMap, checkOpener, openerKey, APP_MAP } from '../launcher.js';
 import { CMD_WRAPPER, findShimDir, rcFile } from './setup.js';
 import { resolveTarget } from '../fuzzy.js';
@@ -79,6 +79,8 @@ export function runChecks() {
     return [['fail', 'store', err.message.split('\n')[0]]];
   }
   const rows = [['ok', 'store', `${plural(Object.keys(links).length, 'shortcut')} in ${LINKS_FILE}`]];
+  const issues = linkIssues();
+  if (issues.length) rows.push(['warn', 'entries', `fix by hand in links.json: ${issues.join('; ')}`]);
 
   const broken = Object.keys(links).filter(n => links[n].path && !links[n].archived && !fs.existsSync(links[n].path));
   rows.push(broken.length

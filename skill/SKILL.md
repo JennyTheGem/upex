@@ -51,7 +51,7 @@ Jenny's CLI for named shortcuts to folders, apps, command lines and URLs. Data: 
 | `upex stats [--days N] [--all]` | Most used shortcuts and openers (default last 30 days) plus opens per week, from `~/.upex/history.jsonl` |
 | `upex config` / `config get <setting>` / `config set <setting> <value>` / `config reset [setting]` | List settings with their options, print one, change one (same as the Settings tabs), or reset one or all to defaults |
 | `upex stale [days] [--yes]` | Shortcuts not opened in N days (default: `staleAfter` setting, 60), never-opened first; offers to archive each |
-| `upex check [--prune]` / `doctor [--json]` | Report (or prune) broken paths / check store, openers, shell setup |
+| `upex check [--prune]` / `doctor [--json]` | Report (or prune) broken paths / check store, bad links.json entries (wrong field types are coerced or dropped, an entry with no path/app/url is skipped but kept in the file; any command warns once on stderr), openers, shell setup |
 | `upex setup [bash\|zsh\|fish\|cmd]` | No arg: how to set up cd support. `bash`/`zsh` add an upex block to ~/.bashrc / ~/.zshrc (rerun updates it), `fish` writes functions/upex.fish, `cmd` the cmd.exe wrapper |
 | `upex copy <name>` / `last` / `export [file]` / `import <file> [--replace]` | Misc |
 

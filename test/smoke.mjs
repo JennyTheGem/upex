@@ -12,7 +12,7 @@ import readline from 'node:readline';
 import { PassThrough } from 'node:stream';
 import { spawn, spawnSync, execSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { unarchived, frecency, pruneBroken, mergeLinks, lastUsedName, nameError, takenError, checkAliases, aliasClashes, staleLinks, sweepExpired, diffLinks, keepUsage, withPinned, parseColor, colorOf } from '../src/store.js';
+import { unarchived, frecency, pruneBroken, mergeLinks, lastUsedName, nameError, takenError, checkAliases, aliasClashes, staleLinks, sweepExpired, diffLinks, keepUsage, withPinned, parseColor, colorOf, checkEntry } from '../src/store.js';
 import { remoteWebUrl } from '../src/git.js';
 import { installCmdWrapper } from '../src/commands/setup.js';
 import { normalizeUrl, caretEscape, wtCommandLine, setting, shellCommand, defaultOpener, checkSettings, resetSettings, startTab } from '../src/launcher.js';
@@ -284,6 +284,38 @@ fs.writeFileSync(linksFile, '\uFEFF' + JSON.stringify({ gh: { url: 'github.com' 
 assert.equal(upexIn('edit', 'gh', 'gitlab.com').status, 0, 'BOM-prefixed store loads');
 assert.equal(JSON.parse(fs.readFileSync(linksFile, 'utf-8')).gh.url, 'gitlab.com', 'edit replaces a URL target');
 assert.ok(!fs.readdirSync(path.dirname(linksFile)).some(f => f.endsWith('.tmp')), 'save leaves no temp file');
+
+// -- entries: wrong types are coerced or dropped, an entry without a target is skipped but kept on disk --
+assert.deepEqual(checkEntry({ path: 'X', uses: '5', tags: 'a', pinned: 'true', note: 3, opener: null }),
+  { entry: { path: 'X', uses: 5, tags: ['a'], pinned: true, note: '3' }, issues: ['note fixed', 'tags fixed', 'uses fixed', 'pinned fixed'] }, 'coerce fields');
+assert.deepEqual(checkEntry({ url: 'u', lastUsed: 'soon', aliases: [1, 'a'] }).entry, { url: 'u', aliases: ['a'] }, 'drop uncoercible, keep good list items');
+assert.equal(checkEntry({ path: ['X'] }).entry, null, 'array path leaves no target');
+assert.equal(checkEntry([]).entry, null, 'array entry is no shortcut');
+assert.deepEqual(checkEntry('X'), { entry: { path: 'X' }, issues: [] }, 'legacy string is fine');
+fs.writeFileSync(linksFile, JSON.stringify({ bad: { path: ['X'] }, ok: { path: home, uses: '2' } }));
+const warned = upexIn('add', 'fresh', home);
+assert.equal(warned.status, 0, 'a bad entry does not break a save');
+assert.match(warned.stderr, /2 bad entries/, 'load warns once');
+assert.deepEqual(stored().bad, { path: ['X'] }, 'skipped entry kept on save');
+assert.equal(stored().ok.uses, 2, 'coerced field saved');
+assert.match(upexIn('doctor').stdout, /bad: path dropped, no path, app or url \(skipped\)/, 'doctor names the entry and field');
+assert.equal(upexIn('__names').stderr, '', 'hidden commands stay quiet');
+const bakDir = path.join(home, '.upex', 'backups');
+fs.writeFileSync(linksFile, JSON.stringify({ g: { path: home, url: ['dropme'] } }));
+upexIn('go', 'g');
+assert.ok(!('url' in stored().g) && fs.readdirSync(bakDir).some(f => fs.readFileSync(path.join(bakDir, f), 'utf-8').includes('dropme')), 'an open that drops a field backs up the hand edit first');
+fs.writeFileSync(linksFile, '{}');
+upexIn('add', 'u1', home);
+fs.writeFileSync(linksFile, JSON.stringify({ ...stored(), hand: { pth: 'x' } }));
+upexIn('undo');
+assert.deepEqual(stored(), { hand: { pth: 'x' } }, 'undo keeps a hand-added skipped entry');
+const bundleFile = path.join(home, 'bundle.json');
+fs.writeFileSync(bundleFile, JSON.stringify({ n: { url: 'example.com' } }));
+upexIn('import', bundleFile, '--replace');
+assert.deepEqual(Object.keys(stored()), ['n'], 'import --replace drops skipped entries too');
+upexIn('undo');
+assert.ok(stored().hand, 'undo brings them back');
+fs.rmSync(bundleFile);
 
 // -- prototype names are real names; a workspace with a failing entry exits 1 --
 fs.writeFileSync(linksFile, JSON.stringify({}));

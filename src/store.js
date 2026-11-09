@@ -77,29 +77,79 @@ function writeJson(file, data) {
   }
 }
 
+// Per field: the value, coerced when it can be, or undefined when it can't.
+const isStr = v => typeof v === 'string';
+const str = v => (isStr(v) ? v : Number.isFinite(v) ? String(v) : undefined);
+const num = v => (Number.isFinite(v) ? v : isStr(v) && v.trim() && Number.isFinite(+v) ? +v : undefined);
+const bool = v => (typeof v === 'boolean' ? v : v === 'true' ? true : v === 'false' ? false : undefined);
+const list = v => (isStr(v) ? [v] : !Array.isArray(v) ? undefined : v.every(isStr) ? v : v.filter(isStr));
+const FIELDS = {
+  path: str, app: str, url: str, opener: str, note: str, color: str,
+  tags: list, aliases: list,
+  uses: num, lastUsed: num, added: num, expires: num, pinOrder: num,
+  archived: bool, pinned: bool, terminal: bool,
+};
+
 /**
- * Normalize a raw link value to { path?, app? }.
- * Supports legacy string format and new object format.
+ * A raw links.json value (legacy path string or entry object) -> { entry, issues }.
+ * Wrong-typed fields are coerced or dropped; entry is null without a path, app or url.
  */
-function normalizeEntry(value) {
-  if (typeof value === 'string') return { path: value };
-  if (value && typeof value === 'object') return value;
-  return null;
+export function checkEntry(value) {
+  if (isStr(value)) return { entry: { path: value }, issues: [] };
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return { entry: null, issues: ['not an object'] };
+  const entry = { ...value };
+  const issues = [];
+  for (const [field, fix] of Object.entries(FIELDS)) {
+    if (!(field in entry)) continue;
+    const v = entry[field];
+    // null is just a cleared field.
+    const fixed = v === null ? undefined : fix(v);
+    if (fixed === undefined) delete entry[field];
+    else entry[field] = fixed;
+    if (v !== null && fixed !== v) issues.push(`${field} ${fixed === undefined ? 'dropped' : 'fixed'}`);
+  }
+  if (!entry.path && !entry.app && !entry.url) return { entry: null, issues: [...issues, 'no path, app or url'] };
+  return { entry, issues };
 }
 
 // Field holding a shortcut's target. An app shortcut that also has a path edits the path.
 export const targetField = (e) => (e.url ? 'url' : e.app && !e.path ? 'app' : 'path');
 
-function normalizeLinks(raw) {
-  const normalized = {};
+// -> { links, skipped, issues, fixed }: skipped holds the raw unusable entries, issues "name: problem" lines,
+// fixed is true when a kept entry was coerced.
+export function checkLinks(raw) {
+  const links = {};
+  const skipped = {};
+  const issues = [];
+  let fixed = false;
   for (const [name, value] of Object.entries(raw)) {
-    const entry = normalizeEntry(value);
-    if (entry) normalized[name] = entry;
+    const r = checkEntry(value);
+    if (r.entry) links[name] = r.entry;
+    else skipped[name] = value;
+    if (r.issues.length) issues.push(`${name}: ${r.issues.join(', ')}${r.entry ? '' : ' (skipped)'}`);
+    if (r.entry && r.issues.length) fixed = true;
   }
-  return normalized;
+  return { links, skipped, issues, fixed };
 }
 
-export const loadLinks = () => normalizeLinks(readJson(LINKS_FILE));
+// From the last loadLinks: skipped entries go back on save, so a bad hand edit is never lost.
+let lastCheck = { skipped: {}, issues: [], fixed: false };
+export const linkIssues = () => lastCheck.issues;
+// `links` plus the skipped entries whose name holds no real entry in it.
+const withSkipped = links => ({ ...links, ...Object.fromEntries(Object.entries(lastCheck.skipped).filter(([n]) => !Object.hasOwn(links, n))) });
+let loaded = false;
+
+export function loadLinks() {
+  const first = !loaded;
+  loaded = true;
+  lastCheck = checkLinks(readJson(LINKS_FILE));
+  // Only the first load warns (a later one may run under the selector), on stderr, and not for the hidden commands behind cd and completion.
+  if (first && lastCheck.issues.length && !process.argv[2]?.startsWith('__')) {
+    const n = lastCheck.issues.length;
+    process.stderr.write(`upex: ${n} bad ${n === 1 ? 'entry' : 'entries'} in ${LINKS_FILE}, see upex doctor\n`);
+  }
+  return lastCheck.links;
+}
 
 // Only our own names, so a hand-saved file in backups/ is never touched.
 const BACKUP_RE = /^links-[\dTZ-]+\.json$/;
@@ -130,10 +180,13 @@ function backupLinks(next) {
   }
 }
 
-// Usage bumps skip the backup, or a few opens would push real edits out of the last 10.
-export function saveLinks(links, { backup = true } = {}) {
-  if (backup && !dryRun) backupLinks(links);
-  writeJson(LINKS_FILE, links);
+// Usage bumps skip the backup, or a few opens would push real edits out of the last 10,
+// unless the save rewrites coerced fields: the hand edit gets one backup first.
+// `skipped` false drops the unusable entries (import --replace); the backup still has them.
+export function saveLinks(links, { backup = true, skipped = true } = {}) {
+  const next = skipped ? withSkipped(links) : links;
+  if ((backup || lastCheck.fixed) && !dryRun) backupLinks(next);
+  writeJson(LINKS_FILE, next);
 }
 
 // Names added, removed and changed going from `before` to `after`.
@@ -163,10 +216,12 @@ export function undoLast() {
   for (const f of backupFiles().reverse()) {
     const file = path.join(BACKUP_DIR, f);
     const at = fs.statSync(file).mtimeMs;
-    const restored = keepUsage(normalizeLinks(readJson(file)), current);
+    const old = checkLinks(readJson(file));
+    const restored = keepUsage(old.links, current);
     const diff = diffLinks(current, restored);
     const changes = diff.added.length || diff.removed.length || diff.changed.length;
-    if (changes) writeJson(LINKS_FILE, restored);
+    // Unusable entries go back too: the backup's, and current ones (a newer hand edit wins) it has no real entry for.
+    if (changes) writeJson(LINKS_FILE, { ...old.skipped, ...withSkipped(restored) });
     // A locked backup must not fail an undo already written; the next undo skips it as a no-op.
     if (!dryRun) try { fs.rmSync(file, { force: true }); } catch {}
     if (changes) return { ...diff, at, left: backupFiles().length };

@@ -1621,10 +1621,11 @@
       "title": "Validate links.json entries",
       "body": "normalizeLinks keeps any object, so a hand edit or sync merge with a wrong type (path as array, uses as string) crashes later. doctor lists bad entries by name and field; load skips or coerces them with a one-line warning.",
       "phase": "next",
-      "status": "planned",
+      "status": "done",
       "size": "S",
       "created": "2026-11-09",
-      "updated": "2026-11-09"
+      "updated": "2026-11-09",
+      "note": "checkEntry coerces/drops wrong-typed fields, skips entries with no target but writes them back on save/undo; one stderr warning per process; doctor 'entries' row"
     },
     {
       "id": "upex-ui-local-web-page-to-add-edit-rename-tag",

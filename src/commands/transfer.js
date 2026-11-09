@@ -37,7 +37,7 @@ export function importBundle(bundle, replace = false) {
   // Read config before saving links, so a corrupt config.json aborts without a partial import.
   const current = hasConfig ? loadConfig() : null;
   const { merged, added, updated } = mergeLinks(loadLinks(), incoming, { replace });
-  saveLinks(merged);
+  saveLinks(merged, { skipped: !replace });
 
   // Merge config (apps + workspaces) without clobbering unless replacing.
   if (hasConfig) {
