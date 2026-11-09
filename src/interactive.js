@@ -1226,7 +1226,7 @@ export function renderInteractiveView({
     // ? or ^k: every key of this tab in groups, over the list.
     const groups = [
       ['Move', [openKey, ['↑↓', 'move'], ['PgUp/Dn Home/End', 'jump'], numbered && ['1-9', 'open row N'], opener, windows, tabKey, escKey, paneHint, markKey, !isWs && ['A-↑↓', 'move pin']]],
-      ['Edit', [...editKeys, pinKey, dropKey, ['^z', 'undo'], copyKey]],
+      ['Edit', [...editKeys, !isWs && ['F2', 'rename'], pinKey, dropKey, dropKey && ['Del', dropKey[1]], ['^z', 'undo'], copyKey]],
       ['More', [sortKey, scriptsKey, isShortcuts && ['S-→', 'goals'], isShortcuts && (webKey || ['^g', 'git web page']), uiKey, full && settings.mouse !== 'off' && ['right-click', 'row menu']]],
     ];
     const help = groups.flatMap(([name, pairs], i) => [...(i ? [''] : []), `    ${chalk.bold(name)}`, ...wrapHint(pairs, cw).map(r => `  ${r}`)]);
@@ -2476,6 +2476,11 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
       }
 
       // ── Browse mode ──
+      // F2 and Del: Windows aliases for ^r rename and ^x archive (^d where that deletes).
+      if (!key.ctrl && !key.meta && (key.name === 'f2' || key.name === 'delete')) {
+        handleKey(str, { ctrl: true, name: key.name === 'f2' ? 'r' : view === 'workspaces' || view === 'settings' ? 'd' : 'x' });
+        return;
+      }
       // Esc clears a typed filter first, then the marks, then closes a Shift+Right pane, then quits.
       if (key.name === 'escape' && query) {
         if (view === 'settings') filterSettings('');

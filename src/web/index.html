@@ -222,6 +222,7 @@ h1 { font-size: 20px; letter-spacing: -.015em; margin: 8px 0 4px; }
   pointer-events: none;
 }
 #status.show { opacity: 1; transform: translate(-50%, 0); }
+#status.undo { pointer-events: auto; display: flex; align-items: center; gap: 10px; padding-block: 4px; }
 #status.error { color: var(--danger); border-color: color-mix(in srgb, var(--danger) 50%, transparent); }
 
 @media (max-width: 760px) {
@@ -388,12 +389,15 @@ async function api(method, path, body) {
 }
 
 let statusTimer;
-function say(msg, isError) {
+// `undo`: the toast gets an Undo button that steps back one links.json backup, like upex undo.
+function say(msg, isError, undo) {
   const el = document.getElementById('status');
-  el.textContent = msg;
-  el.className = 'show' + (isError ? ' error' : '');
+  el.replaceChildren(msg);
+  // Gone on click, so a second Enter can't undo one more step while the request runs.
+  if (undo) el.append(btn('Undo', 'ghost', e => { el.className = ''; e.currentTarget.remove(); act(() => api('POST', 'undo'), 'Undone'); }));
+  el.className = 'show' + (isError ? ' error' : '') + (undo ? ' undo' : '');
   clearTimeout(statusTimer);
-  statusTimer = setTimeout(() => (el.className = isError ? 'error' : ''), isError ? 6000 : 2600);
+  statusTimer = setTimeout(() => { el.className = isError ? 'error' : ''; el.querySelector('button')?.remove(); }, isError || undo ? 6000 : 2600);
 }
 
 // Last loaded state minus the time-based score, so a no-op refresh can skip the re-render.
@@ -418,10 +422,10 @@ async function load(skip) {
 }
 
 // Run an action, report it, reload. Returns true on success.
-async function act(fn, okMsg) {
+async function act(fn, okMsg, undo) {
   try {
     await fn();
-    if (okMsg) say(okMsg);
+    if (okMsg) say(okMsg, false, undo);
     await load();
     return true;
   } catch (e) {
@@ -596,11 +600,11 @@ function row(l, again) {
   if (S.editing === l.name && !again) return editRow(l);
 
   let actions;
-  const archive = (on) => act(() => api('PUT', 'archive', { name: l.name, archived: on }), `${on ? 'Archived' : 'Restored'} ${l.name}`);
+  const archive = (on) => act(() => api('PUT', 'archive', { name: l.name, archived: on }), `${on ? 'Archived' : 'Restored'} ${l.name}`, on);
   if (S.confirming === l.name) {
     actions = h('div', { class: 'actions confirm' },
       h('span', null, `Delete ${l.name}?`),
-      btn('Delete', 'danger solid', () => { S.confirming = null; act(() => api('DELETE', 'links', { name: l.name }), `Deleted ${l.name}`); }),
+      btn('Delete', 'danger solid', () => { S.confirming = null; act(() => api('DELETE', 'links', { name: l.name }), `Deleted ${l.name}`, true); }),
       btn('Keep', 'ghost', () => { S.confirming = null; render(); }));
   } else if (l.archived) {
     actions = h('div', { class: 'actions' },
@@ -684,7 +688,7 @@ function linksView() {
       btn(`Remove ${broken.length} missing`, 'danger', () =>
         act(async () => {
           const { removed } = await api('POST', 'prune');
-          say(`Removed ${removed.length} shortcut${removed.length === 1 ? '' : 's'}`);
+          say(`Removed ${removed.length} shortcut${removed.length === 1 ? '' : 's'}`, false, removed.length > 0);
         }))));
   }
 

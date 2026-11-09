@@ -1624,6 +1624,29 @@
       "title": "Web UI: undo toast",
       "body": "After delete, archive or prune, a short toast with an Undo button that calls undoLast. Today undo is CLI or TUI only.",
       "phase": "next",
+      "status": "done",
+      "size": "S",
+      "created": "2026-11-09",
+      "updated": "2026-11-09",
+      "note": "POST /api/undo (undoLast); toast Undo button after delete, archive, prune (6s)"
+    },
+    {
+      "id": "web-ui-version-and-update-notice",
+      "section": 7,
+      "title": "Web UI: version and update notice",
+      "body": "Footer shows the upex version and, when npm has a newer one, the install command. The TUI shows the version, the web page does not.",
+      "phase": "next",
+      "status": "planned",
+      "size": "S",
+      "created": "2026-11-09",
+      "updated": "2026-11-09"
+    },
+    {
+      "id": "web-ui-arrow-key-navigation",
+      "section": 7,
+      "title": "Web UI: arrow key navigation",
+      "body": "Up/Down move a focus ring through rows, Enter opens, e edits, Del archives. Today only / and n have keys.",
+      "phase": "next",
       "status": "planned",
       "size": "S",
       "created": "2026-11-09",
@@ -2142,10 +2165,11 @@
       "title": "F2 renames, Del archives",
       "body": "Familiar Windows keys as aliases for ^r rename and archive in the selector. Shown in the ^k overlay.",
       "phase": "next",
-      "status": "planned",
+      "status": "done",
       "size": "S",
       "created": "2026-11-09",
-      "updated": "2026-11-09"
+      "updated": "2026-11-09",
+      "note": "F2 = ^r, Del = ^x (^d on Workspaces/Settings) in browse mode; shown in the ^k overlay"
     }
   ]
 }

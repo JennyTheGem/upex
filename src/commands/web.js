@@ -8,7 +8,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import crypto from 'node:crypto';
-import { loadLinks, saveLinks, loadWorkspaces, saveWorkspaces, pruneBroken, targetField, nameError, takenError, checkAliases, aliasesOf, frecency, parseColor, colorOf, loadConfig, saveConfig, withPinned } from '../store.js';
+import { loadLinks, saveLinks, loadWorkspaces, saveWorkspaces, pruneBroken, targetField, nameError, takenError, checkAliases, aliasesOf, frecency, parseColor, colorOf, loadConfig, saveConfig, withPinned, undoLast } from '../store.js';
 import { getInteractiveAppChoices, launchUrl, openerKey, isTerminalApp, checkSettings, readSettings, resetSettings, startTab, SETTING_KEYS, hasWindowsTerminal, configApps } from '../launcher.js';
 import { handleOpen, isFile } from './open.js';
 import { openEntries } from './workspace.js';
@@ -175,6 +175,8 @@ const routes = {
   'PUT /api/archive': (b) => {
     const links = loadLinks();
     if (!Object.hasOwn(links, String(b.name))) throw new HttpError(404, `Shortcut not found: ${b.name}`);
+    // A no-op save makes no backup, so the page's Undo would step back an older change.
+    if (b.archived && links[b.name].archived) throw new HttpError(409, `${b.name} is archived already.`);
     if (b.archived) links[b.name].archived = true; else { delete links[b.name].archived; delete links[b.name].expires; }
     saveLinks(links);
     return {};
@@ -240,6 +242,12 @@ const routes = {
     const { kept, removed } = pruneBroken(loadLinks());
     saveLinks(kept);
     return { removed };
+  },
+
+  // One step back through the links.json backups, like upex undo.
+  'POST /api/undo': () => {
+    if (!undoLast()) throw new HttpError(409, 'Nothing to undo.');
+    return {};
   },
 
   // Set one workspace's entries (and optionally rename it); an empty list deletes it.

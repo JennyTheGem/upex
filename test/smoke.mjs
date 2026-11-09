@@ -1314,6 +1314,11 @@ try {
   assert.ok(ghAdded > 0, 'api add stamps added');
   const st = await (await fetch(base + '/api/state', { headers: { 'x-upex-token': token } })).json();
   assert.equal(st.links.find(l => l.name === 'gh').tab, 'apps', 'URL shortcut listed on the Apps tab');
+  const call = (method, route, body) => fetch(base + '/api/' + route, { method, headers: { 'content-type': 'application/json', 'x-upex-token': token }, body: JSON.stringify(body) });
+  assert.equal((await call('PUT', 'archive', { name: 'gh', archived: true })).status, 200, 'archive via api');
+  assert.equal((await call('PUT', 'archive', { name: 'gh', archived: true })).status, 409, 'no-op archive refused (its Undo would step back an older change)');
+  assert.equal((await call('POST', 'undo', {})).status, 200, 'undo via api');
+  assert.equal(JSON.parse(fs.readFileSync(path.join(webHome, '.upex', 'links.json'), 'utf-8')).gh.archived, undefined, 'api undo restores the archived one');
   const putWs = (prev) => fetch(base + '/api/workspace', {
     method: 'PUT',
     headers: { 'content-type': 'application/json', 'x-upex-token': token },
