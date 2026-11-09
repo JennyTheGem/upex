@@ -1233,10 +1233,11 @@
       "title": "Number keys open rows",
       "body": "1 to 9 opens that visible row right away. Needs care with the filter input.",
       "phase": "next",
-      "status": "planned",
+      "status": "done",
       "size": "S",
       "created": "2026-11-09",
-      "updated": "2026-11-09"
+      "updated": "2026-11-09",
+      "note": "Settings > General > Number keys (off by default): dim 1-9 in the pointer column, a digit opens that visible row (empty filter, else types); Alt+1-9 also with a filter; Shortcuts, Apps, Workspaces"
     },
     {
       "id": "usage-column-setting",

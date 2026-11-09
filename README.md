@@ -334,6 +334,7 @@ Settings, also on the Settings tab of `upex ui` and the selector (`Shift+Tab`), 
 - `"sort"`: shortcut order in the selector and `upex ui`. `"recent"` (default, most used first), `"name"` (A to Z), `"opened"` (last opened first) or `"added"` (recently added first).
 - `"views"`: the tabs the selector and `upex ui` show. `"all"` (default), `"no-workspaces"`, `"no-apps"` or `"shortcuts"` (Shortcuts only). A hidden start view opens Shortcuts.
 - `"enter"` (selector only): what Enter does. `"quit"` (default, open and close the selector) or `"stay"` (open in place, the selector stays open; also for workspaces, scripts and marked rows).
+- `"numberKeys"` (selector only): `"off"` (default) or `"on"` (the first 9 visible rows get a dim 1 to 9 in the pointer column, a digit opens that row; with a typed filter digits type, Alt+1 to 9 still opens).
 - `"recentStrip"` (selector only): `"off"` (default), `"3"` or `"5"` (the last 3 or 5 opened again above the list under a Recent heading, whatever the sort; not while searching). An old `"on"` reads as `"3"`.
 - `"staleAfter"`: days not opened (or added, if never opened) before a shortcut counts as stale, for `is:stale` (selector and `upex ui`), Settings > Maintenance > Stale and the default of `upex stale`. `"30"`, `"60"` (default), `"90"` or `"180"`.
 - `"fuzzy"`: how close a typed name must be, in the selector filter and for names (`upex <name>`, `go`, ...). `"normal"` (default), `"exact"` (the typed letters in a row, anywhere in the name, no typos) or `"loose"` (more typos).

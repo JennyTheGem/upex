@@ -314,9 +314,9 @@ export function clipName(name, width, hits = []) {
   return { text: `${name.slice(0, cut)}…`, hits: hits.map(([a, b]) => [a, Math.min(b, cut - 1)]).filter(([a, b]) => a <= b) };
 }
 
-// One list row: "› ● name  path ..... #tags  badge  3d ago". `style` = path | url | dim | plain (url looks plain).
+// One list row (`num`: a dim 1 to 9 in the pointer column): "› ● name  path ..... #tags  badge  3d ago". `style` = path | url | dim | plain (url looks plain).
 // `dot` (color label) sits in a `dotWidth` column before the name, 0 = no column. `usage` goes last, dropped when it doesn't fit.
-function renderRow({ sel, mark, name, nameWidth, hits, text = '', style = 'path', right = '', cw, pick = s => s, dot = '', dotWidth = 0, usage = '' }) {
+function renderRow({ sel, mark, name, nameWidth, hits, text = '', style = 'path', right = '', cw, pick = s => s, dot = '', dotWidth = 0, usage = '', num = '' }) {
   const n = clipName(name, nameWidth, hits);
   const nm = chalk.bold(underlineHits(n.text, n.hits)) + ' '.repeat(Math.max(0, nameWidth - vis(n.text)));
   const dc = dotWidth ? dot + ' '.repeat(Math.max(0, dotWidth + 1 - vis(dot))) : '';
@@ -326,7 +326,7 @@ function renderRow({ sel, mark, name, nameWidth, hits, text = '', style = 'path'
   const room = roomFor(right);
   const t = clipStart(text, Math.max(0, room));
   const body = sel || style === 'plain' || style === 'url' ? t : style === 'dim' ? chalk.dim(t) : ui.dimParent(t);
-  const left = `${mark ? pick('●') : sel ? pick('›') : ' '} ${dc}${nm}  ${body}`;
+  const left = `${mark ? pick('●') : sel ? pick('›') : num ? chalk.dim(num) : ' '} ${dc}${nm}  ${body}`;
   const line = sel || right ? left + ' '.repeat(Math.max(right ? 2 : 0, cw - vis(left) - vis(right))) + right : left;
   return `  ${sel ? highlight(line) : line}`;
 }
@@ -635,6 +635,7 @@ const SETTING_ROWS = [
   { section: 'General', key: 'startView', label: 'Start view', scope: 'tui+web', names: { shortcuts: 'Shortcuts', apps: 'Apps', workspaces: 'Workspaces', last: 'Last used' } },
   { section: 'General', key: 'views', label: 'Tabs', scope: 'tui+web', names: { all: 'All', 'no-workspaces': 'Shortcuts, Apps', 'no-apps': 'Shortcuts, Workspaces', shortcuts: 'Shortcuts only' } },
   { section: 'General', key: 'enter', label: 'After open', scope: 'tui', names: { quit: 'Quit', stay: 'Stay open' } },
+  { section: 'General', key: 'numberKeys', label: 'Number keys', scope: 'tui', names: { off: 'Off', on: '1 to 9 open' } },
   { section: 'General', key: 'updateCheck', label: 'Update check', scope: 'cli', names: { on: 'On', off: 'Off' } },
   { section: 'General', key: 'staleAfter', label: 'Stale after', scope: 'all', names: { 30: '30 days', 60: '60 days', 90: '90 days', 180: '180 days' } },
   { section: 'Search', key: 'fuzzy', label: 'Fuzzy', scope: 'tui+cli', names: { normal: 'Normal', exact: 'Exact', loose: 'Loose' } },
@@ -697,6 +698,7 @@ function settingNote(key, s, wt) {
   if (key === 'staleAfter') return 'Not opened (or added, if never opened) in this long counts as stale: is:stale, Maintenance > Stale and upex stale.';
   if (key === 'mouse') return 'Clicks, right-click menu and the wheel. Off: the terminal selects text as usual.';
   if (key === 'views') return 'Which tabs show and Tab cycles through.';
+  if (key === 'numberKeys') return 'Numbers the first 9 visible rows beside the › pointer, a digit opens that row. With a typed filter digits type, Alt+1 to 9 still opens.';
   if (key === 'enter') return 'What Enter does after opening. Stay open keeps upex open, to open more.';
   if (key === 'fuzzy') return 'How close a typed name must be, in this filter and for upex <name> / go. Exact: the letters in a row, no typos. Loose: more typos.';
   if (key === 'searchIn') return 'What the filter looks at. Names only: names and aliases. #tag, @opener and is:pinned, is:missing, is:stale, is:app filter either way.';
@@ -986,6 +988,7 @@ export function renderInteractiveView({
   const index = listScripts ? scriptIndex : isWs ? wsIndex : selectedIndex;
   // Workspace and script rows: plain text, no badges.
   const plain = isWs || listScripts;
+  const numbered = settings.numberKeys === 'on' && mode === 'browse' && !isScripts;
   // With marks, the pane lists them instead of the selected row.
   const marking = pane && !isWs && !isScripts && !isForm && marked.length > 0;
   const goals = pane && !isWs && !marking && !isForm ? folderGoals(currentChoice, settings.goals) : null;
@@ -1183,7 +1186,7 @@ export function renderInteractiveView({
   if (keysHelp) {
     // ? or ^k: every key of this tab in groups, over the list.
     const groups = [
-      ['Move', [openKey, ['↑↓', 'move'], ['PgUp/Dn Home/End', 'jump'], opener, windows, tabKey, escKey, paneHint, markKey, !isWs && ['A-↑↓', 'move pin']]],
+      ['Move', [openKey, ['↑↓', 'move'], ['PgUp/Dn Home/End', 'jump'], numbered && ['1-9', 'open row N'], opener, windows, tabKey, escKey, paneHint, markKey, !isWs && ['A-↑↓', 'move pin']]],
       ['Edit', [...editKeys, pinKey, dropKey, ['^z', 'undo'], copyKey]],
       ['More', [scriptsKey, isShortcuts && ['S-→', 'goals'], isShortcuts && (webKey || ['^g', 'git web page']), uiKey, full && settings.mouse !== 'off' && ['right-click', 'row menu']]],
     ];
@@ -1220,8 +1223,10 @@ export function renderInteractiveView({
     const now = Date.now();
     const usageW = Math.max(0, ...list.map(c => usageText(c, settings.usage, now).length));
     const dotWidth = Math.max(0, ...list.map(c => vis(ui.colorDot(c.color))));
+    let shownRows = 0;
     for (const { head, i } of items.slice(start, end)) {
       if (head) { lines.push(chalk.dim(`    ${head}`)); continue; }
+      shownRows++;
       const c = list[i];
       const tags = tagsOn && c.tags?.length ? chalk.dim(`#${c.tags.join(' #')}`) : '';
       const kind = c.isCmd ? 'cmd' : c.isApp ? 'app' : c.isUrl ? 'url' : '';
@@ -1242,6 +1247,7 @@ export function renderInteractiveView({
         dot: ui.colorDot(c.color),
         dotWidth,
         usage: usageW ? chalk.dim(usageText(c, settings.usage, now).padStart(usageW)) : '',
+        num: numbered && shownRows <= 9 ? String(shownRows) : '',
       }, settings.paths)));
     }
     // Counts rows, not headings.
@@ -2452,6 +2458,15 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
       if (((key.ctrl && key.name === 'k') || (str === '?' && !query)) && mode === 'browse' && view !== 'settings') {
         keysHelp = true;
         redraw();
+        return;
+      }
+
+      // 1 to 9 opens that visible row: with an empty filter (else it types), Alt+digit always.
+      if (settings.numberKeys === 'on' && /^[1-9]$/.test(key.name || '') && !key.ctrl && (!query || isAlt(key)) && view !== 'settings') {
+        const row = [...new Set(targets.map(t => t.row).filter(x => x != null))][key.name - 1];
+        if (row == null) return;
+        if (view === 'workspaces') { wsIndex = row; handleKey(undefined, { name: 'return' }); }
+        else { selectedIndex = row; openSelected(); }
         return;
       }
 
