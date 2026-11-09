@@ -754,7 +754,7 @@ const EXTRA_NOTES = {
   stale: 'Not opened in the Stale after days (General). Enter archives them all, like upex stale --yes. ^z undoes, or restore one under Archived.',
   stats: 'Most opened in the last 30 days. Enter shows more, like upex stats.',
   doctor: 'Checks the store, openers, shell wrapper and completion, like upex doctor.',
-  update: 'Asks npm now for a newer upex. Update with npm i -g @uplift-beyond/upex@latest.',
+  update: 'Asks npm now for a newer upex. When one is out, Enter closes upex and installs it with npm i -g @uplift-beyond/upex@latest.',
   export: 'Shortcuts and settings as one JSON file, like upex export.',
   import: 'Merges a file from Export: new names are added, same names updated, like upex import.',
 };
@@ -1139,7 +1139,7 @@ export function renderInteractiveView({
     const note = onArchived ? `Enter or a second click brings it back to its tab, like upex restore ${onExtra.name}. ^d deletes it for good.`
       : onExtra ? EXTRA_NOTES[onExtra.kind] : rows[settingIndex] ? settingNote(rows[settingIndex].key, settings, wt) : '';
     lines.push(...gap, chalk.dim(`    ${note}`));
-    const enter = onExtra && ['↵', expanded && expanded.kind === onExtra.kind ? 'hide' : EXTRA_KEYS[onExtra.kind]];
+    const enter = onExtra && ['↵', expanded && expanded.kind === onExtra.kind ? 'hide' : onExtra.kind === 'update' && isNewer(cachedLatest(), VERSION) ? 'update' : EXTRA_KEYS[onExtra.kind]];
     const keys = mode === 'input' ? inputRow
       : keyHint([['↑↓', 'setting'], enter || (rows[settingIndex] && ['←→', 'change (saved)']), onExtra?.kind === 'opener' && ['^d', 'remove'], onArchived && ['^d', 'delete'], undoKey, tabKey, ['S-Tab', 'back'], escKey, uiKey]);
     return footer([keys, ...webRows]);
@@ -2130,6 +2130,8 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
       else if (x.kind === 'import') startAction('import', '');
       else if (x.kind === 'update') {
         if (checking) return;
+        // A newer one already found: close and install it.
+        if (isNewer(cachedLatest(), VERSION)) { finish({ status: 'update' }); return; }
         checking = true;
         extras = buildExtras();
         const end = guard((text, ok) => {

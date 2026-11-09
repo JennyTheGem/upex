@@ -8,6 +8,7 @@ import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { UPEX_DIR } from './store.js';
+import { error } from './ui.js';
 
 export const PKG = '@uplift-beyond/upex';
 export const { version: VERSION } = JSON.parse(fs.readFileSync(new URL('../package.json', import.meta.url), 'utf-8'));
@@ -57,6 +58,17 @@ export async function fetchLatest(now = Date.now()) {
 }
 
 // The Settings line for a version: newer one out, or up to date.
-export const updateText = latest => (isNewer(latest, VERSION) ? `v${latest} out, run npm i -g ${PKG}@latest` : `v${VERSION} is the latest`);
+export const updateText = latest => (isNewer(latest, VERSION) ? `v${latest} out, Enter updates` : `v${VERSION} is the latest`);
+
+// npm i -g of the latest upex (Settings > Updates). npm's output goes to stderr, stdout stays clean for upex pick.
+export async function runUpdate() {
+  // shell on Windows: npm is npm.cmd. The args are fixed, nothing to escape.
+  const code = await new Promise(resolve => spawn('npm', ['i', '-g', `${PKG}@latest`], { stdio: ['inherit', 2, 2], shell: process.platform === 'win32' })
+    .on('error', () => resolve(1)).on('close', c => resolve(c ?? 1)));
+  if (code) {
+    error(`update failed, try npm i -g ${PKG}@latest yourself`);
+    process.exitCode = 1;
+  }
+}
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) fetchLatest().catch(() => {});

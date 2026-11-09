@@ -37,7 +37,7 @@ import { registerColor } from './commands/color.js';
 import { registerPick } from './commands/pick.js';
 import { runInteractiveMode } from './interactive.js';
 import { setting } from './launcher.js';
-import { VERSION as version, updateNotice } from './update.js';
+import { VERSION as version, updateNotice, runUpdate } from './update.js';
 
 const label = `upex v${version}`;
 const title = `${label} -- shortcut manager`;
@@ -145,6 +145,11 @@ export function createProgram() {
         }
         if (result.status === 'workspace') {
           await openWorkspace(loadWorkspaces(), result.name);
+          return;
+        }
+        // Settings > Updates, Enter on a newer version.
+        if (result.status === 'update') {
+          await runUpdate();
           return;
         }
         if (result.status === 'noninteractive') {

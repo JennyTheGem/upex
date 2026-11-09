@@ -8,6 +8,7 @@ import { loadLinks, loadWorkspaces } from '../store.js';
 import { resolveTarget } from '../fuzzy.js';
 import { withSub } from '../fast.js';
 import { runInteractiveMode } from '../interactive.js';
+import { runUpdate } from '../update.js';
 import * as ui from '../ui.js';
 
 // Names a selector result stands for: the row, the marked rows, or a workspace's entries.
@@ -39,6 +40,7 @@ export function registerPick(program) {
       // Colors follow the terminal the selector draws on, not the pipe.
       chalk.level = chalkStderr.level;
       const result = await runInteractiveMode({ stdout: process.stderr, picker: true });
+      if (result.status === 'update') { await runUpdate(); process.exitCode ||= 1; return; }
       const paths = pickedPaths(pickedNames(result, result.status === 'workspace' ? loadWorkspaces() : {}), loadLinks());
       if (!paths.length) { process.exitCode = 1; return; }
       process.stdout.write(paths.join('\n') + '\n');
