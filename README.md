@@ -45,6 +45,7 @@ npm link
 | `upex list [tag] [--git]` | Show all saved shortcuts (filter by tag; `--git` adds a branch column) |
 | `upex remove <name>` | Delete a saved shortcut |
 | `upex undo` | Undo the last change to your shortcuts (run again to step further back, up to 10; no redo) |
+| `upex color <name> [value]` | Color label: red, orange, yellow, green, blue, purple, gray, `#rrggbb` or one emoji, a dot before the name in the selector and web UI (`--clear` removes it) |
 | `upex pin <name>` / `upex unpin <name>` | Pin a shortcut to the top of the selector and web UI (`upex pin` lists pinned) |
 | `upex rename <old> <new>` | Rename a shortcut |
 | `upex edit <name> [path]` | Update a shortcut's path (defaults to cwd) |
@@ -315,7 +316,7 @@ Each entry is an object with optional fields:
 }
 ```
 
-`opener` is the default opener for `upex <name>` (set with `--opener`). `uses` / `lastUsed` are written automatically and drive the interactive selector's frecency ordering. Each open is also appended to `~/.upex/history.jsonl` (`{ ts, name, opener }` per line), which `upex stats` reads. `added` (set on add, drives `upex stale` for never-opened shortcuts) and `expires` (from `--ttl`) are timestamps too. `pinned: true` (from `upex pin`) keeps a shortcut at the top; `pinOrder` (from `Alt+Up` / `Alt+Down` in the selector) is its place among the pinned.
+`opener` is the default opener for `upex <name>` (set with `--opener`). `uses` / `lastUsed` are written automatically and drive the interactive selector's frecency ordering. Each open is also appended to `~/.upex/history.jsonl` (`{ ts, name, opener }` per line), which `upex stats` reads. `added` (set on add, drives `upex stale` for never-opened shortcuts) and `expires` (from `--ttl`) are timestamps too. `pinned: true` (from `upex pin`) keeps a shortcut at the top; `pinOrder` (from `Alt+Up` / `Alt+Down` in the selector) is its place among the pinned. `color` (from `upex color`) is a palette name, `#rrggbb` or one emoji.
 
 Legacy string entries (`"name": "/path"`) are auto-migrated on read.
 
@@ -356,6 +357,7 @@ Appearance:
 - `"maxRows"` (selector only): list rows, `"auto"` (default: the whole screen in full screen, 8 inline), `"8"`, `"12"` or `"16"`. Inline, Settings shows Auto as its "8" option. In full screen the key rows sit at the bottom of the terminal, and a terminal 140+ columns wide gets a detail pane right of the list (the name with times opened, last opened and opener beside it, a line with type, tags, aliases, added and expiry, then other shortcuts on the same path, a stale hint when not opened in 30+ days that a click archives after a y / n, and the note; a workspace lists its entries).
 - `"paths"`: `"dim"` (default, parent folders dimmed), `"full"` or `"hidden"` (no paths, commands or URLs) in the selector, `upex ls`, `upex stale` and `upex ui`. Piped output always shows paths.
 - `"rowDetails"`: what shows on the right of a row in the selector, `upex ls` and `upex ui`. `"both"` (default), `"tags"` (#tags), `"badges"` (★ pinned, app, cmd, url, missing) or `"none"`. Piped `upex ls` always shows both.
+- `"usage"`: the right edge of a row in the selector and `upex ui`. `"ago"` (default, last opened like 3d ago), `"opens"` (open count) or `"off"`.
 - `"pinned"`: `"top"` (default, pinned shortcuts first) or `"section"` (first, under a Pinned heading, the rest under All) in the selector and `upex ui`. A search in the selector sorts by match, so it drops the headings.
 - `"groups"`: `"off"` (default) or `"tags"` (pinned ones under Pinned on top, then a #tag heading with its count per tag in the selector and `upex ui`, in the sort order, a shortcut with two tags under both, untagged ones last). Not while searching or filtering by a tag.
 

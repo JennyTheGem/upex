@@ -33,6 +33,7 @@ import { registerConfig } from './commands/config.js';
 import { registerPin } from './commands/pin.js';
 import { registerUndo } from './commands/undo.js';
 import { registerNote } from './commands/note.js';
+import { registerColor } from './commands/color.js';
 import { registerPick } from './commands/pick.js';
 import { runInteractiveMode } from './interactive.js';
 import { setting } from './launcher.js';
@@ -91,6 +92,7 @@ export function createProgram() {
   registerPin(program);
   registerUndo(program);
   registerNote(program);
+  registerColor(program);
   registerPick(program);
 
   // Archive expired temporary shortcuts. Skipped where stdout feeds a shell wrapper.

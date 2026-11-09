@@ -12,7 +12,7 @@ import readline from 'node:readline';
 import { PassThrough } from 'node:stream';
 import { spawn, spawnSync, execSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { unarchived, frecency, pruneBroken, mergeLinks, lastUsedName, nameError, takenError, checkAliases, aliasClashes, staleLinks, sweepExpired, diffLinks, keepUsage, withPinned } from '../src/store.js';
+import { unarchived, frecency, pruneBroken, mergeLinks, lastUsedName, nameError, takenError, checkAliases, aliasClashes, staleLinks, sweepExpired, diffLinks, keepUsage, withPinned, parseColor, colorOf } from '../src/store.js';
 import { remoteWebUrl } from '../src/git.js';
 import { installCmdWrapper } from '../src/commands/setup.js';
 import { normalizeUrl, caretEscape, wtCommandLine, setting, shellCommand, defaultOpener, checkSettings, resetSettings, startTab } from '../src/launcher.js';
@@ -23,7 +23,7 @@ import { COMMAND_NAMES } from '../src/fast.js';
 import { createProgram } from '../src/index.js';
 import { readScripts, detectPm } from '../src/commands/run.js';
 import { pickedNames, pickedPaths } from '../src/commands/pick.js';
-import { renderInteractiveView, nextView, backTo, accentOf, pathLook, inView, tidyPath, byOrder, optionRow, listRows, readMouse, hitTest, rowClick, undoFlash, clipName, prefill, editLine, kindOf, retyped, setField, fieldWords, completeTag, expiryOptions, formRows, formLines, statLines, doctorLines, inputLine, missingFlash, staysOpen, expandHome, underlineHits, movePinned, sameGroup, withRecent, withGroups, filterChoices, maxListOf, jumpIndex, isAlt, detailLines, rowOptions, pickedOf, settingsList, goalSummary, goalsOf, goalText, oneLine, scriptLines, markLines, paneShown, paneToggles, paneWidthOf, withSamePath, archivedList, dotLines, lr, wrapHint, splice, overlayMenu } from '../src/interactive.js';
+import { usageText, stepColor, renderInteractiveView, nextView, backTo, accentOf, pathLook, inView, tidyPath, byOrder, optionRow, listRows, readMouse, hitTest, rowClick, undoFlash, clipName, prefill, editLine, kindOf, retyped, setField, fieldWords, completeTag, expiryOptions, formRows, formLines, statLines, doctorLines, inputLine, missingFlash, staysOpen, expandHome, underlineHits, movePinned, sameGroup, withRecent, withGroups, filterChoices, maxListOf, jumpIndex, isAlt, detailLines, rowOptions, pickedOf, settingsList, goalSummary, goalsOf, goalText, oneLine, scriptLines, markLines, paneShown, paneToggles, paneWidthOf, withSamePath, archivedList, dotLines, lr, wrapHint, splice, overlayMenu } from '../src/interactive.js';
 import { parseStatus, parseDiff, parseLog, gitOf, stopGit } from '../src/git.js';
 import chalk from 'chalk';
 import { resolveTarget, resolveName, suggestNames } from '../src/fuzzy.js';
@@ -440,10 +440,15 @@ assert.ok(!setView.includes('Archived'), 'no archived section when none');
 const arcArgs = { ...setArgs, archived: [{ name: 'old', path: '/old/dir' }], height: 80 };
 const arcView = strip(renderInteractiveView({ ...arcArgs, settingIndex: 0 }));
 assert.ok(arcView.includes('Archived 1') && arcView.includes('/old/dir') && arcView.includes('change (saved)'), 'archived section lists them');
-// 29 setting rows on Windows (pane split hidden), so index 29 is the first archived one.
-const arcSel = strip(renderInteractiveView({ ...arcArgs, settingIndex: 28 + win }));
+// 30 setting rows on Windows (pane split hidden), so index 30 is the first archived one.
+const arcSel = strip(renderInteractiveView({ ...arcArgs, settingIndex: 29 + win }));
 assert.ok(arcSel.includes('› old') && arcSel.includes('↵ restore') && arcSel.includes('upex restore old') && arcSel.includes('^d delete') && !arcView.includes('^d delete'), 'picked archived row: restore and delete keys, note');
 
+// color dot column before names, usage at the right edge
+const dotView = strip(renderInteractiveView({ ...viewArgs, width: 80, settings: { usage: 'opens' }, choices: [{ name: 's', path: 'P', exists: true, color: 'red', uses: 2, lastUsed: 5 }, { name: 't', path: 'Q', exists: true, uses: 0, lastUsed: 0 }] }));
+assert.ok(/● s /.test(dotView) && /  {2}t /.test(dotView) && dotView.includes('2 opens') && dotView.includes('0 opens'), 'color dot + usage column');
+const narrowUse = strip(renderInteractiveView({ ...viewArgs, width: 30, settings: { usage: 'ago' }, choices: [{ name: 's', path: 'P', exists: false, color: '🔥', lastUsed: 0 }] })).split('\n').find(l => l.startsWith('  › 🔥'));
+assert.ok(width(narrowUse) <= 30 && narrowUse.includes('missing') && !narrowUse.includes('never'), 'usage drops before the row overflows');
 // rows stay inside the given width, the missing badge survives a long path
 const longArgs = (width, exists) => ({ ...viewArgs, width, choices: [{ name: 's', path: 'P/'.repeat(60) + 'leaf', exists }] });
 const longView = strip(renderInteractiveView(longArgs(60, false)));
@@ -623,11 +628,11 @@ assert.deepEqual([settingsList({}, 'old', [], [{ name: 'old', path: '/o' }]).mor
 const themeOnly = strip(renderInteractiveView({ ...setArgs, query: 'web theme', settingIndex: 0 }));
 assert.ok(themeOnly.includes('› web theme') && themeOnly.includes('› Web theme') && !themeOnly.includes('Sort') && themeOnly.includes('esc clear'), 'filtered settings view');
 assert.ok(strip(renderInteractiveView({ ...setArgs, query: 'zzz', settingIndex: 0 })).includes('No settings match.'), 'no match');
-const short = rowsOf({ ...setArgs, height: 14, settingIndex: 19 + win });
+const short = rowsOf({ ...setArgs, height: 14, settingIndex: 20 + win });
 assert.ok(short.length <= 14 && short.some(l => l.startsWith('  › Web theme')) && short.at(-1).includes('setting'), 'short terminal scrolls settings, keeps the footer');
-assert.equal(at({ ...setArgs, height: 14, settingIndex: 18 + win }, 3, short.findIndex(l => l.startsWith('  › Web theme')) + 1)?.setting, 18 + win, 'scrolled settings stay clickable');
-const arcShort = { ...setArgs, archived: [{ name: 'old', path: '/old/dir' }], height: 14, settingIndex: 28 + win };
-assert.equal(at(arcShort, 3, rowsOf(arcShort).findIndex(l => l.startsWith('  › old')) + 1)?.setting, 28 + win, 'last archived row scrolls into view, stays clickable');
+assert.equal(at({ ...setArgs, height: 14, settingIndex: 19 + win }, 3, short.findIndex(l => l.startsWith('  › Web theme')) + 1)?.setting, 19 + win, 'scrolled settings stay clickable');
+const arcShort = { ...setArgs, archived: [{ name: 'old', path: '/old/dir' }], height: 14, settingIndex: 29 + win };
+assert.equal(at(arcShort, 3, rowsOf(arcShort).findIndex(l => l.startsWith('  › old')) + 1)?.setting, 29 + win, 'last archived row scrolls into view, stays clickable');
 assert.equal(checkSettings({ accent: 'red' }).error, 'accent must be one of: default, green, blue, purple, orange, or a hex color like #ff66aa.', 'bad accent refused');
 assert.deepEqual([checkSettings({ accent: '#FF66aa' }).next.accent, checkSettings({ accent: 'ff66aa' }).next.accent, checkSettings({ sort: '#ff66aa' }).error?.slice(0, 4)], ['#ff66aa', '#ff66aa', 'sort'], 'hex only for accent, normalized');
 assert.deepEqual([setting('accent', { accent: '#ff66aa' }), setting('accent', { accent: '#ff66a' }), setting('accent', { accent: '"><x' })], ['#ff66aa', 'default', 'default'], 'stored hex read back, junk falls back');
@@ -658,7 +663,7 @@ assert.ok(v({}).includes('^u web ui') && v({ view: 'workspaces' }).includes('^u 
   assert.deepEqual(expiryOptions({ expires: 3 * D }, 0), { labels: ['never', '1d', 'in 3d', '30d'], at: 2 }, '3d left: in the 7d slot');
   assert.deepEqual(expiryOptions({ expires: 60 * D }, 0), { labels: ['never', '1d', '7d', '30d', 'in 60d'], at: 4 }, 'past 30d: its own slot last');
   assert.equal(expiryOptions({ expires: 5 }, 10).at, 0, 'expired counts as never');
-  assert.deepEqual(formRows({ entry: { url: 'x' } }), ['name', 'target', 'type', 'tags', 'aliases', 'note', 'expires'], 'no opener row for a url');
+  assert.deepEqual(formRows({ entry: { url: 'x' } }), ['name', 'target', 'type', 'tags', 'aliases', 'note', 'color', 'expires'], 'no opener row for a url');
   assert.deepEqual(formRows({ ws: true, entry: [{ shortcut: 'a' }, { shortcut: 'b' }] }), ['name', 0, 1], 'workspace rows: name, then entries');
   const entry = { path: home, tags: ['work'], note: 'hi there', opener: 'explorer' };
   const fl = formLines({ name: 'web', entry, field: 4, editing: false }, 60, [{ key: 'explorer', label: 'Explorer' }]).map(strip);
@@ -685,11 +690,11 @@ assert.ok(v({}).includes('^u web ui') && v({ view: 'workspaces' }).includes('^u 
 {
   const extras = [{ section: 'Openers', kind: 'opener', name: 'zed', text: 'zed' }, { section: 'Maintenance', kind: 'stats', name: 'Stats', text: 'web 3' }];
   const ex = (i, more = {}) => strip(renderInteractiveView({ ...setArgs, extras, archived: [{ name: 'old', path: '/o' }], height: 80, settingIndex: i, ...more }));
-  const e0 = ex(28 + win);
+  const e0 = ex(29 + win);
   assert.ok(e0.indexOf('Openers') < e0.indexOf('Maintenance') && e0.indexOf('Maintenance') < e0.indexOf('Archived 1'), 'extra sections in order');
   assert.ok(e0.includes('› zed') && e0.includes('↵ edit command') && e0.includes('^d remove'), 'opener row keys');
-  assert.ok(ex(29 + win, { expanded: { kind: 'stats', lines: ['web  3'] } }).includes('↵ hide') && ex(29 + win, { expanded: { kind: 'stats', lines: ['web  3'] } }).includes('      web  3'), 'stats lines under its row');
-  assert.ok(ex(30 + win).includes('› old') && ex(30 + win).includes('↵ restore'), 'archived index after the extras');
+  assert.ok(ex(30 + win, { expanded: { kind: 'stats', lines: ['web  3'] } }).includes('↵ hide') && ex(30 + win, { expanded: { kind: 'stats', lines: ['web  3'] } }).includes('      web  3'), 'stats lines under its row');
+  assert.ok(ex(31 + win).includes('› old') && ex(31 + win).includes('↵ restore'), 'archived index after the extras');
   assert.ok(strip(renderInteractiveView({ ...setArgs, mode: 'confirm', ask: 'remove opener "zed"?' })).includes('? remove opener "zed"?  y / n'), 'settings confirm question');
   const day = 86400000;
   const sl = statLines({ code: { displayName: 'VS Code' } }, [{ name: 'web', opener: 'code', ts: 10 * day }, { name: 'web', ts: 11 * day }, { name: 'api', ts: 11 * day }], 12 * day).map(strip);
@@ -932,6 +937,18 @@ assert.deepEqual(cmdAdd, { app: 'npm run dev', terminal: true }, 'add cmd stores
 assert.deepEqual(applyShortcut({ dev: cmdAdd }, 'dev', { name: 'dev', target: 'npm test' }, yes).links.dev, { app: 'npm test', terminal: true }, 'edit cmd keeps terminal');
 assert.match(applyShortcut(base, undefined, { kind: 'folder', name: 'd', target: '/nope' }, () => false).error, /does not exist/, 'missing folder rejected');
 assert.match(applyShortcut(base, undefined, { kind: 'url', name: 'a b', target: 'y' }, yes).error, /spaces/, 'spaces rejected');
+// color labels: palette, hex (bare too), one emoji; none clears; edit sets, '' drops, junk is refused
+assert.deepEqual([parseColor('Blue'), parseColor('FF66AA'), parseColor('#00ff00'), parseColor('🔥'), parseColor('none'), parseColor('')].map(r => r.color), ['blue', '#ff66aa', '#00ff00', '🔥', '', '']);
+assert.ok(parseColor('pink').error && parseColor('🔥🔥').error && parseColor('a').error, 'bad colors refused');
+assert.deepEqual([colorOf({ color: 5 }), colorOf({ color: 'pink' }), colorOf({ color: 'Red' }), colorOf({})], ['', '', 'red', ''], 'hand-edited color junk reads as none');
+assert.equal(applyShortcut(base, 'b', { name: 'b', target: 'x.dev', color: 'red' }, yes).links.b.color, 'red', 'ui sets a color');
+assert.ok(!('color' in applyShortcut({ b: { url: 'x', color: 'red' } }, 'b', { name: 'b', target: 'x', color: '' }, yes).links.b), 'ui clears a color');
+assert.match(applyShortcut(base, 'b', { name: 'b', target: 'x.dev', color: 'pink' }, yes).error, /Color/, 'ui refuses a bad color');
+assert.deepEqual([stepColor('', 1), stepColor('red', -1), stepColor('', -1), stepColor('🔥', 1)], ['red', '', 'gray', 'red'], 'color row steps');
+// usage setting: last opened, open count, off; workspaces (no lastUsed) show none
+const used = { lastUsed: 1000, uses: 1 };
+assert.deepEqual([usageText(used, 'ago', 1000 + 3 * 86400000), usageText({ lastUsed: 0, uses: 0 }, 'ago'), usageText(used, 'opens'), usageText({ lastUsed: 0, uses: 0 }, 'opens'), usageText(used, 'off'), usageText({}, 'ago')],
+  ['3d ago', 'never', '1 open', '0 opens', '', '']);
 const ren = applyShortcut(base, 'a', { name: 'z', target: '/A', tags: 'p, q' }, () => false).links;
 assert.deepEqual(Object.keys(ren), ['z', 'b'], 'rename keeps position, unchanged dead path allowed');
 assert.deepEqual(ren.z.tags, ['p', 'q'], 'tags parsed on edit');
@@ -1285,7 +1302,7 @@ try {
   assert.equal(cfg2.paneSplit, 'horizontal', 'refused request saved nothing, later one did');
   assert.equal(cfg2.defaultOpener, 'vscode', 'default opener stored as its key');
   const st2 = await (await fetch(base + '/api/state', { headers: { 'x-upex-token': token } })).json();
-  assert.deepEqual(st2.settings, { startView: 'apps', sort: 'name', terminalLayout: 'panes', paneSplit: 'horizontal', terminalShell: 'powershell', fullScreen: 'on', mouse: 'on', theme: 'system', accent: 'default', density: 'comfortable', paths: 'dim', keyHints: 'full', maxRows: 'auto', recentStrip: 'off', staleAfter: '60', views: 'all', enter: 'quit', fuzzy: 'normal', searchIn: 'all', flash: '3', updateCheck: 'on', rowDetails: 'both', pinned: 'top', groups: 'off', narrowPane: 'toggle', paneWidth: 'normal', goals: 'off', git: 'off', glyphs: 'unicode', defaultOpener: 'vscode' }, 'state reports settings');
+  assert.deepEqual(st2.settings, { startView: 'apps', sort: 'name', terminalLayout: 'panes', paneSplit: 'horizontal', terminalShell: 'powershell', fullScreen: 'on', mouse: 'on', theme: 'system', accent: 'default', density: 'comfortable', paths: 'dim', keyHints: 'full', maxRows: 'auto', recentStrip: 'off', staleAfter: '60', views: 'all', enter: 'quit', fuzzy: 'normal', searchIn: 'all', flash: '3', updateCheck: 'on', usage: 'ago', rowDetails: 'both', pinned: 'top', groups: 'off', narrowPane: 'toggle', paneWidth: 'normal', goals: 'off', git: 'off', glyphs: 'unicode', defaultOpener: 'vscode' }, 'state reports settings');
   assert.deepEqual(Object.keys(cfg2.workspaces), ['work'], 'settings save keeps workspaces');
   const note = path.join(webHome, 'note.txt');
   fs.writeFileSync(note, '');

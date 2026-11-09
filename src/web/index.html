@@ -178,6 +178,11 @@ h1 { font-size: 20px; letter-spacing: -.015em; margin: 8px 0 4px; }
 .custom-accent:hover { color: var(--text); }
 .custom-accent.on { color: var(--text); border-color: var(--accent); background: var(--accent-soft); }
 .custom-accent input { width: 22px; height: 22px; padding: 0; border: 0; background: none; cursor: pointer; }
+.dot { margin-right: 6px; font-weight: 400; }
+/* Color labels (store COLORS); a hex comes inline */
+.c-red { color: light-dark(#d13438, #ff6b6b); } .c-orange { color: light-dark(#c75000, #ff9f45); } .c-yellow { color: light-dark(#a67c00, #f5cf3c); }
+.c-green { color: light-dark(#1f8a3b, #5dd27a); } .c-blue { color: light-dark(#1f6feb, #6aa7ff); } .c-purple { color: light-dark(#8250df, #c08bff); }
+.c-gray { color: var(--muted); }
 .when { color: var(--muted); font-size: 12px; text-align: right; font-variant-numeric: tabular-nums; }
 .actions { display: flex; gap: 4px; align-items: center; justify-content: flex-end; }
 .actions select { height: var(--h); width: 122px; }
@@ -300,6 +305,7 @@ const SETTING_OPTS = {
   density: { comfortable: 'Comfortable', compact: 'Compact' },
   paths: { dim: 'Dim folders', full: 'Full', hidden: 'Hidden' },
   rowDetails: { both: 'Both', tags: 'Tags', badges: 'Badges', none: 'None' },
+  usage: { ago: 'Last opened', opens: 'Opens', off: 'Off' },
   pinned: { top: 'On top', section: 'Own section' },
   groups: { off: 'Off', tags: 'By tag' },
 };
@@ -317,6 +323,12 @@ const HIDES = { 'no-workspaces': ['ws'], 'no-apps': ['apps'], shortcuts: ['apps'
 // Sort setting -> field, highest first; A to Z has none.
 const SORT_FIELD = { recent: 'score', opened: 'lastUsed', added: 'added' };
 const isHex = v => /^#[0-9a-f]{6}$/i.test(v || '');
+const COLORS = ['red', 'orange', 'yellow', 'green', 'blue', 'purple', 'gray'];
+// Color label before the name: a palette or hex dot, or the emoji itself.
+const dot = c => c && h('span', { class: 'dot' + (COLORS.includes(c) ? ' c-' + c : ''), style: isHex(c) ? 'color:' + c : null, 'aria-hidden': 'true' },
+  COLORS.includes(c) || isHex(c) ? '●' : c);
+// Usage setting: last opened, open count or nothing, like the selector.
+const usage = l => (S.settings.usage === 'off' ? '' : S.settings.usage === 'opens' ? `${l.uses} open${l.uses === 1 ? '' : 's'}` : ago(l.lastUsed));
 
 const S = {
   links: [], workspaces: {}, apps: [], openers: [], settings: {}, defaults: {}, startTab: '', wt: null, home: '', sep: '/',
@@ -561,6 +573,9 @@ function editRow(l) {
         field('tags', { 'aria-label': 'Tags', placeholder: 'tags, comma separated' }),
         field('aliases', { 'aria-label': 'Aliases', placeholder: 'aliases, comma separated' }),
         field('note', { class: 'wide', 'aria-label': 'Note', placeholder: 'note', spellcheck: 'true' }),
+        field('color', { 'aria-label': 'Color label', placeholder: 'color, #hex or emoji', list: 'colors',
+          title: 'A dot before the name: ' + COLORS.join(', ') + ', #rrggbb or one emoji. Empty: none.' }),
+        h('datalist', { id: 'colors' }, COLORS.map(c => h('option', { value: c }))),
         // Opener is only sent once changed, so a stale one doesn't block saving other edits.
         l.kind === 'folder' && openerSelect(d.opener ?? l.opener, v => (d.opener = v))),
       h('div', { class: 'row' },
@@ -618,7 +633,7 @@ function row(l, again) {
       iconBtn('copy', `Copy ${COPY_WORD[l.kind]} of ${l.name}`, '', copy),
       iconBtn('edit', `Edit ${l.name}`, '', () => {
         S.editing = l.name; S.editErr = '';
-        S.draft = { name: l.name, target: l.target, tags: l.tags.join(', '), aliases: l.aliases.join(', '), note: l.note };
+        S.draft = { name: l.name, target: l.target, tags: l.tags.join(', '), aliases: l.aliases.join(', '), note: l.note, color: l.color };
         render();
         document.getElementById('edit-name')?.focus();
       }),
@@ -629,13 +644,13 @@ function row(l, again) {
   return h('div', { class: 'item' + (l.broken ? ' broken' : '') },
     h('span', { class: 'kind', title: l.broken ? 'Path missing' : KINDS[l.kind] }, icon(l.broken ? 'alert' : l.kind)),
     h('div', { class: 'nm' },
-      h('div', { class: 'name', title: l.name }, l.name),
+      h('div', { class: 'name', title: l.name }, dot(l.color), l.name),
       ((shows('tags') && l.tags.length > 0) || l.aliases.length > 0) && h('div', { class: 'tags' },
         l.aliases.length > 0 && h('span', { class: 'tag', title: 'Aliases' }, 'aka ' + l.aliases.join(', ')),
         shows('tags') && l.tags.map(t => h('span', { class: 'tag' }, '#' + t))),
       l.note && h('div', { class: 'note', title: l.note }, l.note)),
     h('div', { class: 'target mono', title: l.target }, l.broken && shows('badges') && h('span', { class: 'miss' }, 'missing'), ...splitLeaf(l)),
-    h('div', { class: 'when', title: 'Last opened' }, ago(l.lastUsed)),
+    h('div', { class: 'when', title: S.settings.usage === 'opens' ? 'Times opened' : 'Last opened' }, usage(l)),
     actions);
 }
 
@@ -904,13 +919,14 @@ function settingsView() {
           S.apps.filter(a => a.key !== 'copy').map(a => h('option', { value: a.key, selected: s.defaultOpener === a.key }, a.label)),
           !S.apps.some(a => a.key === s.defaultOpener) && h('option', { value: s.defaultOpener, selected: true }, s.defaultOpener)))),
     h('section', { class: 'form', 'aria-labelledby': 'set-look' },
-      head('set-look', 'Appearance', ['theme', 'accent', 'density', 'paths', 'rowDetails', 'pinned', 'groups']),
+      head('set-look', 'Appearance', ['theme', 'accent', 'density', 'paths', 'rowDetails', 'usage', 'pinned', 'groups']),
       h('p', { class: 'lede', style: 'margin:0' }, 'All but theme also apply to the upex selector. Theme is this page only, the terminal keeps its own colors.'),
       seg('theme', 'Theme', l => `Theme: ${l}`),
       seg('accent', 'Accent', l => `Accent: ${l}`, k => h('span', { class: 'swatch ac-' + k, 'aria-hidden': 'true' }), customAccent),
       seg('density', 'Density', l => `Density: ${l}`),
       seg('paths', 'Paths', l => `Paths: ${l}`),
       seg('rowDetails', 'Row details', l => `Row details: ${l}`),
+      seg('usage', 'Usage', l => `Usage: ${l}`),
       seg('pinned', 'Pinned', l => `Pinned: ${l}`),
       seg('groups', 'Groups', l => `Groups: ${l}`)),
     h('section', { class: 'form', 'aria-labelledby': 'set-apps' },

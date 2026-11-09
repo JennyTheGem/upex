@@ -228,6 +228,22 @@ export function renameLink(oldName, newName) {
 
 export const aliasesOf = (e) => (Array.isArray(e?.aliases) ? e.aliases.filter(a => typeof a === 'string') : []);
 
+// Color label of a shortcut: a palette name, #rrggbb or one emoji.
+export const COLORS = ['red', 'orange', 'yellow', 'green', 'blue', 'purple', 'gray'];
+// Typed color -> { color } ('' = none, a bare rrggbb gets its #) or { error }.
+export function parseColor(v) {
+  const s = String(v ?? '').trim();
+  const low = s.toLowerCase();
+  if (!s || low === 'none') return { color: '' };
+  if (COLORS.includes(low)) return { color: low };
+  if (/^#?[0-9a-f]{6}$/.test(low)) return { color: `#${low.replace('#', '')}` };
+  const one = [...new Intl.Segmenter().segment(s)].length === 1;
+  if (one && /^(\p{Extended_Pictographic}|\p{Regional_Indicator})/u.test(s)) return { color: s };
+  return { error: `Color: ${COLORS.join(', ')}, #rrggbb, one emoji or none.` };
+}
+// A shortcut's color label, normalized; '' for none or hand-edited junk.
+export const colorOf = e => (typeof e?.color === 'string' && parseColor(e.color).color) || '';
+
 // Shortcut that owns `name` as its name or an alias, or null. Archived ones count.
 export function nameOwner(links, name) {
   if (Object.hasOwn(links, name)) return name;

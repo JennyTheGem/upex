@@ -95,7 +95,7 @@ const INTERACTIVE_APP_KEYS = [
 // Openers that open terminal windows (and so take a window count).
 export const isTerminalApp = key => key === 'cmd' || key === 'claude';
 
-// Settings in config.json; the first value is the default unless DEFAULTS says. Start view, views, sort, searchIn, staleAfter, pinned and groups are shared by the selector and upex ui; fullScreen, mouse, keyHints, maxRows, recentStrip, enter, flash, narrowPane, paneWidth, goals, git and glyphs are selector only.
+// Settings in config.json; the first value is the default unless DEFAULTS says. Start view, views, sort, searchIn, staleAfter, pinned, groups and usage are shared by the selector and upex ui; fullScreen, mouse, keyHints, maxRows, recentStrip, enter, flash, narrowPane, paneWidth, goals, git and glyphs are selector only.
 // Layout: separate windows, or tabs/panes in one Windows Terminal window. Shell 'profile' = wt default profile.
 export const SETTINGS = {
   // last = the tab (and opener) the selector or upex ui was left on.
@@ -136,6 +136,8 @@ export const SETTINGS = {
   maxRows: ['auto', '8', '12', '16'],
   // Right side of a row (selector, ls, upex ui): #tags, badges (pinned, app, missing), both or none.
   rowDetails: ['both', 'tags', 'badges', 'none'],
+  // Right edge of a row (selector, upex ui): last opened ("3d ago"), open count, or nothing.
+  usage: ['ago', 'opens', 'off'],
   // Pinned shortcuts first, or first under their own Pinned heading (selector, upex ui).
   pinned: ['top', 'section'],
   // Shortcuts under a #tag heading per tag, untagged last (selector, upex ui).

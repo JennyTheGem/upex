@@ -11,7 +11,7 @@ import Fuse from 'fuse.js';
 import { getInteractiveAppChoices, getAppMap, isTerminalApp, hasWindowsTerminal, defaultOpener, readSettings, setting, startTab, shownTabs, isHex, copyToClipboard, launchUrl, configApps, SETTINGS, settingValues, settingShown } from './launcher.js';
 import { gitOf, stopGit } from './git.js';
 import { fuseOpts } from './fuzzy.js';
-import { loadLinks, activeLinks, unarchived, aliasesOf, takenError, checkAliases, frecency, removeLinks, saveLinks, setLink, renameLink, loadWorkspaces, saveWorkspaces, removeWorkspace, nameError, loadConfig, saveConfig, withPinned, setPinOrder, StoreError, undoLast, hasBackups, pruneBroken, staleLinks, loadHistory, statsFrom } from './store.js';
+import { loadLinks, activeLinks, unarchived, aliasesOf, takenError, checkAliases, frecency, removeLinks, saveLinks, setLink, renameLink, loadWorkspaces, saveWorkspaces, removeWorkspace, nameError, loadConfig, saveConfig, withPinned, setPinOrder, StoreError, undoLast, hasBackups, pruneBroken, staleLinks, loadHistory, statsFrom, parseColor, colorOf, COLORS } from './store.js';
 import { describeEntry } from './commands/workspace.js';
 import { handleOpen } from './commands/open.js';
 import { startServer, applyOpener } from './commands/web.js';
@@ -70,6 +70,7 @@ function buildChoices() {
       isDir: !!entry.path,
       tags: entry.tags || [],
       note: entry.note,
+      color: colorOf(entry),
       pinned: !!entry.pinned,
       pinOrder: entry.pinned && Number.isFinite(entry.pinOrder) ? entry.pinOrder : undefined,
       opener: entry.opener ? String(entry.opener).toLowerCase() : null,
@@ -224,6 +225,12 @@ export const PIN = '★';
 export const badgeText = parts => { const t = parts.filter(Boolean).join(' '); return t.endsWith(PIN) ? `${t} ` : t; };
 // Row details setting: does `what` ('tags' | 'badges') show? Unset = both.
 export const showsDetail = (rowDetails = 'both', what) => rowDetails === 'both' || rowDetails === what;
+// Usage setting: a row's last opened ("3d ago") or open count, '' when off or for a workspace (no lastUsed).
+export function usageText(c, usage = 'ago', now = Date.now()) {
+  if (usage === 'off' || c.lastUsed === undefined) return '';
+  if (usage === 'opens') return `${c.uses || 0} open${c.uses === 1 ? '' : 's'}`;
+  return c.lastUsed ? `${ui.span(now - c.lastUsed)} ago` : 'never';
+}
 // Glyphs setting ascii: hint keys spelled out (set per render), the rest of the frame goes through ui.toAscii.
 let asciiHints = false;
 const ASCII_KEYS = [['↑↓', 'up/down'], ['←→', 'left/right'], ['→', 'right'], ['←', 'left'], ['↵', 'enter'], ['⌫', 'bs']];
@@ -307,14 +314,19 @@ export function clipName(name, width, hits = []) {
   return { text: `${name.slice(0, cut)}…`, hits: hits.map(([a, b]) => [a, Math.min(b, cut - 1)]).filter(([a, b]) => a <= b) };
 }
 
-// One list row: "› name  path ..... #tags  badge". `style` = path | url | dim | plain (url looks plain).
-function renderRow({ sel, mark, name, nameWidth, hits, text = '', style = 'path', right = '', cw, pick = s => s }) {
+// One list row: "› ● name  path ..... #tags  badge  3d ago". `style` = path | url | dim | plain (url looks plain).
+// `dot` (color label) sits in a `dotWidth` column before the name, 0 = no column. `usage` goes last, dropped when it doesn't fit.
+function renderRow({ sel, mark, name, nameWidth, hits, text = '', style = 'path', right = '', cw, pick = s => s, dot = '', dotWidth = 0, usage = '' }) {
   const n = clipName(name, nameWidth, hits);
   const nm = chalk.bold(underlineHits(n.text, n.hits)) + ' '.repeat(Math.max(0, nameWidth - vis(n.text)));
-  const room = cw - 2 - nameWidth - 2 - (right ? vis(right) + 2 : 0);
+  const dc = dotWidth ? dot + ' '.repeat(Math.max(0, dotWidth + 1 - vis(dot))) : '';
+  const roomFor = r => cw - 2 - vis(dc) - nameWidth - 2 - (r ? vis(r) + 2 : 0);
+  const withUsage = [right, usage].filter(Boolean).join('  ');
+  if (usage && roomFor(withUsage) >= 0) right = withUsage;
+  const room = roomFor(right);
   const t = clipStart(text, Math.max(0, room));
   const body = sel || style === 'plain' || style === 'url' ? t : style === 'dim' ? chalk.dim(t) : ui.dimParent(t);
-  const left = `${mark ? pick('●') : sel ? pick('›') : ' '} ${nm}  ${body}`;
+  const left = `${mark ? pick('●') : sel ? pick('›') : ' '} ${dc}${nm}  ${body}`;
   const line = sel || right ? left + ' '.repeat(Math.max(right ? 2 : 0, cw - vis(left) - vis(right))) + right : left;
   return `  ${sel ? highlight(line) : line}`;
 }
@@ -534,8 +546,10 @@ export function expiryOptions(e, now = Date.now()) {
 }
 // Form rows: a shortcut's fields (opener only for a folder), or a workspace's name and then its entries by index.
 export const formRows = ({ ws, entry }) => (ws ? ['name', ...(entry || []).map((_, i) => i)]
-  : ['name', 'target', 'type', ...(kindOf(entry) === 'folder' ? ['opener'] : []), 'tags', 'aliases', 'note', 'expires']);
-export const isTextRow = (f, ws) => (ws ? true : ['name', 'target', 'tags', 'aliases', 'note'].includes(f));
+  : ['name', 'target', 'type', ...(kindOf(entry) === 'folder' ? ['opener'] : []), 'tags', 'aliases', 'note', 'color', 'expires']);
+export const isTextRow = (f, ws) => (ws ? true : ['name', 'target', 'tags', 'aliases', 'note', 'color'].includes(f));
+// Color row ←→: none, then the palette; a typed hex or emoji steps on from none.
+export const stepColor = (cur, d) => { const l = ['', ...COLORS]; return l[(Math.max(0, l.indexOf(cur || '')) + d + l.length) % l.length]; };
 // Openers a folder or workspace entry can pick: its default first.
 const openerOptions = appChoices => [['', 'default'], ...appChoices.filter(c => c.key !== 'copy').map(c => [c.key, c.label])];
 
@@ -549,6 +563,7 @@ function formNote(f, form) {
   if (f === 'tags') return 'Space between tags, tab completes one you use. Type #tag in the filter to find them.';
   if (f === 'aliases') return 'Other names that open it too, space between.';
   if (f === 'note') return 'Shown at the top of the details.';
+  if (f === 'color') return '←→ picks a color, ↵ types one: #rrggbb or an emoji. A dot before the name, here and in upex ui.';
   return 'Archived on its own after this long, like add --ttl.';
 }
 
@@ -582,6 +597,7 @@ export function formLines(form, w, appChoices = [], pick = chalk.bold, now = Dat
     if (f === 'tags') return e.tags?.length ? `#${e.tags.join(' #')}` : none;
     if (f === 'aliases') return aliasesOf(e).join(' ') || none;
     if (f === 'note') return oneLine(e.note) || none;
+    if (f === 'color') return ui.colorLabel(colorOf(e)) || none;
     const x = expiryOptions(e, now);
     return optionRow(x.labels, x.at, vw, null, pick);
   };
@@ -604,7 +620,7 @@ function formKeys(form, inputRow) {
   const f = formRows(form)[form.field];
   const entry = form.ws && f !== 'name';
   const enter = form.kind ? 'new target' : entry ? 'start command' : isTextRow(f, form.ws) && 'edit';
-  const change = entry ? 'opener' : f === 'type' ? 'type' : ['opener', 'expires'].includes(f) && 'change (saved)';
+  const change = entry ? 'opener' : f === 'type' ? 'type' : ['opener', 'color', 'expires'].includes(f) && 'change (saved)';
   return keyHint([enter && ['↵', enter], change && ['←→', change], ['↑↓', 'field'], entry && ['^d', 'remove'],
     form.history?.length && ['^z', 'undo'], ['esc', form.kind ? 'keep type' : 'done']]);
 }
@@ -635,6 +651,7 @@ const SETTING_ROWS = [
   { section: 'List', key: 'density', label: 'Density', scope: 'tui+web', names: { comfortable: 'Comfortable', compact: 'Compact' } },
   { section: 'Rows', key: 'paths', label: 'Paths', scope: 'all', names: { dim: 'Dim folders', full: 'Full', hidden: 'Hidden' } },
   { section: 'Rows', key: 'rowDetails', label: 'Row details', scope: 'all', names: { both: 'Both', tags: 'Tags', badges: 'Badges', none: 'None' } },
+  { section: 'Rows', key: 'usage', label: 'Usage', scope: 'tui+web', names: { ago: 'Last opened', opens: 'Opens', off: 'Off' } },
   { section: 'Look', key: 'accent', label: 'Accent', scope: 'tui+web', names: { default: 'Default', green: 'Green', blue: 'Blue', purple: 'Purple', orange: 'Orange' } },
   { section: 'Look', key: 'glyphs', label: 'Glyphs', scope: 'tui', names: { unicode: 'Unicode', ascii: 'ASCII' } },
   { section: 'Look', key: 'theme', label: 'Web theme', scope: 'web', names: { system: 'System', dark: 'Dark', light: 'Light' } },
@@ -692,6 +709,7 @@ function settingNote(key, s, wt) {
   if (key === 'density') return 'Compact drops the spacer lines.';
   if (key === 'paths') return 'Dim folders dims the parent folders. Hidden drops paths, commands and URLs. Also upex ls / stale.';
   if (key === 'rowDetails') return 'Right side of a row: #tags, badges (pinned, app, missing), both or none. Also upex ls.';
+  if (key === 'usage') return 'Right edge of a row: when it was last opened (3d ago), how often (12 opens), or nothing.';
   if (key === 'pinned') return 'Pinned shortcuts first, or first under their own Pinned heading. ^p pins, Alt+↑↓ moves one.';
   if (key === 'groups') return 'By tag: Pinned on top, then a #tag heading per tag in the sort order, like folders; two tags show under both, untagged last. Type #tag to filter.';
   if (key === 'narrowPane') return 'Under 140 columns (full screen): Shift+→ opens the pane, Shift+← or Esc closes it, or it always shows. Not under 60.';
@@ -1198,6 +1216,10 @@ export function renderInteractiveView({
     const { start, end } = getVisibleWindow(items, items.findIndex(x => x.i === index), Math.min(maxList, listRows(items.length, room)));
     const tagsOn = !plain && showsDetail(settings.rowDetails, 'tags');
     const badgesOn = !plain && showsDetail(settings.rowDetails, 'badges');
+    // Usage padded to one width so it lines up; a color column only when one has a label.
+    const now = Date.now();
+    const usageW = Math.max(0, ...list.map(c => usageText(c, settings.usage, now).length));
+    const dotWidth = Math.max(0, ...list.map(c => vis(ui.colorDot(c.color))));
     for (const { head, i } of items.slice(start, end)) {
       if (head) { lines.push(chalk.dim(`    ${head}`)); continue; }
       const c = list[i];
@@ -1217,6 +1239,9 @@ export function renderInteractiveView({
         right: [tags, badge].filter(Boolean).join('  '),
         cw,
         pick,
+        dot: ui.colorDot(c.color),
+        dotWidth,
+        usage: usageW ? chalk.dim(usageText(c, settings.usage, now).padStart(usageW)) : '',
       }, settings.paths)));
     }
     // Counts rows, not headings.
@@ -1787,6 +1812,11 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
       }
       if (f === 'tags') saveShortcut(setField(cur, 'tags', fieldWords(buf)), 'tags saved');
       if (f === 'note') saveShortcut(setField(cur, 'note', oneLine(buf)), 'note saved');
+      if (f === 'color') {
+        const r = parseColor(buf);
+        if (r.error) return nameFlash(r.error);
+        saveShortcut(setField(cur, 'color', r.color), r.color ? `color ${r.color}` : 'color removed');
+      }
       return true;
     };
 
@@ -1809,6 +1839,9 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
         const keys = openerOptions(appChoices).map(([k]) => k);
         const key = step(keys, Math.max(0, keys.indexOf(cur.opener || '')));
         saveShortcut(setField(cur, 'opener', key), key ? `opens in ${appMap[key]?.displayName || key}` : 'opens in the default opener');
+      } else if (f === 'color') {
+        const c = stepColor(colorOf(cur), d);
+        saveShortcut(setField(cur, 'color', c), c ? `color ${c}` : 'color removed');
       } else if (f === 'expires') {
         const { labels, at } = expiryOptions(cur);
         const pick = EXPIRES[(at + d + labels.length) % labels.length];
@@ -1856,7 +1889,7 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
           editField(keep ? targetOf(cur) : '');
         } else if (isTextRow(f)) {
           editField(f === 'name' ? form.name : f === 'target' ? targetOf(cur) : f === 'tags' ? (cur.tags || []).join(' ')
-            : f === 'aliases' ? aliasesOf(cur).join(' ') : oneLine(cur.note));
+            : f === 'aliases' ? aliasesOf(cur).join(' ') : f === 'color' ? colorOf(cur) : oneLine(cur.note));
         }
       } else if (key.ctrl && key.name === 'd' && form.ws && f !== 'name') {
         const list = formEntry().filter((_, i) => i !== f);

@@ -80,38 +80,6 @@
       "section": 2,
       "size": "S",
       "created": "2026-11-06"
-    },
-    {
-      "id": "per-shortcut-color-label",
-      "title": "Per-shortcut color label",
-      "body": "Optional color (or emoji) per shortcut, shown as a dot before the name in the selector and upex ui, to spot work vs personal at a glance.",
-      "section": 1,
-      "size": "M",
-      "created": "2026-11-07"
-    },
-    {
-      "id": "usage-column-setting",
-      "title": "Usage column setting",
-      "body": "Hide usage, show the open count, or show relative time like 3d ago.",
-      "section": 3,
-      "size": "S",
-      "created": "2026-11-07"
-    },
-    {
-      "id": "number-keys-open-rows",
-      "title": "Number keys open rows",
-      "body": "1 to 9 opens that visible row right away. Needs care with the filter input.",
-      "section": 3,
-      "size": "S",
-      "created": "2026-11-07"
-    },
-    {
-      "id": "git-dirty-badge-in-selector",
-      "title": "Git dirty badge in selector",
-      "body": "A dot on rows whose repo has uncommitted changes. Pairs with ls --dirty, must stay fast.",
-      "section": 3,
-      "size": "M",
-      "created": "2026-11-07"
     }
   ]
 }

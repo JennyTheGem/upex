@@ -156,6 +156,15 @@ const ASCII = { '‹': '<', '›': '>', '▏': '|', '▎': '|', '│': '|', '─
 const ASCII_RE = new RegExp(`[${Object.keys(ASCII).join('')}]`, 'g');
 export const toAscii = s => s.replace(ASCII_RE, c => ASCII[c]);
 
+// Color label (store parseColor) as a colored ● or its emoji; '' for none.
+const DOT = {
+  red: chalk.red, orange: s => (chalk.level >= 2 ? chalk.ansi256(208) : chalk.yellow)(s), yellow: chalk.yellow,
+  green: chalk.green, blue: chalk.blueBright, purple: chalk.magentaBright, gray: chalk.gray,
+};
+export const colorDot = c => (!c || typeof c !== 'string' ? '' : Object.hasOwn(DOT, c) ? DOT[c]('●') : /^#[0-9a-f]{6}$/i.test(c) ? chalk.hex(c)('●') : c);
+// "● red", "● #ff66aa", an emoji alone.
+export const colorLabel = c => { const d = colorDot(c); return d === c ? c : d && `${d} ${c}`; };
+
 /**
  * Word-wrap [text, style] segments into styled lines of at most n columns.
  * "\n" forces a break; a word wider than n is clipped. \u00a0 keeps words together (printed as a space).
