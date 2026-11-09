@@ -9,7 +9,7 @@ import { settingRows } from './config.js';
 
 // Section order and members; a command not listed lands in Other.
 const SECTIONS = {
-  Open: ['go', 'cmd', 'run', 'open', 'ws', 'last', 'web', 'copy'],
+  Open: ['go', 'cd', 'cmd', 'run', 'open', 'ws', 'last', 'web', 'copy'],
   Shortcuts: ['add', 'edit', 'rename', 'remove', 'restore', 'list', 'tag', 'alias', 'pin', 'unpin', 'undo', 'ui'],
   Maintenance: ['check', 'stale', 'stats', 'doctor', 'export', 'import'],
   Setup: ['config', 'app', 'setup', 'completion', 'help'],

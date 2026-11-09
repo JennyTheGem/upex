@@ -10,7 +10,7 @@ import os from 'node:os';
 import { spawnSync } from 'node:child_process';
 import chalk from 'chalk';
 import { loadLinks, recordUse } from '../store.js';
-import { findFolder, withSub } from '../fast.js';
+import { findFolder, withSub, cdTarget } from '../fast.js';
 import { resolveTarget, didYouMean } from '../fuzzy.js';
 import { launchApp, launchExecutable, launchUrl, defaultOpener, openerKey } from '../launcher.js';
 import * as ui from '../ui.js';
@@ -69,6 +69,30 @@ export function registerGo(program) {
       const cwd = isFile(targetPath) ? path.dirname(targetPath) : targetPath;
       const r = spawnSync(start.join(' '), { cwd, stdio: 'inherit', shell: true });
       process.exit(r.status ?? 1);
+    });
+}
+
+// `upex cd <path> [opener]`: the wrappers cd there, then call again with the opener to open it.
+export function registerCd(program) {
+  program
+    .command('cd <path> [opener] [count]')
+    .description('Print a folder (a path, else a shortcut) for the shell wrapper to cd into; an opener opens it there, like upex <name> <opener>')
+    .summary('cd into a path or shortcut; an opener opens it there')
+    .action((query, opener, count) => {
+      const r = cdTarget(query);
+      if (r.error) {
+        ui.error(r.error);
+        process.exit(1);
+      }
+      const result = opener && launchApp(opener, r.path, Number(count) || 1, '', { here: true });
+      if (result && !result.ok) {
+        ui.error(result.message);
+        process.exit(1);
+      }
+      if (r.name) recordUse(r.name, opener ? openerKey(opener) : 'cd');
+      if (!opener) return process.stdout.write(r.path);
+      ui.card(r.name || path.basename(r.path) || r.path, [['app', chalk.bold(result.displayName || opener)], ['path', ui.dimParent(r.path, chalk.bold)]]);
+      runHere(result);
     });
 }
 

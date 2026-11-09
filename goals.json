@@ -538,6 +538,16 @@
       "note": "Out of scope"
     },
     {
+      "id": "upex-cd-path-opener",
+      "section": 2,
+      "title": "upex cd <path> [opener]",
+      "phase": "later",
+      "status": "done",
+      "created": "2026-11-09",
+      "updated": "2026-11-09",
+      "note": "src/commands/open.js registerCd + cdTarget in fast.js (fast path), wrappers for bash/zsh, fish, PowerShell, cmd in setup.js"
+    },
+    {
       "id": "exact-then-fuzzy-name-resolution-fuse-js",
       "section": 3,
       "title": "Exact-then-fuzzy name resolution (fuse.js)",

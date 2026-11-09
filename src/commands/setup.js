@@ -19,6 +19,13 @@ const BASH_ZSH_FUNCTION = `upex() {
       return
     fi
   fi
+  if [ "$1" = "cd" ] && [ -n "$2" ]; then
+    if result=$(command upex cd "$2" 2>/dev/null) && cd "$result"; then
+      shift 2
+      [ $# -eq 0 ] || command upex cd "$result" "$@"
+      return
+    fi
+  fi
   if [ "$1" != "" ] && [ "$2" = "" ] && result=$(command upex __resolve "$1" 2>/dev/null); then
     cd "$result"
   else
@@ -34,6 +41,15 @@ function upex {
       Set-Location $result
       $rest = @($args | Select-Object -Skip 2)
       if ($rest.Count) { Invoke-Expression ($rest -join ' ') }
+      return
+    }
+  }
+  if ($args.Count -ge 2 -and $args[0] -eq 'cd') {
+    $result = & upex.ps1 cd $args[1] 2>$null
+    if ($LASTEXITCODE -eq 0 -and $result) {
+      Set-Location -LiteralPath $result
+      $rest = @($args | Select-Object -Skip 2)
+      if ($rest.Count) { & upex.ps1 cd $result @rest }
       return
     }
   }
@@ -58,6 +74,16 @@ const FISH_FUNCTION = `function upex
       return
     end
   end
+  if test (count $argv) -ge 2; and test "$argv[1]" = "cd"
+    set result (command upex cd $argv[2] 2>/dev/null)
+    if test $status -eq 0; and test -n "$result"
+      cd $result
+      if test (count $argv) -gt 2
+        command upex cd $result $argv[3..-1]
+      end
+      return
+    end
+  end
   if test (count $argv) -eq 1
     set result (command upex __resolve $argv[1] 2>/dev/null)
     if test $status -eq 0; and test -n "$result"
@@ -75,6 +101,7 @@ export const CMD_WRAPPER = [
   '@echo off',
   'rem upex cmd.exe wrapper (installed by "upex setup cmd").',
   'if /i "%~1"=="go" if not "%~2"=="" goto :go',
+  'if /i "%~1"=="cd" if not "%~2"=="" goto :cd',
   'if not "%~1"=="" if "%~2"=="" goto :single',
   'goto :pass',
   '',
@@ -94,6 +121,20 @@ export const CMD_WRAPPER = [
   'if not "%~1"=="" set "UPEX_RUN=%UPEX_RUN% %1" & goto :gocollect',
   'call %UPEX_RUN%',
   'set "UPEX_RUN="',
+  'exit /b',
+  '',
+  ':cd',
+  'rem a trailing \\ before the closing quote would escape it (upex cd ..\\)',
+  'set "UPEX_DIR=%~2"',
+  'if "%UPEX_DIR:~-1%"=="\\" set "UPEX_DIR=%UPEX_DIR%\\"',
+  'for /f "usebackq delims=" %%D in (`call "%~dp0upex.cmd" cd "%UPEX_DIR%" 2^>nul`) do cd /d "%%D" & goto :cdopen',
+  'call "%~dp0upex.cmd" cd "%UPEX_DIR%"',
+  'set "UPEX_DIR=" & exit /b %ERRORLEVEL%',
+  '',
+  ':cdopen',
+  'set "UPEX_DIR="',
+  'rem an opener after the path opens it here (upex cd . claude)',
+  'if not "%~3"=="" call "%~dp0upex.cmd" cd . %3 %4',
   'exit /b',
   '',
   ':single',
@@ -186,7 +227,7 @@ export function registerSetup(program) {
         }
         const target = installCmdWrapper(shimDir);
         ui.success(`Installed ${target}`);
-        ui.dim('"upex go <name>" and "upex <name>" now cd in cmd.exe (current session too).');
+        ui.dim('"upex go <name>", "upex cd <path>" and "upex <name>" now cd in cmd.exe (current session too).');
         return;
       }
 

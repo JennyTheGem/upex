@@ -10,7 +10,7 @@ import { registerRemove } from './commands/remove.js';
 import { registerRename } from './commands/rename.js';
 import { registerEdit } from './commands/edit.js';
 import { registerCheck } from './commands/check.js';
-import { registerResolve, registerGo, handleOpen } from './commands/open.js';
+import { registerResolve, registerGo, registerCd, handleOpen } from './commands/open.js';
 import { registerSetup } from './commands/setup.js';
 import { registerHelp } from './commands/help.js';
 import { registerCopy } from './commands/copy.js';
@@ -69,6 +69,7 @@ export function createProgram() {
   registerCheck(program);
   registerResolve(program);
   registerGo(program);
+  registerCd(program);
   registerSetup(program);
   registerHelp(program);
   registerCopy(program);
@@ -98,7 +99,7 @@ export function createProgram() {
   // Archive expired temporary shortcuts. Skipped where stdout feeds a shell wrapper.
   program.hook('preAction', (_root, cmd) => {
     // undo: a sweep's own save would be what gets undone.
-    if (cmd.name().startsWith('__') || ['go', 'undo'].includes(cmd.name())) return;
+    if (cmd.name().startsWith('__') || ['go', 'cd', 'undo'].includes(cmd.name())) return;
     try {
       const { links, archived } = sweepExpired(loadLinks());
       if (!archived.length) return;
@@ -113,7 +114,7 @@ export function createProgram() {
   // Update notice: not for the selector (no name, pick), wrappers, completion (shell startup), ui (still starting) or non-terminals.
   program.hook('postAction', (_root, cmd) => {
     if (!process.stderr.isTTY || (cmd === program && !cmd.args.length)) return;
-    if (cmd.name().startsWith('__') || ['go', 'pick', 'ui', 'completion'].includes(cmd.name())) return;
+    if (cmd.name().startsWith('__') || ['go', 'cd', 'pick', 'ui', 'completion'].includes(cmd.name())) return;
     try {
       if (setting('updateCheck') === 'off') return;
     } catch { return; }

@@ -107,6 +107,7 @@ const bat = installCmdWrapper(dir);
 const body = fs.readFileSync(bat, 'utf-8');
 assert.ok(body.startsWith('@echo off'), 'wrapper is a batch script');
 assert.ok(body.includes('__resolve') && body.includes('cd /d'), 'wrapper cds through resolve');
+assert.ok(body.includes('goto :cd'), 'wrapper handles upex cd');
 fs.rmSync(dir, { recursive: true, force: true });
 
 // -- __resolve never shadows a real subcommand --
@@ -139,6 +140,26 @@ assert.deepEqual(loadHistory(path.join(home, '.upex', 'history.jsonl')).map(h =>
 const statsOut = upexIn('stats');
 assert.equal(statsOut.status, 0, 'stats runs');
 assert.match(statsOut.stdout, /cd\s+1/, 'stats shows the opener count');
+
+// -- cd: a path first, else a shortcut; a file gives its folder --
+fs.writeFileSync(path.join(target, 'f.txt'), '');
+assert.equal(upexIn('cd', target).stdout, target, 'cd prints an existing path');
+assert.equal(upexIn('cd', path.join(target, 'f.txt')).stdout, target, 'cd on a file prints its folder');
+assert.equal(upexIn('cd', 't').stdout, target, 'cd falls back to a shortcut');
+const cdMiss = upexIn('cd', 'zzqqxx-nope');
+assert.equal(cdMiss.status, 1, 'cd on nothing fails');
+assert.match(cdMiss.stderr, /No such folder or shortcut/, 'cd says what is missing');
+assert.match(upexIn('cd', 't', 'nope-opener').stderr, /Unknown app/, 'cd rejects an unknown opener');
+assert.ok(!loadHistory(path.join(home, '.upex', 'history.jsonl')).some(h => h.opener === 'nope-opener'), 'a failed cd open is not logged');
+// cmd.exe wrapper: a trailing \ must not escape the quote it adds
+if (process.platform === 'win32') {
+  const shim = fs.mkdtempSync(path.join(os.tmpdir(), 'upex-shim-'));
+  fs.writeFileSync(path.join(shim, 'upex.cmd'), `@"${process.execPath}" "${cli}" %*\r\n`);
+  const w = spawnSync('cmd.exe', ['/d', '/s', '/c', `"cd /d "${target}" & call "${installCmdWrapper(shim)}" cd ..\\ & cd"`], { encoding: 'utf-8', windowsVerbatimArguments: true });
+  assert.equal(w.stdout.trim(), path.dirname(target), 'cmd wrapper cds into ..\\');
+  fs.rmSync(shim, { recursive: true, force: true });
+}
+fs.rmSync(path.join(target, 'f.txt'));
 
 // -- upex config: get/set round-trip, bad values refused without saving --
 assert.equal(upexIn('config', 'get', 'terminalLayout').stdout.trim(), 'here', 'config get prints the default');

@@ -27,6 +27,7 @@ Jenny's CLI for named shortcuts to folders, apps, command lines and URLs. Data: 
 |---|---|
 | `upex <name> [app] [count]` | Open a shortcut. app: `explorer` (default, or the shortcut's own opener), `vscode`, `cmd`, `claude`, `webstorm`, or a custom opener |
 | `upex go <name>` | Print path |
+| `upex cd <path> [opener] [count]` | Print a folder (an existing path, `~` ok, else a shortcut; a file gives its folder). Jenny's shell wrapper cds there; with an opener it then opens it there like `upex <name> <opener>`. Without a wrapper an opener just opens the path |
 | `upex pick` | The selector drawn on stderr; Enter prints the chosen path to stdout (marked rows or a workspace: one per line; url or app command when no folder), Esc prints nothing and exits 1. Needs a terminal, so not for you: Jenny runs it as `cd "$(upex pick)"` or `upex pick \| clip` |
 | `upex ls [tag] [--git] [--archived]` | List shortcuts |
 | `upex add [name] [target] [--app\|--cmd\|--url] [--tag a,b] [--opener <app>] [--alias a,b] [--ttl 7d]` | Register a folder (default cwd), app, command line or URL; no name or `.` names a folder after itself (spaces as dashes); `--ttl` (`30m`/`12h`/`7d`/`2w`) makes it temporary |
