@@ -57,6 +57,8 @@ export function createProgram() {
     .description('A personal file shortcut manager: instantly open project folders.')
     .version(version, '-v, --version')
     .option('-a, --app <app>', 'Preselect app for the interactive selector')
+    // Stripped and handled in bin/upex.js; listed here for help.
+    .option('--dry-run', 'Print the commands an open would run instead of running them (anywhere on the line)')
     .enablePositionalOptions()
     .passThroughOptions()
     .addHelpText('beforeAll', BANNER);

@@ -335,6 +335,21 @@ try {
   assert.equal(installShell('bash', home).kept, true, 'setup: hand-added function kept');
   assert.ok(fs.readFileSync(installShell('fish', home).file, 'utf-8').startsWith('function upex'), 'setup: fish function file');
   assert.equal(rcFile('fish', home), path.join(home, '.config', 'fish', 'functions', 'upex.fish'), 'setup: fish autoload path');
+  // --dry-run: launches print their command line, nothing spawns.
+  const S = await import('../src/store.js');
+  const log = console.log;
+  const printed = [];
+  console.log = s => printed.push(s);
+  S.setDryRun();
+  try {
+    const d = run(W, ['code'], {}, 'code', dir);
+    assert.ok(d.r.ok && !d.calls.length, 'dry run: ok, nothing spawned');
+    run(W, ['cmd'], {}, 'cmd', dir, 2);
+    assert.deepEqual(printed, [`code "${dir}"`, `start "" cmd   (in ${dir})`, `start "" cmd   (in ${dir})`], 'dry run: command lines');
+  } finally {
+    S.setDryRun(false);
+    console.log = log;
+  }
   calls = [];
   X.launchExecutable('/opt/run.bat');
   assert.deepEqual(calls.map(c => c.slice(0, 3)), [['spawn', '/opt/run.bat', []]], 'linux: .bat not via cmd.exe');

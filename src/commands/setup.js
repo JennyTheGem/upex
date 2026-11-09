@@ -100,6 +100,7 @@ end`;
 export const CMD_WRAPPER = [
   '@echo off',
   'rem upex cmd.exe wrapper (installed by "upex setup cmd").',
+  'if /i "%~1"=="go" if /i "%~2"=="--json" goto :pass',
   'if /i "%~1"=="go" if not "%~2"=="" goto :go',
   'if /i "%~1"=="cd" if not "%~2"=="" goto :cd',
   'if not "%~1"=="" if "%~2"=="" goto :single',
@@ -134,7 +135,7 @@ export const CMD_WRAPPER = [
   ':cdopen',
   'set "UPEX_DIR="',
   'rem an opener after the path opens it here (upex cd . claude)',
-  'if not "%~3"=="" call "%~dp0upex.cmd" cd . %3 %4',
+  'if not "%~3"=="" call "%~dp0upex.cmd" cd . %3 %4 %5',
   'exit /b',
   '',
   ':single',

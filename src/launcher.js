@@ -2,14 +2,24 @@
  * launcher.js -- Opens folders in supported apps
  */
 
-import { execFile, execSync, spawn, spawnSync } from 'node:child_process';
+import cp, { execFile } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import { pathToFileURL } from 'node:url';
-import { loadConfig } from './store.js';
+import { loadConfig, dryRun } from './store.js';
 
 const platform = os.platform(); // 'win32' | 'darwin' | 'linux'
+
+// Every launch goes through these. A dry run prints the command line instead.
+const quoteArg = (a, opts) => (opts?.shell || opts?.windowsVerbatimArguments || !/\s/.test(a) || a.startsWith('"') ? a : `"${a}"`);
+const dry = (cmd, args = [], opts = {}) =>
+  console.log([cmd, ...args.map(a => quoteArg(String(a), opts))].join(' ') + (opts.cwd ? `   (in ${opts.cwd})` : ''));
+const fakeChild = { on() { return this; }, unref() {} };
+const spawn = (cmd, args, opts) => (dryRun ? (dry(cmd, args, opts), fakeChild) : cp.spawn(cmd, args, opts));
+export const spawnSync = (cmd, args, opts) => (dryRun ? (dry(cmd, args, opts), { status: 0 }) : cp.spawnSync(cmd, args, opts));
+const execSync = (cmd, opts) => (dryRun ? (dry(cmd, [], opts), '') : cp.execSync(cmd, opts));
+
 // Linux and other XDG desktops (everything that isn't Windows or macOS).
 const xdg = platform !== 'win32' && platform !== 'darwin';
 

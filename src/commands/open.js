@@ -7,12 +7,11 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
-import { spawnSync } from 'node:child_process';
 import chalk from 'chalk';
 import { loadLinks, recordUse } from '../store.js';
 import { findFolder, withSub, cdTarget } from '../fast.js';
 import { resolveTarget, didYouMean } from '../fuzzy.js';
-import { launchApp, launchExecutable, launchUrl, defaultOpener, openerKey } from '../launcher.js';
+import { launchApp, launchExecutable, launchUrl, defaultOpener, openerKey, spawnSync } from '../launcher.js';
 import * as ui from '../ui.js';
 
 export function isFile(p) {
@@ -58,16 +57,24 @@ export function registerGo(program) {
     .command('go <name> [start...]')
     .description('Print a shortcut\'s path (cd via shell wrapper); extra args run as a command there')
     .summary('Print a path (cd via wrapper); extra args run there')
+    .option('--json', 'Print { name, path } or { error } (before the name when the cd wrapper is on)')
     // Let flags in the start command (e.g. "claude --model x") pass through.
     .enablePositionalOptions()
     .passThroughOptions()
     .allowUnknownOption()
-    .action((name, start = []) => {
+    .action((name, start = [], options) => {
+      // A lone trailing --json is never a command to run.
+      if (options.json || (start.length === 1 && start[0] === '--json')) {
+        const r = findFolder(name);
+        ui.json(r.error ? { error: r.error } : r);
+        if (r.error) process.exit(1);
+        return recordUse(r.name, 'cd');
+      }
       if (!start.length) return resolveToStdout(name, { loud: true });
 
       const targetPath = resolveFolder(name, { loud: true });
       const cwd = isFile(targetPath) ? path.dirname(targetPath) : targetPath;
-      const r = spawnSync(start.join(' '), { cwd, stdio: 'inherit', shell: true });
+      const r = spawnSync(start.join(' '), [], { cwd, stdio: 'inherit', shell: true });
       process.exit(r.status ?? 1);
     });
 }

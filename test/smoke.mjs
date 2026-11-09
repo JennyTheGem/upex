@@ -146,6 +146,24 @@ fs.writeFileSync(path.join(target, 'f.txt'), '');
 assert.equal(upexIn('cd', target).stdout, target, 'cd prints an existing path');
 assert.equal(upexIn('cd', path.join(target, 'f.txt')).stdout, target, 'cd on a file prints its folder');
 assert.equal(upexIn('cd', 't').stdout, target, 'cd falls back to a shortcut');
+// --json and --dry-run round-trips.
+const json = (...args) => JSON.parse(upexIn(...args).stdout);
+assert.deepEqual(json('go', 't', '--json'), { name: 't', path: target }, 'go --json (trailing)');
+assert.deepEqual(json('go', '--json', 't'), { name: 't', path: target }, 'go --json (leading)');
+assert.equal(upexIn('go', '--json', 'zzqqxx').status, 1, 'go --json miss exits 1');
+assert.deepEqual(json('tag', 't', 'x', '--json'), { name: 't', tags: ['x'] }, 'tag add --json');
+assert.deepEqual(json('tag', '--json'), { x: 1 }, 'tag --json counts');
+assert.deepEqual(json('list', 'x', '--json').map(e => [e.name, e.path, e.exists]), [['t', target, true]], 'list --json');
+assert.ok(json('doctor', '--json').some(r => r.check === 'store' && r.status === 'ok'), 'doctor --json');
+upexIn('tag', 't', '--clear');
+const usesBefore = json('list', '--json')[0].uses;
+// Before go, --dry-run also covers its command.
+const dry = upexIn('--dry-run', 'go', 't', 'node', '-v');
+assert.equal(dry.status, 0, 'dry run exits 0');
+assert.match(dry.stdout, /^node -v {3}\(in /, 'dry run prints the go command');
+assert.match(dry.stderr, /dry run, nothing ran/, 'dry run footer on stderr');
+upexIn('rm', 't', '--dry-run');
+assert.deepEqual(json('list', '--json').map(e => [e.name, e.uses]), [['t', usesBefore]], 'dry run saves nothing, records no use');
 const cdMiss = upexIn('cd', 'zzqqxx-nope');
 assert.equal(cdMiss.status, 1, 'cd on nothing fails');
 assert.match(cdMiss.stderr, /No such folder or shortcut/, 'cd says what is missing');

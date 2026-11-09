@@ -119,9 +119,15 @@ export function registerDoctor(program) {
   program
     .command('doctor')
     .description('Check the store, openers, shell wrapper and completion')
-    .action(() => {
-      ui.heading('Doctor');
+    .option('--json', 'Print JSON: [{ status, check, detail }]')
+    .action((options) => {
       const rows = runChecks();
+      if (options.json) {
+        ui.json(rows.map(([status, check, detail]) => ({ status, check, detail })));
+        if (rows.some(r => r[0] === 'fail')) process.exitCode = 1;
+        return;
+      }
+      ui.heading('Doctor');
       ui.table(rows.map(([status, check, detail]) => [ui.tag[status], chalk.bold(check), detail]));
       ui.blank();
       const warns = rows.filter(r => r[0] === 'warn').length;

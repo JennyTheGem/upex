@@ -27,6 +27,7 @@ export function registerTag(program) {
     .description('List tags, or add/remove tags on a shortcut')
     .option('-r, --remove', 'Remove the listed tags instead of adding')
     .option('--clear', 'Remove all tags from the shortcut')
+    .option('--json', 'Print JSON: { tag: count }, or { name, tags } for a shortcut')
     .action((name, tags, options) => {
       const all = loadLinks();
       const links = activeLinks(all);
@@ -35,6 +36,7 @@ export function registerTag(program) {
       if (!name) {
         const counts = allTags(links);
         const entries = Object.entries(counts);
+        if (options.json) return ui.json(counts);
         if (!entries.length) {
           ui.info('No tags yet. Add some: upex tag <name> <tag>');
           return;
@@ -47,7 +49,8 @@ export function registerTag(program) {
 
       const resolved = resolveName(name, all);
       if (!resolved) {
-        ui.error(`Shortcut not found: ${name}`);
+        if (options.json) ui.json({ error: `Shortcut not found: ${name}` });
+        else ui.error(`Shortcut not found: ${name}`);
         process.exit(1);
       }
       const entry = links[resolved.name];
@@ -55,6 +58,7 @@ export function registerTag(program) {
 
       // Show tags when none are supplied and no mutation flag is set.
       if (!options.clear && tags.length === 0) {
+        if (options.json) return ui.json({ name: resolved.name, tags: current });
         ui.info(current.length ? `${resolved.name}: ${current.join(', ')}` : `${resolved.name} has no tags.`);
         return;
       }
@@ -71,6 +75,7 @@ export function registerTag(program) {
       const updated = { ...entry };
       if (next.length) updated.tags = next; else delete updated.tags;
       setLink(resolved.name, updated);
+      if (options.json) return ui.json({ name: resolved.name, tags: next });
       ui.success(`${resolved.name}: ${next.length ? next.join(', ') : '(no tags)'}`);
     });
 }

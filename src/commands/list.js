@@ -25,6 +25,7 @@ export function registerList(program) {
     .description('List all saved shortcuts (optionally filtered by tag)')
     .option('-g, --git', 'Show each folder\'s current git branch')
     .option('--archived', 'List archived shortcuts instead (upex restore <name> brings one back)')
+    .option('--json', 'Print JSON: [{ name, ...entry, exists }]')
     .action((tag, options) => {
       const showGit = !!options.git;
       const all = loadLinks();
@@ -34,6 +35,8 @@ export function registerList(program) {
       if (tag) {
         entries = entries.filter(([, e]) => Array.isArray(e.tags) && e.tags.includes(tag));
       }
+      const exists = e => (e.path ? fs.existsSync(e.path) : !!(e.app || e.url));
+      if (options.json) return ui.json(entries.map(([name, e]) => ({ name, ...e, exists: exists(e) })));
 
       if (entries.length === 0) {
         ui.blank();
@@ -50,9 +53,8 @@ export function registerList(program) {
       const details = process.stdout.isTTY ? setting('rowDetails') : 'both';
       const badgesOn = showsDetail(details, 'badges');
       printRows(entries.map(([name, entry]) => {
-        const exists = entry.path ? fs.existsSync(entry.path) : !!(entry.app || entry.url);
         const kind = entry.terminal ? 'cmd' : entry.app ? 'app' : entry.url ? 'url' : entry.opener;
-        const badge = !badgesOn ? '' : !exists ? chalk.red('missing')
+        const badge = !badgesOn ? '' : !exists(entry) ? chalk.red('missing')
           : chalk.dim(badgeText([entry.pinned && PIN, kind, !entry.archived && expiryText(entry.expires)]));
         const aliases = aliasesOf(entry);
         const right = [

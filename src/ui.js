@@ -61,6 +61,9 @@ export function card(title, pairs) {
   blank();
 }
 
+// Machine-readable output for --json.
+export const json = data => process.stdout.write(JSON.stringify(data, null, 2) + '\n');
+
 export function dim(msg) {
   console.log(chalk.dim(`  ${msg}`));
 }

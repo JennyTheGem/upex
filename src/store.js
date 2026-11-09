@@ -18,6 +18,10 @@ const KEEP_VISITS = 300;
 // Visits before a learned folder is offered as a shortcut.
 export const SUGGEST_AFTER = 3;
 
+// --dry-run: launches print instead of running (launcher.js) and nothing is saved or counted as used.
+export let dryRun = false;
+export const setDryRun = (on = true) => { dryRun = on; };
+
 function ensureStore() {
   if (!fs.existsSync(UPEX_DIR)) {
     fs.mkdirSync(UPEX_DIR, { recursive: true });
@@ -51,6 +55,7 @@ function readJson(file) {
 
 // Temp file + rename, so a crash mid-write can't leave a truncated store.
 function writeJson(file, data) {
+  if (dryRun) return;
   ensureStore();
   // Write through a symlinked store instead of replacing the link.
   const target = fs.realpathSync(file);
@@ -127,7 +132,7 @@ function backupLinks(next) {
 
 // Usage bumps skip the backup, or a few opens would push real edits out of the last 10.
 export function saveLinks(links, { backup = true } = {}) {
-  if (backup) backupLinks(links);
+  if (backup && !dryRun) backupLinks(links);
   writeJson(LINKS_FILE, links);
 }
 
@@ -163,7 +168,7 @@ export function undoLast() {
     const changes = diff.added.length || diff.removed.length || diff.changed.length;
     if (changes) writeJson(LINKS_FILE, restored);
     // A locked backup must not fail an undo already written; the next undo skips it as a no-op.
-    try { fs.rmSync(file, { force: true }); } catch {}
+    if (!dryRun) try { fs.rmSync(file, { force: true }); } catch {}
     if (changes) return { ...diff, at, left: backupFiles().length };
   }
   return null;
@@ -327,6 +332,7 @@ export function nameError(name) {
  * Bump usage stats for a shortcut (drives frecency sorting) and log the open for `upex stats`.
  */
 export function recordUse(name, opener) {
+  if (dryRun) return;
   const links = loadLinks();
   if (!Object.hasOwn(links, name)) return;
   const entry = links[name];

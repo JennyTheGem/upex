@@ -565,10 +565,11 @@
       "title": "Dry run for openers",
       "body": "A dry-run flag prints the exact command upex would spawn instead of running it. Debugs custom openers and platform quirks fast.",
       "phase": "wayLater",
-      "status": "planned",
+      "status": "done",
       "size": "S",
       "created": "2026-11-09",
-      "updated": "2026-11-09"
+      "updated": "2026-11-09",
+      "note": "dry-run flag anywhere on the line (not go): launcher prints each spawn with its cwd, no use recorded"
     },
     {
       "id": "upex-cd-path-opener",
@@ -1490,10 +1491,11 @@
       "title": "JSON output flag",
       "body": "list, go, tag and doctor print machine-readable JSON with --json. Makes upex scriptable from other tools and agents.",
       "phase": "wayLater",
-      "status": "planned",
+      "status": "done",
       "size": "S",
       "created": "2026-11-09",
-      "updated": "2026-11-09"
+      "updated": "2026-11-09",
+      "note": "json flag on ls, go (before the name with a cd wrapper; cmd wrapper passes it), tag, doctor"
     },
     {
       "id": "windows-macos-linux-launch-paths",
