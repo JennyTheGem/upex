@@ -1425,6 +1425,9 @@ assert.equal(defaultOpener({ defaultOpener: 'copy' }), 'explorer', 'copy is no d
 
 // -- upex ui: token + host guard, add via API writes the store --
 const webHome = fs.mkdtempSync(path.join(os.tmpdir(), 'upex-web-'));
+// Fresh cache: no npm check spawns (it would hold the folder), and the page gets the newer version.
+fs.mkdirSync(path.join(webHome, '.upex'));
+fs.writeFileSync(path.join(webHome, '.upex', 'update.json'), JSON.stringify({ checked: Date.now(), latest: '99.0.0' }));
 const srv = spawn(process.execPath, [cli, 'ui', '--port', '0', '--no-open'], {
   env: { ...process.env, USERPROFILE: webHome, HOME: webHome },
 });
@@ -1460,6 +1463,7 @@ try {
   assert.ok(ghAdded > 0, 'api add stamps added');
   const st = await (await fetch(base + '/api/state', { headers: { 'x-upex-token': token } })).json();
   assert.equal(st.links.find(l => l.name === 'gh').tab, 'apps', 'URL shortcut listed on the Apps tab');
+  assert.deepEqual([st.version, st.update], [VERSION, { latest: '99.0.0', cmd: 'npm i -g @uplift-beyond/upex@latest' }], 'page gets the version and a newer one');
   const call = (method, route, body) => fetch(base + '/api/' + route, { method, headers: { 'content-type': 'application/json', 'x-upex-token': token }, body: JSON.stringify(body) });
   // a learned folder is offered as a shortcut until dismissed
   const tipDir = fs.mkdtempSync(path.join(os.tmpdir(), 'upex-tip-'));

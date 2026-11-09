@@ -74,6 +74,12 @@ input, select { caret-color: var(--accent); accent-color: var(--accent); }
 .sub { display: grid; gap: 1px; margin: 2px 0 4px 26px; padding-left: 10px; border-left: 1px solid var(--line); }
 .sub a { color: var(--muted); text-decoration: none; padding: 4px 8px; border-radius: 4px; font-size: 13px; }
 .sub a:hover { color: var(--text); background: var(--raise); }
+/* Version at the sidebar's foot; a newer one on npm adds its install command */
+.ver { margin-top: auto; padding: 4px 10px; font-size: 12px; color: var(--muted); display: grid; gap: 6px; justify-items: start; }
+.ver .upd { color: var(--warn); }
+.ver button { all: unset; cursor: pointer; font: 11.5px/1.5 var(--mono); color: var(--text); background: var(--warn-soft); border-radius: 4px; padding: 3px 6px; overflow-wrap: anywhere; }
+.ver button:hover { outline: 1px solid var(--warn); }
+.ver button:focus-visible { outline: 2px solid var(--accent); }
 header {
   position: sticky; top: 0; z-index: 2;
   background: color-mix(in srgb, var(--bg) 92%, transparent);
@@ -293,7 +299,8 @@ main { max-width: 1600px; padding: 20px 32px 96px; }
   .side nav { display: flex; }
   .brand { padding: 4px 6px; }
   .tab { width: auto; white-space: nowrap; }
-  .tab .i, .sub { display: none; }
+  .tab .i, .sub, .ver button { display: none; }
+  .ver { margin: 0 0 0 auto; white-space: nowrap; }
   .bar { flex-wrap: wrap; padding: 10px 16px; gap: 10px; }
   .search { width: 100%; order: 3; }
   .search kbd { display: none; }
@@ -348,6 +355,7 @@ main { max-width: 1600px; padding: 20px 32px 96px; }
     <button class="tab" data-view="settings"><svg class="i" aria-hidden="true"><use href="#i-sliders"/></svg>Settings</button>
     <div class="sub" id="set-links" hidden></div>
   </nav>
+  <div class="ver" id="ver"></div>
 </aside>
 <div>
 <header>
@@ -415,7 +423,7 @@ const dot = c => c && h('span', { class: 'dot' + (COLORS.includes(c) ? ' c-' + c
 const usage = l => (S.settings.usage === 'off' ? '' : S.settings.usage === 'opens' ? `${l.uses} open${l.uses === 1 ? '' : 's'}` : ago(l.lastUsed));
 
 const S = {
-  links: [], suggest: null, workspaces: {}, apps: [], openers: [], settings: {}, defaults: {}, startTab: '', wt: null, home: '', sep: '/',
+  version: '', update: null, links: [], suggest: null, workspaces: {}, apps: [], openers: [], settings: {}, defaults: {}, startTab: '', wt: null, home: '', sep: '/',
   view: null, q: '', tag: null, archived: false,
   adding: false, addKind: 'folder', addErr: '', add: { name: '', target: '', tags: '', opener: '' },
   editing: null, draft: null, editErr: '',
@@ -475,6 +483,9 @@ async function api(method, path, body) {
 
 let statusTimer;
 // `undo`: the toast gets an Undo button; true steps back one links.json backup like upex undo, a function runs that instead.
+const copyText = t => Promise.resolve().then(() => navigator.clipboard.writeText(t))
+  .then(() => say('Copied ' + t), () => say('Could not copy to the clipboard.', true));
+
 function say(msg, isError, undo) {
   const el = document.getElementById('status');
   el.replaceChildren(msg);
@@ -724,8 +735,7 @@ function row(l, again) {
     open = () => !l.broken && act(() => api('POST', 'open', {
       name: l.name, app: S.openWith[l.name] || undefined, ...(!count.hidden && { count: count.value, start: start.value }),
     }), `Opened ${l.name}`);
-    const copy = () => Promise.resolve().then(() => navigator.clipboard.writeText(l.target))
-      .then(() => say('Copied ' + l.target), () => say('Could not copy to the clipboard.', true));
+    const copy = () => copyText(l.target);
     const openBtn = btn('', '', open, 'open', { 'data-k': 'open', disabled: l.broken, title: l.broken ? 'Path is missing. Edit it first.' : null });
     openBtn.lastChild.textContent = openLabel();
     actions = h('div', { class: 'actions' }, openBtn,
@@ -1193,6 +1203,11 @@ function render() {
   document.getElementById('n-links').textContent = S.links.filter(l => l.tab === 'links' && !l.archived).length;
   document.getElementById('n-apps').textContent = S.links.filter(l => l.tab === 'apps' && !l.archived).length;
   document.getElementById('n-ws').textContent = Object.keys(S.workspaces).length;
+  const u = S.update;
+  document.getElementById('ver').replaceChildren(S.version ? 'v' + S.version : '', ...(u ? [
+    h('span', { class: 'upd' }, `v${u.latest} is out`),
+    h('button', { type: 'button', title: 'Copy, then run it in a terminal', onclick: () => copyText(u.cmd) }, u.cmd),
+  ] : []));
   document.querySelectorAll('.tab').forEach((t) => {
     t.hidden = hide.includes(t.dataset.view);
     t.dataset.view === S.view ? t.setAttribute('aria-current', 'page') : t.removeAttribute('aria-current');

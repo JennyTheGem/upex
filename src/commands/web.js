@@ -14,6 +14,7 @@ import { handleOpen, isFile } from './open.js';
 import { openEntries } from './workspace.js';
 import { parseTags, defaultName } from './add.js';
 import { oneLine } from '../interactive.js';
+import { VERSION, PKG, cachedLatest, isNewer, updateNotice } from '../update.js';
 import * as ui from '../ui.js';
 
 const PAGE = new URL('../web/index.html', import.meta.url);
@@ -121,7 +122,12 @@ function state() {
   const links = loadLinks();
   const config = loadConfig();
   const tip = topSuggestion();
+  const settings = readSettings(config);
+  // Starts the daily npm check like other commands; the page sees its result on a later load.
+  const check = settings.updateCheck !== 'off' && (updateNotice(), cachedLatest());
   return {
+    version: VERSION,
+    update: isNewer(check, VERSION) ? { latest: check, cmd: `npm i -g ${PKG}@latest` } : null,
     // A folder learned from upex cd, offered as a shortcut.
     suggest: tip && { name: defaultName(tip.path), path: tip.path, uses: tip.uses },
     links: Object.entries(links).map(([name, e]) => {
@@ -152,7 +158,7 @@ function state() {
     }),
     workspaces: loadWorkspaces(),
     apps: getInteractiveAppChoices().map(a => ({ ...a, terminal: isTerminalApp(a.key) })),
-    settings: readSettings(config),
+    settings,
     defaults: readSettings({}),
     startTab: startTab(config),
     openers: Object.entries(configApps(config)).filter(([, c]) => typeof c === 'string').map(([name, command]) => ({ name, command })),

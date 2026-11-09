@@ -1396,7 +1396,7 @@
       "section": 3,
       "title": "Subfolder drill-in in the selector",
       "body": "A key on a folder row lists its direct subfolders as rows (Left goes back). Enter opens or picks that subfolder like upex name/sub, so deep folders need no new shortcut. Reuses resolveTarget.",
-      "phase": "wayLater",
+      "phase": "maybe",
       "status": "planned",
       "size": "M",
       "created": "2026-11-09",
@@ -1739,10 +1739,11 @@
       "title": "Web UI: version and update notice",
       "body": "Footer shows the upex version and, when npm has a newer one, the install command. The TUI shows the version, the web page does not.",
       "phase": "next",
-      "status": "planned",
+      "status": "done",
       "size": "S",
       "created": "2026-11-09",
-      "updated": "2026-11-09"
+      "updated": "2026-11-09",
+      "note": "Sidebar foot shows vX; with a newer npm version, 'vY is out' plus the npm i -g command (click copies). state() starts the daily check unless updateCheck off."
     },
     {
       "id": "web-ui-arrow-key-navigation",
