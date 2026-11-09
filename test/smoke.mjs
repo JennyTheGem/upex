@@ -23,7 +23,7 @@ import { COMMAND_NAMES } from '../src/fast.js';
 import { createProgram } from '../src/index.js';
 import { readScripts, detectPm } from '../src/commands/run.js';
 import { pickedNames, pickedPaths } from '../src/commands/pick.js';
-import { usageText, stepColor, renderInteractiveView, nextView, backTo, accentOf, pathLook, inView, tidyPath, byOrder, optionRow, listRows, readMouse, hitTest, rowClick, undoFlash, clipName, prefill, editLine, kindOf, retyped, setField, fieldWords, completeTag, expiryOptions, formRows, formLines, statLines, doctorLines, inputLine, missingFlash, staysOpen, expandHome, underlineHits, movePinned, sameGroup, withRecent, withGroups, filterChoices, maxListOf, jumpIndex, isAlt, detailLines, rowOptions, pickedOf, settingsList, goalSummary, goalsOf, goalText, oneLine, scriptLines, markLines, paneShown, paneToggles, paneWidthOf, withSamePath, archivedList, dotLines, lr, wrapHint, splice, overlayMenu } from '../src/interactive.js';
+import { usageText, stepColor, renderInteractiveView, nextView, backTo, accentOf, pathLook, inView, tidyPath, byOrder, optionRow, listRows, readMouse, hitTest, rowClick, undoFlash, clipName, prefill, editLine, kindOf, retyped, setField, fieldWords, completeTag, expiryOptions, formRows, formLines, statLines, doctorLines, inputLine, missingFlash, staysOpen, expandHome, underlineHits, movePinned, sameGroup, withRecent, withGroups, filterChoices, maxListOf, jumpIndex, isAlt, detailLines, rowOptions, pickedOf, settingsList, goalSummary, goalsOf, goalText, oneLine, scriptLines, markLines, paneShown, paneToggles, paneWidthOf, withSamePath, archivedList, clipPath, asksMany, dotLines, lr, wrapHint, splice, overlayMenu } from '../src/interactive.js';
 import { parseStatus, parseDiff, parseLog, gitOf, stopGit } from '../src/git.js';
 import chalk from 'chalk';
 import { resolveTarget, resolveName, suggestNames } from '../src/fuzzy.js';
@@ -440,8 +440,8 @@ assert.ok(!setView.includes('Archived'), 'no archived section when none');
 const arcArgs = { ...setArgs, archived: [{ name: 'old', path: '/old/dir' }], height: 80 };
 const arcView = strip(renderInteractiveView({ ...arcArgs, settingIndex: 0 }));
 assert.ok(arcView.includes('Archived 1') && arcView.includes('/old/dir') && arcView.includes('change (saved)'), 'archived section lists them');
-// 31 setting rows on Windows (pane split hidden), so index 31 is the first archived one.
-const arcSel = strip(renderInteractiveView({ ...arcArgs, settingIndex: 30 + win }));
+// 32 setting rows on Windows (pane split hidden), so index 32 is the first archived one.
+const arcSel = strip(renderInteractiveView({ ...arcArgs, settingIndex: 31 + win }));
 assert.ok(arcSel.includes('› old') && arcSel.includes('↵ restore') && arcSel.includes('upex restore old') && arcSel.includes('^d delete') && !arcView.includes('^d delete'), 'picked archived row: restore and delete keys, note');
 
 // color dot column before names, usage at the right edge
@@ -604,7 +604,7 @@ assert.equal(at(narrow, 16, openRow), undefined, 'gap between options is nothing
 assert.equal(at({ ...many, height: 30, settings: { keyHints: 'off' } }, 14, off.findIndex(l => l.includes('open with')) + 1)?.opener, 0, 'key hints off: opener row stays clickable');
 const setLines = strip(renderInteractiveView(setArgs)).split('\n');
 const sortLine = setLines.findIndex(l => l.includes('Sort')) + 1;
-assert.deepEqual([at(setArgs, setLines[sortLine - 1].indexOf('Most used') + 1, sortLine)].map(t => [t.setting, t.option]), [[10 + win, 0]], 'click a settings option');
+assert.deepEqual([at(setArgs, setLines[sortLine - 1].indexOf('Most used') + 1, sortLine)].map(t => [t.setting, t.option]), [[11 + win, 0]], 'click a settings option');
 assert.equal(at(setArgs, 5, sortLine)?.option, undefined, 'click a settings label just picks the row');
 
 // -- appearance: paths, compact density, accent, the appearance rows --
@@ -628,11 +628,11 @@ assert.deepEqual([settingsList({}, 'old', [], [{ name: 'old', path: '/o' }]).mor
 const themeOnly = strip(renderInteractiveView({ ...setArgs, query: 'web theme', settingIndex: 0 }));
 assert.ok(themeOnly.includes('› web theme') && themeOnly.includes('› Web theme') && !themeOnly.includes('Sort') && themeOnly.includes('esc clear'), 'filtered settings view');
 assert.ok(strip(renderInteractiveView({ ...setArgs, query: 'zzz', settingIndex: 0 })).includes('No settings match.'), 'no match');
-const short = rowsOf({ ...setArgs, height: 14, settingIndex: 21 + win });
+const short = rowsOf({ ...setArgs, height: 14, settingIndex: 22 + win });
 assert.ok(short.length <= 14 && short.some(l => l.startsWith('  › Web theme')) && short.at(-1).includes('setting'), 'short terminal scrolls settings, keeps the footer');
-assert.equal(at({ ...setArgs, height: 14, settingIndex: 20 + win }, 3, short.findIndex(l => l.startsWith('  › Web theme')) + 1)?.setting, 20 + win, 'scrolled settings stay clickable');
-const arcShort = { ...setArgs, archived: [{ name: 'old', path: '/old/dir' }], height: 14, settingIndex: 30 + win };
-assert.equal(at(arcShort, 3, rowsOf(arcShort).findIndex(l => l.startsWith('  › old')) + 1)?.setting, 30 + win, 'last archived row scrolls into view, stays clickable');
+assert.equal(at({ ...setArgs, height: 14, settingIndex: 21 + win }, 3, short.findIndex(l => l.startsWith('  › Web theme')) + 1)?.setting, 21 + win, 'scrolled settings stay clickable');
+const arcShort = { ...setArgs, archived: [{ name: 'old', path: '/old/dir' }], height: 14, settingIndex: 31 + win };
+assert.equal(at(arcShort, 3, rowsOf(arcShort).findIndex(l => l.startsWith('  › old')) + 1)?.setting, 31 + win, 'last archived row scrolls into view, stays clickable');
 assert.equal(checkSettings({ accent: 'red' }).error, 'accent must be one of: default, green, blue, purple, orange, or a hex color like #ff66aa.', 'bad accent refused');
 assert.deepEqual([checkSettings({ accent: '#FF66aa' }).next.accent, checkSettings({ accent: 'ff66aa' }).next.accent, checkSettings({ sort: '#ff66aa' }).error?.slice(0, 4)], ['#ff66aa', '#ff66aa', 'sort'], 'hex only for accent, normalized');
 assert.deepEqual([setting('accent', { accent: '#ff66aa' }), setting('accent', { accent: '#ff66a' }), setting('accent', { accent: '"><x' })], ['#ff66aa', 'default', 'default'], 'stored hex read back, junk falls back');
@@ -690,11 +690,11 @@ assert.ok(v({}).includes('^u web ui') && v({ view: 'workspaces' }).includes('^u 
 {
   const extras = [{ section: 'Openers', kind: 'opener', name: 'zed', text: 'zed' }, { section: 'Maintenance', kind: 'stats', name: 'Stats', text: 'web 3' }];
   const ex = (i, more = {}) => strip(renderInteractiveView({ ...setArgs, extras, archived: [{ name: 'old', path: '/o' }], height: 80, settingIndex: i, ...more }));
-  const e0 = ex(30 + win);
+  const e0 = ex(31 + win);
   assert.ok(e0.indexOf('Openers') < e0.indexOf('Maintenance') && e0.indexOf('Maintenance') < e0.indexOf('Archived 1'), 'extra sections in order');
   assert.ok(e0.includes('› zed') && e0.includes('↵ edit command') && e0.includes('^d remove'), 'opener row keys');
-  assert.ok(ex(31 + win, { expanded: { kind: 'stats', lines: ['web  3'] } }).includes('↵ hide') && ex(31 + win, { expanded: { kind: 'stats', lines: ['web  3'] } }).includes('      web  3'), 'stats lines under its row');
-  assert.ok(ex(32 + win).includes('› old') && ex(32 + win).includes('↵ restore'), 'archived index after the extras');
+  assert.ok(ex(32 + win, { expanded: { kind: 'stats', lines: ['web  3'] } }).includes('↵ hide') && ex(32 + win, { expanded: { kind: 'stats', lines: ['web  3'] } }).includes('      web  3'), 'stats lines under its row');
+  assert.ok(ex(33 + win).includes('› old') && ex(33 + win).includes('↵ restore'), 'archived index after the extras');
   assert.ok(strip(renderInteractiveView({ ...setArgs, mode: 'confirm', ask: 'remove opener "zed"?' })).includes('? remove opener "zed"?  y / n'), 'settings confirm question');
   const day = 86400000;
   const sl = statLines({ code: { displayName: 'VS Code' } }, [{ name: 'web', opener: 'code', ts: 10 * day }, { name: 'web', ts: 11 * day }, { name: 'api', ts: 11 * day }], 12 * day).map(strip);
@@ -877,6 +877,17 @@ const p1 = longName.find(l => l.includes('P1'));
 assert.ok(p1.includes(`${'n'.repeat(23)}…  P1`) && p1.indexOf('P1') === longName.find(l => l.includes('P2')).indexOf('P2'), 'long name clipped, path column aligned');
 assert.deepEqual([prefill('rename', { name: 'n', path: 'C:/x' }), prefill('add', { name: 'n' })], ['n', ''], 'rename prefill, add starts empty');
 const typing = v({ mode: 'input', action: 'rename', inputBuffer: 's', height: 20 });
+{
+  const home = os.homedir();
+  const yes = () => true;
+  assert.deepEqual([clipPath(`"${home}"`, yes), clipPath(' ~ ', yes), clipPath('relative/dir', yes), clipPath(`${home}
+${home}`, yes), clipPath(home, () => false), clipPath('', yes)],
+    [path.resolve(home), path.resolve(home), null, null, null, null], 'clipboard path: quotes and ~ ok, relative, multi-line or missing not');
+  assert.ok(v({ mode: 'input', action: 'add', inputName: path.join(home, 'proj'), inputBuffer: 'proj' }).includes('(path = ~'), 'add prompt names the clipboard path');
+  assert.ok(v({ mode: 'input', action: 'add' }).includes('(path = cwd)'), 'add prompt without one: cwd');
+}
+assert.deepEqual([asksMany(6, '5'), asksMany(5, '5'), asksMany(50, 'off'), setting('confirmMany', {})], [true, false, false, '5'], 'confirm many: over the limit asks, off never, 5 by default');
+assert.ok(v({ height: 30 }).includes('^o sort') && !v({ view: 'workspaces', workspaces: [], height: 30 }).includes('^o sort'), '^o sort key, not on workspaces');
 assert.ok(typing.includes('rename "s" to: s▏') && typing.includes('^u clear') && !typing.includes('^a add'), 'rename prompt prefilled, input keys shown');
 assert.equal(typing.split('\n').length, v({ height: 20 }).split('\n').length, 'typing keeps the frame height');
 const deep = v({ mode: 'input', action: 'export', inputBuffer: `C:/${'d/'.repeat(60)}leaf`, width: 60 }).split('\n').find(l => l.includes('export to'));
@@ -1305,7 +1316,7 @@ try {
   assert.equal(cfg2.paneSplit, 'horizontal', 'refused request saved nothing, later one did');
   assert.equal(cfg2.defaultOpener, 'vscode', 'default opener stored as its key');
   const st2 = await (await fetch(base + '/api/state', { headers: { 'x-upex-token': token } })).json();
-  assert.deepEqual(st2.settings, { startView: 'apps', sort: 'name', terminalLayout: 'panes', paneSplit: 'horizontal', terminalShell: 'powershell', fullScreen: 'on', mouse: 'on', theme: 'system', accent: 'default', density: 'comfortable', paths: 'dim', keyHints: 'full', maxRows: 'auto', recentStrip: 'off', staleAfter: '60', views: 'all', enter: 'quit', numberKeys: 'off', fuzzy: 'normal', searchIn: 'all', flash: '3', updateCheck: 'on', usage: 'ago', rowDetails: 'both', pinned: 'top', groups: 'off', narrowPane: 'toggle', paneWidth: 'normal', goals: 'off', git: 'off', glyphs: 'unicode', defaultOpener: 'vscode' }, 'state reports settings');
+  assert.deepEqual(st2.settings, { startView: 'apps', sort: 'name', terminalLayout: 'panes', paneSplit: 'horizontal', terminalShell: 'powershell', fullScreen: 'on', mouse: 'on', theme: 'system', accent: 'default', density: 'comfortable', paths: 'dim', keyHints: 'full', maxRows: 'auto', recentStrip: 'off', staleAfter: '60', views: 'all', enter: 'quit', numberKeys: 'off', confirmMany: '5', fuzzy: 'normal', searchIn: 'all', flash: '3', updateCheck: 'on', usage: 'ago', rowDetails: 'both', pinned: 'top', groups: 'off', narrowPane: 'toggle', paneWidth: 'normal', goals: 'off', git: 'off', glyphs: 'unicode', defaultOpener: 'vscode' }, 'state reports settings');
   assert.deepEqual(Object.keys(cfg2.workspaces), ['work'], 'settings save keeps workspaces');
   const note = path.join(webHome, 'note.txt');
   fs.writeFileSync(note, '');

@@ -8,7 +8,7 @@ import path from 'node:path';
 import readline from 'node:readline';
 import chalk from 'chalk';
 import Fuse from 'fuse.js';
-import { getInteractiveAppChoices, getAppMap, isTerminalApp, hasWindowsTerminal, defaultOpener, readSettings, setting, startTab, shownTabs, isHex, copyToClipboard, launchUrl, configApps, SETTINGS, settingValues, settingShown } from './launcher.js';
+import { getInteractiveAppChoices, getAppMap, isTerminalApp, hasWindowsTerminal, defaultOpener, readSettings, setting, startTab, shownTabs, isHex, copyToClipboard, readClipboard, launchUrl, configApps, SETTINGS, settingValues, settingShown } from './launcher.js';
 import { gitOf, stopGit } from './git.js';
 import { fuseOpts } from './fuzzy.js';
 import { loadLinks, activeLinks, unarchived, aliasesOf, takenError, checkAliases, frecency, removeLinks, saveLinks, setLink, renameLink, loadWorkspaces, saveWorkspaces, removeWorkspace, nameError, loadConfig, saveConfig, withPinned, setPinOrder, StoreError, undoLast, hasBackups, pruneBroken, staleLinks, loadHistory, statsFrom, parseColor, colorOf, COLORS } from './store.js';
@@ -16,7 +16,7 @@ import { describeEntry } from './commands/workspace.js';
 import { handleOpen } from './commands/open.js';
 import { startServer, applyOpener } from './commands/web.js';
 import { readScripts, detectPm } from './commands/run.js';
-import { parseDuration } from './commands/add.js';
+import { parseDuration, defaultName } from './commands/add.js';
 import { runChecks } from './commands/doctor.js';
 import { sparkline } from './commands/stats.js';
 import { bundleOf, importBundle } from './commands/transfer.js';
@@ -489,7 +489,7 @@ function getVisibleWindow(choices, selectedIndex, maxVisible = MAX_VISIBLE_CHOIC
 
 const PROMPT_LABEL = {
   rename: name => `rename "${name}" to:`,
-  add: () => 'new shortcut name (path = cwd):',
+  add: (_, p) => `new shortcut name (path = ${p ? clipStart(tidyPath(p), 30) : 'cwd'}):`,
   wsadd: n => `add the ${n} marked to workspace (new or existing):`,
   opener: name => `command for opener "${name}":`,
   openerName: () => 'new opener name:',
@@ -497,6 +497,16 @@ const PROMPT_LABEL = {
   export: () => 'export to file:',
   import: () => 'import from file (merge):',
 };
+
+// ^a: clipboard text as an existing absolute path (one line, Explorer's "Copy as path" quotes dropped), else null.
+export function clipPath(text, exists = fs.existsSync) {
+  const t = String(text ?? '').trim().replace(/^"(.*)"$/, '$1');
+  const p = expandHome(t);
+  return t && !/[\r\n]/.test(t) && path.isAbsolute(p) && exists(p) ? path.resolve(p) : null;
+}
+
+// Confirm many setting: does opening `n` windows ask first?
+export const asksMany = (n, limit) => Number(limit) > 0 && n > Number(limit);
 
 // Input a prompt starts with: the current name for ^r, so Enter on it changes nothing.
 export const prefill = (action, choice) => (action === 'rename' ? choice?.name : '') || '';
@@ -644,6 +654,7 @@ const SETTING_ROWS = [
   { section: 'Terminals', key: 'paneSplit', label: 'Pane split', scope: 'all', names: { auto: 'Auto', vertical: 'Side by side', horizontal: 'Stacked' } },
   { section: 'Terminals', key: 'terminalShell', label: 'Shell', scope: 'all', names: { cmd: 'cmd', powershell: 'PowerShell', pwsh: 'PowerShell 7', profile: 'WT profile' } },
   { section: 'Opening', key: 'defaultOpener', label: 'Default opener', scope: 'all' },
+  { section: 'Opening', key: 'confirmMany', label: 'Confirm many', scope: 'tui', names: { off: 'Off', 3: 'Over 3', 5: 'Over 5', 10: 'Over 10' } },
   { section: 'List', key: 'sort', label: 'Sort', scope: 'tui+web', names: { recent: 'Most used', name: 'A to Z', opened: 'Last opened', added: 'Recently added' } },
   { section: 'List', key: 'recentStrip', label: 'Recent on top', scope: 'tui', names: { off: 'Off', 3: '3', 5: '5' } },
   { section: 'List', key: 'pinned', label: 'Pinned', scope: 'tui+web', names: { top: 'On top', section: 'Own section' } },
@@ -693,7 +704,8 @@ export const pickedOf = (row, s) => (inlineRows(row, s) && s.maxRows === '8' ? '
 
 function settingNote(key, s, wt) {
   if (key === 'startView') return 'The tab to open on. Last used: where you left off, opener included.';
-  if (key === 'sort') return 'Shortcut order.';
+  if (key === 'sort') return 'Shortcut order. ^o in the list cycles it.';
+  if (key === 'confirmMany') return 'Enter on marked rows or a workspace that opens more windows than this asks y / n first. Off: never asks.';
   if (key === 'recentStrip') return 'The last 3 or 5 opened again above the list, under a Recent heading, whatever the sort.';
   if (key === 'staleAfter') return 'Not opened (or added, if never opened) in this long counts as stale: is:stale, Maintenance > Stale and upex stale.';
   if (key === 'mouse') return 'Clicks, right-click menu and the wheel. Off: the terminal selects text as usual.';
@@ -1034,7 +1046,7 @@ export function renderInteractiveView({
 
   // Prompt line: filter, or the live action (input / delete confirm).
   if (mode === 'input') {
-    const label = PROMPT_LABEL[action](clipName(String(inputName ?? currentChoice?.name ?? ''), 24).text);
+    const label = PROMPT_LABEL[action](clipName(String(inputName ?? currentChoice?.name ?? ''), 24).text, inputName);
     // Keep the end of a long value in view, where the cursor is.
     lines.push(`  ${chalk.bold(pick('›'))} ${label} ${inputLine(inputBuffer, inputCursor, Math.max(1, w - vis(label) - 5))}`);
   } else if (mode === 'confirm') {
@@ -1150,12 +1162,13 @@ export function renderInteractiveView({
   // Shortcuts are archived, not deleted (^d deletes in Settings > Archived); workspaces have no archive.
   const dropKey = isWs ? list.length > 0 && ['^d', 'delete'] : (list.length > 0 || many) && ['^x', many ? `archive ${many} marked` : 'archive'];
   const copyKey = !isWs && list.length > 0 && ['^y', 'copy'];
+  const sortKey = !isWs && ['^o', 'sort'];
   // Full: rows of keys, a pair that doesn't fit wraps. Keys that change with the selection, marks, filter or mode
   // count at their widest for the row count, so the list only moves on resize. Esc already saying "hide details" drops the pane key.
   const paneHint = escKey[1] !== paneKey[1] && paneKey;
   const fullRows = ({ open = openKey, win = windows, esc = escKey, pane: pk = paneHint, pin = movePin, goals: gk = goalsKey, p = pinKey, drop = dropKey, z = undoKey, web = webKey } = {}) => [
     ...wrapHint([open, ['↑↓', 'move'], opener, win, tabKey, esc, pk, pin, markKey, gk], w),
-    ...wrapHint([...editKeys, p, drop, z, uiKey, copyKey, HINT_SEP, scriptsKey, web], w),
+    ...wrapHint([...editKeys, p, drop, z, uiKey, copyKey, sortKey, HINT_SEP, scriptsKey, web], w),
   ];
   const most = `${Math.max(many, 9)} marked`;
   const widest = fullRows({
@@ -1174,7 +1187,7 @@ export function renderInteractiveView({
   // Key hints setting. Full: the rows above (typing: input keys, same height so the list stays put). Short: one row
   // without the keys you learn first (↑↓, tab, esc), cut to the width; ? shows them all. Off: none.
   const hints = settings.keyHints === 'off' ? []
-    : settings.keyHints === 'short' ? [mode === 'input' ? inputRow : fitHint([['?', 'keys'], openKey, opener, windows, ...editKeys, pinKey, dropKey, undoKey, markKey, scriptsKey, goalsKey, webKey, paneKey, uiKey, copyKey, movePin], w)]
+    : settings.keyHints === 'short' ? [mode === 'input' ? inputRow : fitHint([['?', 'keys'], openKey, opener, windows, ...editKeys, pinKey, dropKey, undoKey, markKey, scriptsKey, goalsKey, webKey, paneKey, uiKey, copyKey, sortKey, movePin], w)]
       : padTo(mode === 'input' ? [inputRow] : fullRows(), widest.length);
   const foot = isForm ? (hints.length ? padTo([formKeys(form, inputRow)], settings.keyHints === 'short' ? 1 : widest.length) : [])
     : isScripts ? (hints.length ? [keyHint([['↵', 'run in a terminal'], ['↑↓', 'move'], escKey])] : [])
@@ -1188,7 +1201,7 @@ export function renderInteractiveView({
     const groups = [
       ['Move', [openKey, ['↑↓', 'move'], ['PgUp/Dn Home/End', 'jump'], numbered && ['1-9', 'open row N'], opener, windows, tabKey, escKey, paneHint, markKey, !isWs && ['A-↑↓', 'move pin']]],
       ['Edit', [...editKeys, pinKey, dropKey, ['^z', 'undo'], copyKey]],
-      ['More', [scriptsKey, isShortcuts && ['S-→', 'goals'], isShortcuts && (webKey || ['^g', 'git web page']), uiKey, full && settings.mouse !== 'off' && ['right-click', 'row menu']]],
+      ['More', [sortKey, scriptsKey, isShortcuts && ['S-→', 'goals'], isShortcuts && (webKey || ['^g', 'git web page']), uiKey, full && settings.mouse !== 'off' && ['right-click', 'row menu']]],
     ];
     const help = groups.flatMap(([name, pairs], i) => [...(i ? [''] : []), `    ${chalk.bold(name)}`, ...wrapHint(pairs, cw).map(r => `  ${r}`)]);
     lines.push(...help.slice(0, Math.max(0, height - lines.length - footRows(foot) - 2)), '', chalk.dim('    any key closes'));
@@ -1349,6 +1362,7 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
     let keysHelp = false; // ? (empty filter) or ^k key overlay, any key closes it
     let inputName = null; // the prompt's name when it isn't the selected row's (an opener, a count)
     let form = null; // edit form: { name, ws, field, editing, buffer, cursor, kind, history }
+    let pending = null; // Confirm many: the open waiting for y
     let wt = null;
     const appIndex = (key) => appChoices.findIndex(choice => choice.key === key);
     // A folder's own opener, else the default.
@@ -1921,7 +1935,7 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
         if (bad) { flash = bad.toLowerCase().replace(/\.$/, ''); return false; }
         const taken = takenError(loadLinks(), buf);
         if (taken) { flash = taken.replace(/\.$/, ''); return false; }
-        setLink(buf, { path: process.cwd(), added: Date.now() });
+        setLink(buf, { path: inputName || process.cwd(), added: Date.now() });
         rebuild(buf);
         done(`added "${buf}"`);
         // Straight on to its type, target, tags and the rest.
@@ -2098,6 +2112,14 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
       done(`restored "${a.name}"`);
     };
     const confirmAsk = (what, q) => { mode = 'confirm'; action = what; ask = q; };
+    // Opens `entries` with `run`, after y / n when they'd open more windows than Confirm many.
+    const openMany = (entries, run) => {
+      const n = entries.reduce((t, e) => t + (e.count || 1), 0);
+      if (picker || !asksMany(n, settings.confirmMany)) { run(); return; }
+      pending = run;
+      confirmAsk('openMany', `open ${n} windows at once?`);
+      redraw();
+    };
     // Enter on an opener, maintenance or archived row.
     const runExtra = (x) => {
       const toggle = (lines) => { expanded = expanded?.kind === x.kind ? null : { kind: x.kind, lines }; };
@@ -2285,6 +2307,15 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
       // ── Confirm mode ──
       if (mode === 'confirm') {
         const yes = key.name === 'y';
+        if (action === 'openMany') {
+          const run = yes && pending;
+          pending = null;
+          ask = '';
+          mode = 'browse';
+          if (run) run();
+          if (!closed) redraw();
+          return;
+        }
         if (yes && action === 'prune') {
           const before = loadLinks();
           const { kept, removed } = pruneBroken(before);
@@ -2527,8 +2558,11 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
         if (key.name === 'return') {
           const name = filteredWs[wsIndex]?.name;
           if (!name) return;
-          if (staying()) openHere(loadWorkspaces()[name] || [], `opened workspace "${name}"`, [null, name]);
-          else finish({ status: 'workspace', name });
+          const entries = loadWorkspaces()[name] || [];
+          openMany(entries, () => {
+            if (staying()) openHere(entries, `opened workspace "${name}"`, [null, name]);
+            else finish({ status: 'workspace', name });
+          });
           return;
         }
         const j = jump(wsIndex, n);
@@ -2541,6 +2575,19 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
         if ((key.ctrl && key.name !== 'w') || ['left', 'right', 'up', 'down', 'pageup', 'pagedown', 'home', 'end'].includes(key.name)) return;
       }
 
+      // ^o: the next sort, saved like Settings > Sort.
+      if (key.ctrl && key.name === 'o') {
+        const sorts = settingValues('sort');
+        const next = sorts[(sorts.indexOf(settings.sort) + 1) % sorts.length];
+        const c = filteredChoices[selectedIndex];
+        const row = SETTING_ROWS.find(r => r.key === 'sort');
+        chooseSetting(row, next);
+        reselect(c?.name, null, c);
+        done(`sort: ${row.names[next]}`);
+        redraw();
+        return;
+      }
+
       if (key.ctrl && key.name === 's') {
         openScripts();
         redraw();
@@ -2550,7 +2597,16 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
       // Live actions (Ctrl+key so they never clash with search typing).
       // ^A adds the cwd as a folder shortcut, so it belongs to the Shortcuts tab.
       if (key.ctrl && key.name === 'a') {
-        if (view === 'shortcuts') { startAction('add'); redraw(); }
+        if (view !== 'shortcuts') return;
+        startAction('add');
+        redraw();
+        // An existing path on the clipboard becomes its path, named after it, unless a name is typed meanwhile.
+        readClipboard().then(guard((text) => {
+          const p = clipPath(text);
+          if (!p || closed || mode !== 'input' || action !== 'add' || inputBuffer) return;
+          startAction('add', defaultName(p), p);
+          redraw();
+        }));
         return;
       }
       if (key.ctrl && key.name === 'e') {
@@ -2617,9 +2673,11 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
 
       if (key.name === 'return' && marks.size) {
         const entries = markedPlan().map(({ c, app, count }) => ({ shortcut: c.name, app, count }));
-        marks.clear();
-        if (staying()) { openHere(entries, `opened ${howMany(entries.map(e => e.shortcut))}`, [filteredChoices[selectedIndex]?.name]); return; }
-        finish({ status: 'marked', entries });
+        openMany(entries, () => {
+          marks.clear();
+          if (staying()) openHere(entries, `opened ${howMany(entries.map(e => e.shortcut))}`, [filteredChoices[selectedIndex]?.name]);
+          else finish({ status: 'marked', entries });
+        });
         return;
       }
 

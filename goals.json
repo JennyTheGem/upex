@@ -1252,6 +1252,30 @@
       "note": "Settings > Rows > Usage (usage: ago default / opens / off): right edge of selector rows (padded column) and the upex ui when column"
     },
     {
+      "id": "confirm-before-opening-many",
+      "section": 3,
+      "title": "Confirm before opening many",
+      "body": "Enter on more than N marked rows or a big workspace asks first (N in Settings, off = never). Stops a stray Enter spawning 10 windows.",
+      "phase": "next",
+      "status": "done",
+      "size": "S",
+      "created": "2026-11-09",
+      "updated": "2026-11-09",
+      "note": "Settings > Opening > Confirm many (confirmMany off/3/5/10, default 5): Enter on marked rows or a workspace opening more windows asks y / n; not in upex pick"
+    },
+    {
+      "id": "cycle-sort-with-a-key",
+      "section": 3,
+      "title": "Cycle sort with a key",
+      "body": "One key cycles frecency, A to Z, recent, ... in place with a flash naming the sort, without opening Settings. Saved like the Settings sort.",
+      "phase": "next",
+      "status": "done",
+      "size": "S",
+      "created": "2026-11-09",
+      "updated": "2026-11-09",
+      "note": "^o cycles sort (most used, A to Z, last opened, recently added) on Shortcuts/Apps, flash names it, saved like Settings > Sort"
+    },
+    {
       "id": "cd-support-via-wrapper-hidden-resolve-public-go",
       "section": 4,
       "title": "`cd` support via wrapper + hidden `__resolve` / public `go`",
@@ -2052,6 +2076,18 @@
       "created": "2026-11-08",
       "updated": "2026-11-08",
       "note": "Out of scope"
+    },
+    {
+      "id": "add-from-clipboard-path",
+      "section": 10,
+      "title": "Add from clipboard path",
+      "body": "When the clipboard holds an existing folder or file path, ^a prefills it in the add form (name from the folder). Saves a paste after copying from Explorer.",
+      "phase": "next",
+      "status": "done",
+      "size": "S",
+      "created": "2026-11-09",
+      "updated": "2026-11-09",
+      "note": "^a reads the clipboard async (Windows: Explorer file copy or text); an existing absolute path (quotes, ~ ok) becomes the path, name prefilled from its folder, prompt shows the path"
     }
   ]
 }

@@ -2,7 +2,7 @@
  * launcher.js -- Opens folders in supported apps
  */
 
-import { execSync, spawn, spawnSync } from 'node:child_process';
+import { execFile, execSync, spawn, spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
@@ -95,7 +95,7 @@ const INTERACTIVE_APP_KEYS = [
 // Openers that open terminal windows (and so take a window count).
 export const isTerminalApp = key => key === 'cmd' || key === 'claude';
 
-// Settings in config.json; the first value is the default unless DEFAULTS says. Start view, views, sort, searchIn, staleAfter, pinned, groups and usage are shared by the selector and upex ui; fullScreen, mouse, keyHints, maxRows, recentStrip, enter, numberKeys, flash, narrowPane, paneWidth, goals, git and glyphs are selector only.
+// Settings in config.json; the first value is the default unless DEFAULTS says. Start view, views, sort, searchIn, staleAfter, pinned, groups and usage are shared by the selector and upex ui; fullScreen, mouse, keyHints, maxRows, recentStrip, enter, numberKeys, confirmMany, flash, narrowPane, paneWidth, goals, git and glyphs are selector only.
 // Layout: separate windows, or tabs/panes in one Windows Terminal window. Shell 'profile' = wt default profile.
 export const SETTINGS = {
   // last = the tab (and opener) the selector or upex ui was left on.
@@ -112,6 +112,8 @@ export const SETTINGS = {
   enter: ['quit', 'stay'],
   // Selector: 1 to 9 opens the Nth visible row, numbered in the pointer column.
   numberKeys: ['off', 'on'],
+  // Selector: Enter on marked rows or a workspace that opens more windows than this asks first.
+  confirmMany: ['off', '3', '5', '10'],
   // Fuzzy matching of the selector filter and of names (upex <name>, go). Exact: the typed letters in a row, no typos.
   fuzzy: ['normal', 'exact', 'loose'],
   // What the filter searches (selector, upex ui): names, aliases, paths and tags, or names and aliases only.
@@ -164,7 +166,7 @@ export const settingShown = key => platform === 'win32' || !WINDOWS_ONLY.include
 export const isHex = v => typeof v === 'string' && /^#[0-9a-f]{6}$/i.test(v);
 const valid = (key, v) => SETTINGS[key].includes(v) || (key === 'accent' && isHex(v));
 // Defaults that aren't the first value, so options keep their natural order.
-const DEFAULTS = { staleAfter: '60' };
+const DEFAULTS = { staleAfter: '60', confirmMany: '5' };
 // Dropped values that still read as a current one.
 const LEGACY = { recentStrip: { on: '3' } };
 export const setting = (key, config = loadConfig()) => {
@@ -369,6 +371,21 @@ export function copyToClipboard(text) {
   const input = platform === 'win32' ? Buffer.from(text, 'utf16le') : text;
   const env = platform === 'darwin' ? { ...process.env, LC_CTYPE: 'UTF-8' } : process.env;
   execSync(cmd, { input, env, stdio: ['pipe', 'ignore', 'ignore'], shell: true });
+}
+
+// Windows: a file or folder copied in Explorer gives its path, else the text. UTF-8 so non-ASCII paths survive.
+const PS_PASTE = '[Console]::OutputEncoding = [Text.Encoding]::UTF8; $f = Get-Clipboard -Format FileDropList; if ($f) { $f[0].FullName } else { Get-Clipboard -Raw }';
+// Clipboard text, '' when empty or no tool. Never rejects.
+export function readClipboard() {
+  const [cmd, args = []] = platform === 'win32' ? ['powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', PS_PASTE]]
+    : platform === 'darwin' ? ['pbpaste']
+    : [process.env.WAYLAND_DISPLAY && ['wl-paste', ['--no-newline']], ['xclip', ['-o', '-selection', 'clipboard']], ['xsel', ['--clipboard', '--output']]]
+      .find(c => c && commandExists(c[0])) || [];
+  const env = platform === 'darwin' ? { ...process.env, LC_CTYPE: 'UTF-8' } : process.env;
+  return new Promise((resolve) => {
+    if (!cmd) { resolve(''); return; }
+    execFile(cmd, args, { env, timeout: 3000, windowsHide: true, encoding: 'utf8' }, (err, out) => resolve(err ? '' : String(out)));
+  });
 }
 
 // Caret-escape cmd.exe metacharacters the outer shell sees unquoted. `line` starts inside quotes.

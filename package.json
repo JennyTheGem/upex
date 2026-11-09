@@ -1,6 +1,6 @@
 {
   "name": "@uplift-beyond/upex",
-  "version": "1.15.2",
+  "version": "1.15.3",
   "description": "A personal file shortcut manager: register named aliases for folder paths and instantly open them.",
   "type": "module",
   "main": "src/index.js",

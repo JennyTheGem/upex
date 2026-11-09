@@ -76,10 +76,13 @@ cp.spawn = (cmd, args, opts) => (calls.push(['spawn', cmd, args, opts]), child);
 // sigint: Ctrl+C listeners while the last child ran.
 let sigint = 0;
 cp.spawnSync = (cmd, args, opts) => (sigint = process.listenerCount('SIGINT'), calls.push(['spawnSync', cmd, args, opts]), {});
+// readClipboard: answers with `pasted`.
+let pasted = [null, ''];
+cp.execFile = (cmd, args, opts, cb) => (calls.push(['execFile', cmd, args, opts]), cb(...pasted), child);
 syncBuiltinESMExports();
 // Bail before anything real could launch or touch the real ~/.upex.
 const esm = await import('node:child_process');
-assert.ok(['execSync', 'spawn', 'spawnSync'].every(k => esm[k] === cp[k]), 'child_process stubbed');
+assert.ok(['execSync', 'spawn', 'spawnSync', 'execFile'].every(k => esm[k] === cp[k]), 'child_process stubbed');
 assert.equal(os.homedir(), home, 'home redirected');
 
 // Fresh launcher.js per platform (it reads os.platform once at load).
@@ -301,6 +304,23 @@ try {
   delete process.env.WAYLAND_DISPLAY;
   assert.deepEqual(run(X, ['wl-copy', 'xsel'], {}, 'copy', dir).calls, [['exec', 'xsel --clipboard --input']], 'linux: X11 skips wl-copy, xsel works');
   assert.match(run(X, [], {}, 'copy', dir).r.message, /no clipboard tool/, 'linux: no clipboard tool named');
+
+  // Paste: the platform's tool, '' when it fails or none is installed.
+  const paste = async (L, have, answer = [null, 'x']) => {
+    install(have);
+    calls = [];
+    pasted = answer;
+    return [await L.readClipboard(), ...calls.map(c => c[1])];
+  };
+  assert.deepEqual(await paste(W, []), ['x', 'powershell.exe'], 'win: paste via powershell');
+  assert.deepEqual(await paste(W, [], [new Error('timeout'), '']), ['', 'powershell.exe'], 'paste failure: empty');
+  assert.deepEqual(await paste(D, []), ['x', 'pbpaste'], 'mac: paste via pbpaste');
+  process.env.WAYLAND_DISPLAY = 'wayland-0';
+  assert.deepEqual(await paste(X, ['wl-paste', 'xclip']), ['x', 'wl-paste'], 'linux: wayland paste');
+  assert.deepEqual(await paste(X, ['xclip']), ['x', 'xclip'], 'linux: no wl-paste -> xclip');
+  delete process.env.WAYLAND_DISPLAY;
+  assert.deepEqual(await paste(X, ['wl-paste', 'xsel']), ['x', 'xsel'], 'linux: X11 skips wl-paste, xsel works');
+  assert.deepEqual(await paste(X, []), [''], 'linux: no paste tool, empty');
   if (wayland !== undefined) process.env.WAYLAND_DISPLAY = wayland;
 
   // Shell setup: one upex block, replaced in place; a hand-added function is left alone.
