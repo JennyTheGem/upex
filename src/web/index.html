@@ -146,6 +146,11 @@ main { max-width: 1600px; padding: 20px 32px 96px; }
 }
 .notice .i { color: var(--warn); }
 .notice p { margin: 0; flex: 1; min-width: 200px; }
+/* Suggested shortcut (a folder learned from upex cd): a dashed, empty slot */
+.notice.tip { border: 1px dashed var(--line-strong); background: none; padding-block: 8px; }
+.notice.tip .i { color: inherit; }
+.notice.tip > .i, .notice.tip .mono { color: var(--muted); }
+.notice.tip .mono { margin-left: 6px; overflow-wrap: anywhere; }
 
 /* Forms (inline, never modal) */
 .form {
@@ -410,7 +415,7 @@ const dot = c => c && h('span', { class: 'dot' + (COLORS.includes(c) ? ' c-' + c
 const usage = l => (S.settings.usage === 'off' ? '' : S.settings.usage === 'opens' ? `${l.uses} open${l.uses === 1 ? '' : 's'}` : ago(l.lastUsed));
 
 const S = {
-  links: [], workspaces: {}, apps: [], openers: [], settings: {}, defaults: {}, startTab: '', wt: null, home: '', sep: '/',
+  links: [], suggest: null, workspaces: {}, apps: [], openers: [], settings: {}, defaults: {}, startTab: '', wt: null, home: '', sep: '/',
   view: null, q: '', tag: null, archived: false,
   adding: false, addKind: 'folder', addErr: '', add: { name: '', target: '', tags: '', opener: '' },
   editing: null, draft: null, editErr: '',
@@ -787,6 +792,22 @@ function place(anchor, pop) {
   });
 }
 
+// A folder learned from upex cd, offered as a shortcut: Add opens the add form filled in, Dismiss stops offering it.
+function suggestion(s) {
+  const hide = hidden => () => api('PUT', 'learned/hide', { path: s.path, hidden });
+  return h('div', { class: 'notice tip', role: 'region', 'aria-label': 'Suggested shortcut' },
+    icon('folder'),
+    h('p', null, 'You cd into ', h('strong', null, s.name), ` often (${s.uses} visits)`, h('span', { class: 'mono' }, s.path)),
+    btn('Add shortcut', '', () => {
+      S.addKind = 'folder';
+      S.add = { name: s.name, target: s.path, tags: '', opener: '' };
+      openPanel('adding', 'add-name');
+    }, 'plus'),
+    // Focus moves to the next suggestion, else the search.
+    btn('Dismiss', 'ghost', () => act(hide(true), `Won't suggest ${s.name} again`, hide(false))
+      .then(() => (document.querySelector('.tip .btn') || document.getElementById('q'))?.focus())));
+}
+
 function linksView() {
   const out = [];
   const shelved = tabLinks(true);
@@ -821,6 +842,7 @@ function linksView() {
         }))));
   }
 
+  if (S.suggest && !isApps && !S.adding && !S.archived && !S.q.trim() && !S.tag) out.push(suggestion(S.suggest));
   if (S.adding) out.push(addForm());
 
   const list = visibleLinks();

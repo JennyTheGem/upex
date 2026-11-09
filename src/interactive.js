@@ -11,7 +11,7 @@ import Fuse from 'fuse.js';
 import { getInteractiveAppChoices, getAppMap, isTerminalApp, hasWindowsTerminal, defaultOpener, readSettings, setting, startTab, shownTabs, isHex, copyToClipboard, readClipboard, launchUrl, configApps, SETTINGS, settingValues, settingShown } from './launcher.js';
 import { gitOf, stopGit } from './git.js';
 import { fuseOpts } from './fuzzy.js';
-import { loadLinks, activeLinks, unarchived, aliasesOf, takenError, checkAliases, frecency, removeLinks, saveLinks, setLink, renameLink, loadWorkspaces, saveWorkspaces, removeWorkspace, nameError, loadConfig, saveConfig, withPinned, setPinOrder, StoreError, undoLast, hasBackups, pruneBroken, staleLinks, loadHistory, statsFrom, parseColor, colorOf, COLORS } from './store.js';
+import { loadLinks, activeLinks, unarchived, aliasesOf, takenError, checkAliases, frecency, removeLinks, saveLinks, setLink, renameLink, loadWorkspaces, saveWorkspaces, removeWorkspace, nameError, loadConfig, saveConfig, withPinned, setPinOrder, StoreError, undoLast, hasBackups, pruneBroken, staleLinks, loadHistory, statsFrom, parseColor, colorOf, COLORS, pathKey, topSuggestion, hideVisit } from './store.js';
 import { describeEntry } from './commands/workspace.js';
 import { handleOpen } from './commands/open.js';
 import { startServer, applyOpener } from './commands/web.js';
@@ -46,11 +46,6 @@ const SHOW_CURSOR = '\x1b[?25h';
 const MOUSE_ON = '\x1b[?1000h\x1b[?1006h';
 const MOUSE_OFF = '\x1b[?1006l\x1b[?1000l';
 
-// Folder path as a compare key: resolved, no trailing slash, case-insensitive on Windows.
-const pathKey = (p) => {
-  const r = path.resolve(p).replace(/(.)[\\/]+$/, '$1');
-  return os.platform() === 'win32' ? r.toLowerCase() : r;
-};
 // Each folder shortcut's `same`: other shortcut names on the same path.
 export function withSamePath(list) {
   const by = new Map();
@@ -338,10 +333,11 @@ export function clipName(name, width, hits = []) {
 }
 
 // One list row (`num`: a dim 1 to 9 in the pointer column): "› ● name  path ..... #tags  badge  3d ago". `style` = path | url | dim | plain (url looks plain).
+// `weight` styles the name (bold; the suggested row is plain).
 // `dot` (color label) sits in a `dotWidth` column before the name, 0 = no column. `usage` goes last, dropped when it doesn't fit.
-function renderRow({ sel, mark, name, nameWidth, hits, text = '', style = 'path', right = '', cw, pick = s => s, dot = '', dotWidth = 0, usage = '', num = '' }) {
+function renderRow({ sel, mark, name, nameWidth, hits, text = '', style = 'path', right = '', cw, pick = s => s, dot = '', dotWidth = 0, usage = '', num = '', weight = chalk.bold }) {
   const n = clipName(name, nameWidth, hits);
-  const nm = chalk.bold(underlineHits(n.text, n.hits)) + ' '.repeat(Math.max(0, nameWidth - vis(n.text)));
+  const nm = weight(underlineHits(n.text, n.hits)) + ' '.repeat(Math.max(0, nameWidth - vis(n.text)));
   const dc = dotWidth ? dot + ' '.repeat(Math.max(0, dotWidth + 1 - vis(dot))) : '';
   const roomFor = r => cw - 2 - vis(dc) - nameWidth - 2 - (r ? vis(r) + 2 : 0);
   const withUsage = [right, usage].filter(Boolean).join('  ');
@@ -1008,6 +1004,7 @@ export function renderInteractiveView({
   picker = false, // upex pick: Enter prints paths
   offers = [], // no matches: noMatchOffers
   offerIndex = 0,
+  suggest = null, // learned folder to offer as a shortcut { name, path }, a row under the list
 }) {
   asciiHints = settings.glyphs === 'ascii';
   const isWs = view === 'workspaces';
@@ -1222,12 +1219,19 @@ export function renderInteractiveView({
   // No footer rows above it: no blank row under the rule.
   foot.push(...(foot.length ? webRows : webRows.slice(-1)));
 
+  // A learned folder offered as a shortcut: a plain "+" row under the list, a blank row above it.
+  // Not when the list would no longer fit: its least is 3 rows and a heading or "more" row, 3 rows with 0 or 1 (offers).
+  const tipFits = height - lines.length - footRows(foot) - 2 >= (list.length > 1 ? 4 : 3);
+  const tipRows = suggest && !keysHelp && !listForm && !listScripts && tipFits ? 2 : 0;
+  // Name and color columns of the list, so it lines up with the rows.
+  let tipCols = { nameWidth: suggest ? nameCol([suggest]) : 0, dotWidth: 0 };
+
   if (keysHelp) {
     // ? or ^k: every key of this tab in groups, over the list.
     const groups = [
       ['Move', [openKey, ['↑↓', 'move'], ['PgUp/Dn Home/End', 'jump'], numbered && ['1-9', 'open row N'], opener, windows, tabKey, escKey, paneHint, markKey, !isWs && ['A-↑↓', 'move pin']]],
       ['Edit', [...editKeys, !isWs && ['F2', 'rename'], pinKey, dropKey, dropKey && ['Del', dropKey[1]], ['^z', 'undo'], copyKey]],
-      ['More', [sortKey, scriptsKey, isShortcuts && ['S-→', 'goals'], isShortcuts && (webKey || ['^g', 'git web page']), uiKey, full && settings.mouse !== 'off' && ['right-click', 'row menu']]],
+      ['More', [sortKey, suggest && ['^n', 'add suggested folder'], suggest && ['^l', 'hide suggestion'], scriptsKey, isShortcuts && ['S-→', 'goals'], isShortcuts && (webKey || ['^g', 'git web page']), uiKey, full && settings.mouse !== 'off' && ['right-click', 'row menu']]],
     ];
     const help = groups.flatMap(([name, pairs], i) => [...(i ? [''] : []), `    ${chalk.bold(name)}`, ...wrapHint(pairs, cw).map(r => `  ${r}`)]);
     lines.push(...help.slice(0, Math.max(0, height - lines.length - footRows(foot) - 2)), '', chalk.dim('    any key closes'));
@@ -1249,7 +1253,7 @@ export function renderInteractiveView({
   } else {
     const nameWidth = nameCol(list);
     // Rows left after the header and the footer (its rule included).
-    const room = height - lines.length - footRows(foot);
+    const room = height - lines.length - footRows(foot) - tipRows;
     // Pinned setting 'section': Pinned / All headings, unless a search reorders the list.
     // Recent strip rows (withRecent) go under their own Recent heading.
     const heads = settings.pinned === 'section' && !plain && !query?.trim() && list.find(c => !c.recent)?.pinned;
@@ -1268,6 +1272,7 @@ export function renderInteractiveView({
     const now = Date.now();
     const usageW = Math.max(0, ...list.map(c => usageText(c, settings.usage, now).length));
     const dotWidth = Math.max(0, ...list.map(c => vis(ui.colorDot(c.color))));
+    tipCols = { nameWidth, dotWidth };
     let shownRows = 0;
     for (const { head, i } of items.slice(start, end)) {
       if (head) { lines.push(chalk.dim(`    ${head}`)); continue; }
@@ -1302,6 +1307,16 @@ export function renderInteractiveView({
     if (more) lines.push(more);
   }
 
+  if (tipRows) {
+    // Full screen: at the bottom of the list, right over the footer's rule.
+    if (full) while (lines.length + tipRows + footRows(foot) < height) lines.push('');
+    const keys = keyHint([['^n', 'add'], ['^l', 'hide']]);
+    const why = `${chalk.dim('you cd here often')}${keys}`;
+    // The reason goes when it would leave the path under 12 columns.
+    const right = cw - 6 - tipCols.dotWidth - tipCols.nameWidth - vis(why) >= 12 ? why : keys.trimStart();
+    hit(lines.length + 1, 0, lw, { suggest: true });
+    lines.push('', renderRow({ num: '+', name: suggest.name, text: tidyPath(suggest.path), style: 'dim', right, cw, weight: s => s, ...tipCols }));
+  }
   // Before the opener hit below and the pane, which runs down to the footer.
   pin(foot);
   // Detail pane: the selected row's details right of the list, top-aligned.
@@ -1398,6 +1413,8 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
     let inputName = null; // the prompt's name when it isn't the selected row's (an opener, a count)
     let form = null; // edit form: { name, ws, field, editing, buffer, cursor, kind, history }
     let pending = null; // Confirm many: the open waiting for y
+    let suggest = picker ? null : topSuggestion(); // learned folder (upex cd) to offer as a shortcut
+    const tipShown = () => !!suggest && view === 'shortcuts' && mode === 'browse';
     let wt = null;
     const appIndex = (key) => appChoices.findIndex(choice => choice.key === key);
     // A folder's own opener, else the default.
@@ -1493,6 +1510,7 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
         picker,
         offers,
         offerIndex,
+        suggest: tipShown() ? suggest : null,
       });
       // Never taller than the screen, or the top scrolls away and frames stack up.
       let shown = output.split('\n').slice(0, height).map(line => ui.truncate(line, width));
@@ -1551,6 +1569,7 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
       updateFilter();
       reselect(name, wsName, like);
       canUndo = hasBackups();
+      if (!picker) suggest = topSuggestion();
     };
 
     const clearQuery = () => {
@@ -2311,6 +2330,9 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
         lastClick = { y, at: now, opened: true };
         runOffer(offers[t.offer]);
         return;
+      } else if (t?.suggest) {
+        handleKey(undefined, { ctrl: true, name: 'n' });
+        return;
       } else if (once) {
         if (t.web) openWeb();
         else if (t.archive) askArchive();
@@ -2655,6 +2677,19 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
 
       if (key.ctrl && key.name === 's') {
         openScripts();
+        redraw();
+        return;
+      }
+
+      // The suggested learned folder: ^n adds it (name prefilled, like ^a from the clipboard), ^l stops offering it.
+      if (key.ctrl && (key.name === 'n' || key.name === 'l')) {
+        if (!tipShown()) return;
+        if (key.name === 'n') startAction('add', defaultName(suggest.path), suggest.path);
+        else {
+          hideVisit(suggest.path);
+          done(`won't suggest "${suggest.name}" again (upex learned still lists it)`);
+          suggest = topSuggestion();
+        }
         redraw();
         return;
       }

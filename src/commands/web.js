@@ -8,11 +8,11 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import crypto from 'node:crypto';
-import { loadLinks, saveLinks, loadWorkspaces, saveWorkspaces, pruneBroken, targetField, nameError, takenError, checkAliases, aliasesOf, frecency, parseColor, colorOf, loadConfig, saveConfig, withPinned, undoLast } from '../store.js';
+import { loadLinks, saveLinks, loadWorkspaces, saveWorkspaces, pruneBroken, targetField, nameError, takenError, checkAliases, aliasesOf, frecency, parseColor, colorOf, loadConfig, saveConfig, withPinned, undoLast, topSuggestion, hideVisit } from '../store.js';
 import { getInteractiveAppChoices, launchUrl, openerKey, isTerminalApp, checkSettings, readSettings, resetSettings, startTab, SETTING_KEYS, hasWindowsTerminal, configApps } from '../launcher.js';
 import { handleOpen, isFile } from './open.js';
 import { openEntries } from './workspace.js';
-import { parseTags } from './add.js';
+import { parseTags, defaultName } from './add.js';
 import { oneLine } from '../interactive.js';
 import * as ui from '../ui.js';
 
@@ -120,7 +120,10 @@ export function cleanEntries(list) {
 function state() {
   const links = loadLinks();
   const config = loadConfig();
+  const tip = topSuggestion();
   return {
+    // A folder learned from upex cd, offered as a shortcut.
+    suggest: tip && { name: defaultName(tip.path), path: tip.path, uses: tip.uses },
     links: Object.entries(links).map(([name, e]) => {
       const field = targetField(e);
       return {
@@ -235,6 +238,14 @@ const routes = {
     if (!Object.hasOwn(apps, String(b.name))) throw new HttpError(404, `No custom opener named "${b.name}".`);
     delete apps[b.name];
     saveConfig({ ...config, apps });
+    return {};
+  },
+
+  // Dismiss a suggested learned folder (`hidden` false: suggest it again).
+  'PUT /api/learned/hide': (b) => {
+    // Relative would resolve against the server's cwd.
+    if (typeof b.path !== 'string' || !path.isAbsolute(b.path)) throw new HttpError(400, 'path must be an absolute folder path.');
+    hideVisit(b.path, b.hidden !== false);
     return {};
   },
 

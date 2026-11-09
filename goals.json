@@ -392,6 +392,28 @@
       "note": "entry.color: palette name, #rrggbb or one emoji; dot before the name in the selector and upex ui; upex color <name> [value] [--clear], ^e form row (←→ palette, Enter types), upex ui edit field"
     },
     {
+      "id": "import-from-other-tools",
+      "section": 1,
+      "title": "Import from other tools",
+      "body": "Seed shortcuts from VS Code recent workspaces, zoxide/autojump history or Windows Terminal profiles.",
+      "phase": "maybe",
+      "status": "planned",
+      "size": "M",
+      "created": "2026-11-09",
+      "updated": "2026-11-09"
+    },
+    {
+      "id": "learn-folders-you-use-like-zoxide",
+      "section": 1,
+      "title": "Learn folders you use,",
+      "body": "upex only knows shortcuts you add by hand. learns from where you cd and ranks by frecency. Idea: track visited folders (via the cd wrapper) and suggest or auto-add the frequent ones, so upex fills itself. ",
+      "phase": "maybe",
+      "status": "done",
+      "created": "2026-11-09",
+      "updated": "2026-11-09",
+      "note": "upex cd <path> counts a visit in ~/.upex/visits.json (store.js recordVisit, from fastPath); upex cd <name> falls back to the most used learned folder (cdTarget + learnedFolders); upex learned [--clear] lists them (commands/learned.js); from 3 visits the selector offers the top one as a + row under the Shortcuts list, over the bottom rule (^n add, ^l hide) and upex ui shows a dashed strip over the list (Add shortcut / Dismiss with Undo, PUT /api/learned/hide)"
+    },
+    {
       "id": "open-in-explorer-default-app-vs-code-webstorm",
       "section": 2,
       "title": "Open in Explorer / default app / VS Code / WebStorm / terminal",
@@ -536,6 +558,17 @@
       "created": "2026-11-06",
       "updated": "2026-11-07",
       "note": "Out of scope"
+    },
+    {
+      "id": "dry-run-for-openers",
+      "section": 2,
+      "title": "Dry run for openers",
+      "body": "A dry-run flag prints the exact command upex would spawn instead of running it. Debugs custom openers and platform quirks fast.",
+      "phase": "wayLater",
+      "status": "planned",
+      "size": "S",
+      "created": "2026-11-09",
+      "updated": "2026-11-09"
     },
     {
       "id": "upex-cd-path-opener",
@@ -1322,6 +1355,50 @@
       "note": "expiryText '2d left' in selector badge, shared with upex ls"
     },
     {
+      "id": "middle-clip-long-paths",
+      "section": 3,
+      "title": "Middle-clip long paths",
+      "body": "ui.truncate cuts the end, so a narrow window hides the last folder, the part you need. Clip the middle instead: E:\\Downloads\\...\\Assets\\upex.",
+      "phase": "next",
+      "status": "planned",
+      "size": "S",
+      "created": "2026-11-09",
+      "updated": "2026-11-09"
+    },
+    {
+      "id": "is-new-and-is-temp-filter-tokens",
+      "section": 3,
+      "title": "is:new and is:temp filter tokens",
+      "body": "is:new = added in the last 7 days, is:temp = has an expiry from --ttl. Fits next to is:pinned, is:missing, is:stale, is:app.",
+      "phase": "next",
+      "status": "planned",
+      "size": "S",
+      "created": "2026-11-09",
+      "updated": "2026-11-09"
+    },
+    {
+      "id": "live-reload-in-the-selector",
+      "section": 3,
+      "title": "Live reload in the selector",
+      "body": "Watch links.json (fs.watch, debounced) and refresh the list when upex ui or another shell changes it, instead of showing stale rows until restart.",
+      "phase": "next",
+      "status": "planned",
+      "size": "S",
+      "created": "2026-11-09",
+      "updated": "2026-11-09"
+    },
+    {
+      "id": "subfolder-drill-in-in-the-selector",
+      "section": 3,
+      "title": "Subfolder drill-in in the selector",
+      "body": "A key on a folder row lists its direct subfolders as rows (Left goes back). Enter opens or picks that subfolder like upex name/sub, so deep folders need no new shortcut. Reuses resolveTarget.",
+      "phase": "wayLater",
+      "status": "planned",
+      "size": "M",
+      "created": "2026-11-09",
+      "updated": "2026-11-09"
+    },
+    {
       "id": "cd-support-via-wrapper-hidden-resolve-public-go",
       "section": 4,
       "title": "`cd` support via wrapper + hidden `__resolve` / public `go`",
@@ -1403,6 +1480,17 @@
       "size": "L",
       "created": "2026-11-07",
       "updated": "2026-11-07"
+    },
+    {
+      "id": "json-output-flag",
+      "section": 4,
+      "title": "JSON output flag",
+      "body": "list, go, tag and doctor print machine-readable JSON with --json. Makes upex scriptable from other tools and agents.",
+      "phase": "wayLater",
+      "status": "planned",
+      "size": "S",
+      "created": "2026-11-09",
+      "updated": "2026-11-09"
     },
     {
       "id": "windows-macos-linux-launch-paths",
@@ -2181,6 +2269,17 @@
       "created": "2026-11-09",
       "updated": "2026-11-09",
       "note": "F2 = ^r, Del = ^x (^d on Workspaces/Settings) in browse mode; shown in the ^k overlay"
+    },
+    {
+      "id": "tab-completes-folder-paths-in-forms",
+      "section": 10,
+      "title": "Tab completes folder paths in forms",
+      "body": "In the ^a / ^e form, Tab in the folder path field completes the next folder name like a shell (cycles on repeat, ~ works). Today only the tags field completes.",
+      "phase": "maybe",
+      "status": "planned",
+      "size": "M",
+      "created": "2026-11-09",
+      "updated": "2026-11-09"
     }
   ]
 }

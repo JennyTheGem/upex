@@ -39,7 +39,7 @@ assert.equal(never, 0, 'never-used scores 0');
 assert.ok(frecency({ uses: 10, lastUsed: now - 86400000 }) > recent, 'more uses ranks higher');
 
 // -- stats: window, ranking, per-week buckets; history read skips junk --
-import { statsFrom, loadHistory } from '../src/store.js';
+import { statsFrom, loadHistory, bumpVisit, learnedFolders, loadVisits } from '../src/store.js';
 {
   const D = 86400000;
   const hist = [
@@ -151,11 +151,52 @@ assert.equal(cdMiss.status, 1, 'cd on nothing fails');
 assert.match(cdMiss.stderr, /No such folder or shortcut/, 'cd says what is missing');
 assert.match(upexIn('cd', 't', 'nope-opener').stderr, /Unknown app/, 'cd rejects an unknown opener');
 assert.ok(!loadHistory(path.join(home, '.upex', 'history.jsonl')).some(h => h.opener === 'nope-opener'), 'a failed cd open is not logged');
+
+// -- learned folders: cd on a plain path counts a visit, cd <name> jumps to the most used one --
+{
+  const P = os.platform() === 'win32' ? 'C:\\w\\' : '/w/';
+  const all = () => true;
+  let v = bumpVisit({}, `${P}site`, 1000);
+  v = bumpVisit(v, os.platform() === 'win32' ? 'c:\\W\\SITE\\' : `${P}site/`, 2000);
+  assert.deepEqual(v, { [`${P}site`]: { uses: 2, lastUsed: 2000 } }, 'same folder counts once, first spelling kept');
+  v = { ...v, [`${P}site`]: { uses: 2, lastUsed: 2000, hidden: true } };
+  assert.equal(bumpVisit(v, `${P}site`, 3000)[`${P}site`].hidden, true, 'a visit keeps the dismissal');
+  const busy = Object.fromEntries(Array.from({ length: 400 }, (_, i) => [`${P}d${i}`, { uses: 50, lastUsed: 1000 + i }]));
+  const kept = bumpVisit(busy, `${P}new`, 5000);
+  assert.ok(Object.hasOwn(kept, `${P}new`) && !Object.hasOwn(kept, `${P}d0`) && Object.keys(kept).length < 400, 'full: a new folder stays, the least recent go');
+  const visits = { [`${P}website`]: { uses: 9, lastUsed: now }, [`${P}site`]: { uses: 1, lastUsed: now }, [`${P}gone`]: { uses: 5, lastUsed: now }, [`${P}has`]: { uses: 5, lastUsed: now }, [`${P}shy`]: { uses: 5, lastUsed: now, hidden: true } };
+  const links = { h: { path: `${P}has` } };
+  const names = opts => learnedFolders(visits, links, { exists: p => !p.endsWith('gone'), ...opts }).map(f => f.name);
+  assert.deepEqual(names(), ['website', 'shy', 'site'], 'most used first; gone folders and ones with a shortcut left out');
+  assert.deepEqual(names({ query: 'SITE' }), ['site', 'website'], 'query matches the folder name, an exact name first');
+  assert.deepEqual(names({ suggest: true }), ['website'], 'suggested: 3+ visits and not dismissed');
+  assert.deepEqual(learnedFolders(visits, {}, { exists: all, query: 'has' }).map(f => f.path), [`${P}has`], 'without links (cd) a shortcut folder still matches');
+
+  const visitsFile = path.join(home, '.upex', 'visits.json');
+  const seen = () => loadVisits(visitsFile);
+  assert.deepEqual(Object.keys(seen()), [target], 'cd on a path was learned, cd on a shortcut name was not');
+  const plain = fs.mkdtempSync(path.join(target, 'zzlearn-'));
+  upexIn('cd', plain);
+  upexIn('cd', plain);
+  assert.equal(upexIn('cd', 'zzlearn').stdout, plain, 'cd <name> jumps to the learned folder');
+  assert.equal(seen()[plain].uses, 3, 'a jump counts as a visit');
+  upexIn('cd', home);
+  assert.ok(!Object.keys(seen()).includes(home), 'the home folder is not learned');
+  const learnedOut = upexIn('learned').stdout;
+  assert.ok(learnedOut.includes(path.basename(plain)) && learnedOut.includes('3 visits'), 'learned lists the folder with its visits');
+  assert.equal(learnedOut.split('\n').filter(l => /\d visits?,/.test(l)).length, 1, 'a folder with a shortcut (t) is not listed');
+  fs.writeFileSync(visitsFile, '{broken');
+  assert.equal(upexIn('cd', plain).stdout, plain, 'a broken visits file never breaks cd');
+  assert.equal(seen()[plain].uses, 1, 'and is started over');
+  assert.equal(upexIn('learned', '--clear').status, 0, 'learned --clear runs');
+  assert.deepEqual(seen(), {}, 'clear forgets every folder');
+  assert.equal(upexIn('cd', 'zzlearn').status, 1, 'nothing learned: cd <name> fails again');
+}
 // cmd.exe wrapper: a trailing \ must not escape the quote it adds
 if (process.platform === 'win32') {
   const shim = fs.mkdtempSync(path.join(os.tmpdir(), 'upex-shim-'));
   fs.writeFileSync(path.join(shim, 'upex.cmd'), `@"${process.execPath}" "${cli}" %*\r\n`);
-  const w = spawnSync('cmd.exe', ['/d', '/s', '/c', `"cd /d "${target}" & call "${installCmdWrapper(shim)}" cd ..\\ & cd"`], { encoding: 'utf-8', windowsVerbatimArguments: true });
+  const w = spawnSync('cmd.exe', ['/d', '/s', '/c', `"cd /d "${target}" & call "${installCmdWrapper(shim)}" cd ..\\ & cd"`], { encoding: 'utf-8', windowsVerbatimArguments: true, env: { ...process.env, USERPROFILE: home, HOME: home } });
   assert.equal(w.stdout.trim(), path.dirname(target), 'cmd wrapper cds into ..\\');
   fs.rmSync(shim, { recursive: true, force: true });
 }
@@ -438,6 +479,29 @@ assert.equal(strip(truncate('abcdefghij', 1)), '…', 'width 1 -> ellipsis only'
 
 // -- selector: Tab view lists workspaces, hides the opener row --
 const viewArgs = { query: '', choices: [{ name: 's', path: 'P', exists: true }], selectedIndex: 0, appChoices: [{ key: 'explorer', label: 'Explorer' }], selectedAppIndex: 0, cmdCount: 1 };
+// a learned folder is offered as a "+" row under the list: a blank row above, the footer rule below
+{
+  const tipHits = [];
+  const frame = (extra) => strip(renderInteractiveView({ ...viewArgs, suggest: { name: 'site', path: '/x/site' }, width: 80, ...extra })).split('\n');
+  const inline = frame({ targets: tipHits });
+  const at = inline.findIndex(l => l.includes('^n add'));
+  assert.match(inline[at], /^ {2}\+ site +\/x\/site +you cd here often {2}\^n add {2}\^l hide$/, 'suggested row: + name, path, why and keys');
+  assert.equal(inline[at].indexOf('/x/site'), inline.find(l => l.startsWith('  › s')).indexOf('P'), 'lined up with the list columns');
+  assert.ok(inline[at - 1] === '' && inline[at - 2].startsWith('  › s') && inline[at + 1].startsWith('  ──'), 'blank row above, rule below');
+  assert.ok(tipHits.some(t => t.suggest && t.line === at), 'suggested row is clickable');
+  assert.match(frame({ width: 44 }).find(l => l.includes('^n add')), /^ {2}\+ site +\/x\/site +\^n add {2}\^l hide$/, 'narrow: keys only');
+  const fullFrame = frame({ full: true, height: 24 });
+  assert.equal(fullFrame.length, 24, 'full screen: still fills the height exactly');
+  const fullAt = fullFrame.findIndex(l => l.includes('^n add'));
+  assert.ok(fullFrame[fullAt - 1].trim() === '' && fullFrame[fullAt + 1].startsWith('  ──'), 'full screen: at the bottom of the list, over the rule');
+  const long = height => frame({ full: true, height, choices: Array.from({ length: 30 }, (_, i) => ({ name: `n${i}`, path: 'P', exists: true })) });
+  assert.ok(long(24).length === 24 && long(24).some(l => l.includes('^n add')), 'a long list leaves room for it');
+  assert.ok(long(16).length === 16 && !long(16).some(l => l.includes('^n add')), 'a short screen keeps its rows for the list');
+  const heads = frame({ full: true, height: 17, settings: { pinned: 'section' }, choices: [{ name: 'a', path: 'P', exists: true, pinned: true }, { name: 'b', path: 'P', exists: true }] });
+  assert.equal(heads.length, 17, 'headings count too: never taller than the screen');
+  assert.ok(frame({ query: 'zz', choices: [] }).some(l => l.includes('^n add')), 'stays while filtering, also with no matches');
+  assert.ok(!frame({ keysHelp: true }).some(l => l.includes('+ site')), 'not under the key overlay');
+}
 const wsView = strip(renderInteractiveView({ ...viewArgs, view: 'workspaces', workspaces: [{ name: 'dev', path: 's:vscode' }] }));
 assert.ok(wsView.includes('tab shortcuts') && wsView.includes('› dev') && wsView.includes('s:vscode'), 'workspace view lists workspaces');
 assert.ok(!wsView.includes('Explorer'), 'no opener row in workspace view');
@@ -1336,6 +1400,17 @@ try {
   const st = await (await fetch(base + '/api/state', { headers: { 'x-upex-token': token } })).json();
   assert.equal(st.links.find(l => l.name === 'gh').tab, 'apps', 'URL shortcut listed on the Apps tab');
   const call = (method, route, body) => fetch(base + '/api/' + route, { method, headers: { 'content-type': 'application/json', 'x-upex-token': token }, body: JSON.stringify(body) });
+  // a learned folder is offered as a shortcut until dismissed
+  const tipDir = fs.mkdtempSync(path.join(os.tmpdir(), 'upex-tip-'));
+  fs.writeFileSync(path.join(webHome, '.upex', 'visits.json'), JSON.stringify({ [tipDir]: { uses: 3, lastUsed: Date.now() } }));
+  const tipOf = async () => (await (await fetch(base + '/api/state', { headers: { 'x-upex-token': token } })).json()).suggest;
+  assert.deepEqual(await tipOf(), { name: path.basename(tipDir), path: tipDir, uses: 3 }, 'a folder visited 3 times is suggested');
+  assert.equal((await call('PUT', 'learned/hide', { path: '' })).status, 400, 'hide needs an absolute path');
+  await call('PUT', 'learned/hide', { path: tipDir, hidden: true });
+  assert.equal(await tipOf(), null, 'dismissed: not suggested again');
+  await call('PUT', 'learned/hide', { path: tipDir, hidden: false });
+  assert.equal((await tipOf())?.path, tipDir, 'undo brings the suggestion back');
+  fs.rmSync(tipDir, { recursive: true, force: true });
   assert.equal((await call('PUT', 'archive', { name: 'gh', archived: true })).status, 200, 'archive via api');
   assert.equal((await call('PUT', 'archive', { name: 'gh', archived: true })).status, 409, 'no-op archive refused (its Undo would step back an older change)');
   assert.equal((await call('POST', 'undo', {})).status, 200, 'undo via api');

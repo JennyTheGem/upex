@@ -6,13 +6,13 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { loadLinks, recordUse, sweepExpired, StoreError } from './store.js';
+import { loadLinks, recordUse, sweepExpired, StoreError, loadVisits, learnedFolders, recordVisit } from './store.js';
 import { resolveTarget } from './fuzzy.js';
 
 // Every sub-command name and alias. __resolve must not cd into a shortcut that shadows one; smoke.mjs checks this list.
 export const COMMAND_NAMES = ['add', 'list', 'ls', 'remove', 'rm', 'restore', 'rename', 'edit', 'check', '__resolve', 'go',
   'setup', 'help', 'copy', 'cmd', 'app', '__names', 'completion', 'tag', 'alias', 'open', 'ws', 'workspace', 'run',
-  'cd', 'export', 'import', 'last', 'ui', 'web', 'doctor', 'stale', 'stats', 'config', 'pin', 'unpin', 'undo', 'note', 'pick', 'color'];
+  'cd', 'learned', 'export', 'import', 'last', 'ui', 'web', 'doctor', 'stale', 'stats', 'config', 'pin', 'unpin', 'undo', 'note', 'pick', 'color'];
 
 // Folder path of a shortcut plus an optional subpath ("web/src").
 export const withSub = (entry, sub) => (entry.path && sub ? path.join(entry.path, sub) : entry.path);
@@ -28,11 +28,14 @@ export function findFolder(query) {
   return { name: resolved.name, path: p };
 }
 
-// Folder for `upex cd`: an existing path (~ expanded), else a shortcut. A file gives its folder.
+// Folder for `upex cd`: an existing path (~ expanded), else a shortcut, else the most used learned folder of that name. A file gives its folder.
 export function cdTarget(query) {
   const p = path.resolve(query.replace(/^~(?=$|[\\/])/, os.homedir()));
-  const r = fs.existsSync(p) ? { path: p } : findFolder(query);
-  if (r.error?.startsWith('Shortcut not found')) r.error = `No such folder or shortcut: ${query}`;
+  let r = fs.existsSync(p) ? { path: p } : findFolder(query);
+  if (r.error?.startsWith('Shortcut not found')) {
+    const [hit] = learnedFolders(loadVisits(), {}, { query });
+    r = hit ? { path: hit.path } : { error: `No such folder or shortcut: ${query}` };
+  }
   if (r.path && fs.statSync(r.path).isFile()) r.path = path.dirname(r.path);
   return r;
 }
@@ -52,7 +55,9 @@ export function fastPath([cmd, name, ...rest]) {
     if (quiet) process.exit(1);
     return false;
   }
+  // A plain path (only cd gives one) is learned instead.
   if (r.name) recordUse(r.name, 'cd');
+  else recordVisit(r.path);
   process.stdout.write(r.path);
   return true;
 }

@@ -13,6 +13,10 @@ const CONFIG_FILE = path.join(UPEX_DIR, 'config.json');
 const BACKUP_DIR = path.join(UPEX_DIR, 'backups');
 const HISTORY_FILE = path.join(UPEX_DIR, 'history.jsonl');
 const KEEP_BACKUPS = 10;
+const VISITS_FILE = path.join(UPEX_DIR, 'visits.json');
+const KEEP_VISITS = 300;
+// Visits before a learned folder is offered as a shortcut.
+export const SUGGEST_AFTER = 3;
 
 function ensureStore() {
   if (!fs.existsSync(UPEX_DIR)) {
@@ -378,6 +382,72 @@ export function frecency(entry) {
   const days = (Date.now() - last) / 86400000;
   return uses + 4 / (1 + days);
 }
+
+// Folder path as a compare key: resolved, no trailing slash, case-insensitive on Windows.
+export const pathKey = (p) => {
+  const r = path.resolve(p).replace(/(.)[\\/]+$/, '$1');
+  return os.platform() === 'win32' ? r.toLowerCase() : r;
+};
+
+// Folders visited through `upex cd`: { path: { uses, lastUsed, hidden? } }. Disposable, so unreadable = empty.
+export function loadVisits(file = VISITS_FILE) {
+  try {
+    return Object.fromEntries(Object.entries(JSON.parse(fs.readFileSync(file, 'utf-8').replace(/^\uFEFF/, ''))).filter(([, v]) => v && typeof v === 'object'));
+  } catch { return {}; }
+}
+
+// `visits` with `change` merged into the entry for `dir`.
+const withVisit = (visits, dir, change) => {
+  const key = Object.keys(visits).find(k => pathKey(k) === pathKey(dir)) || dir;
+  return { ...visits, [key]: { ...visits[key], ...change(visits[key] || {}) } };
+};
+
+// One more visit to `dir`; past KEEP_VISITS the least recently visited go (by use count, a new folder could never stay).
+export function bumpVisit(visits, dir, now = Date.now()) {
+  const next = withVisit(visits, dir, v => ({ uses: (v.uses || 0) + 1, lastUsed: now }));
+  return Object.fromEntries(Object.entries(next).sort((a, b) => (b[1].lastUsed || 0) - (a[1].lastUsed || 0)).slice(0, KEEP_VISITS));
+}
+
+// A failed write must never break the cd.
+function saveVisits(visits) {
+  try {
+    ensureStore();
+    if (!fs.existsSync(VISITS_FILE)) fs.writeFileSync(VISITS_FILE, '{}', 'utf-8');
+    writeJson(VISITS_FILE, visits);
+  } catch {}
+}
+
+// Count a visit from `upex cd`. Home and drive roots are skipped: everyone passes through them.
+export function recordVisit(dir) {
+  if (!path.basename(dir) || pathKey(dir) === pathKey(os.homedir())) return;
+  saveVisits(bumpVisit(loadVisits(), dir));
+}
+
+// Stop (or with `on` false, resume) suggesting a learned folder; `upex cd <name>` still jumps to it.
+export function hideVisit(dir, on = true) {
+  const visits = loadVisits();
+  if (Object.keys(visits).some(k => pathKey(k) === pathKey(dir))) saveVisits(withVisit(visits, dir, () => ({ hidden: on || undefined })));
+}
+export const clearVisits = () => saveVisits({});
+
+/**
+ * Learned folders, best first: visited ones that still exist and no shortcut in `links` points at.
+ * `query` keeps folder names containing it, an exact name first. `suggest` keeps the ones worth offering
+ * as a shortcut: visited SUGGEST_AFTER times, not dismissed. `exists` is injectable for testing.
+ */
+export function learnedFolders(visits, links = {}, { query = '', suggest = false, exists = p => fs.existsSync(p) } = {}) {
+  const taken = new Set(Object.values(links).filter(e => e.path).map(e => pathKey(e.path)));
+  const q = query.toLowerCase();
+  const exact = v => (v.name.toLowerCase() === q ? 1 : 0);
+  return Object.entries(visits)
+    .map(([p, v]) => ({ ...v, path: p, name: path.basename(p) }))
+    .filter(v => v.name.toLowerCase().includes(q) && (!suggest || (v.uses >= SUGGEST_AFTER && !v.hidden)))
+    .filter(v => !taken.has(pathKey(v.path)) && exists(v.path))
+    .sort((a, b) => exact(b) - exact(a) || frecency(b) - frecency(a));
+}
+
+// The learned folder to offer as a shortcut next, or null.
+export const topSuggestion = () => learnedFolders(loadVisits(), loadLinks(), { suggest: true })[0] || null;
 
 /**
  * Split links into the ones to keep and the broken folder shortcuts to drop.

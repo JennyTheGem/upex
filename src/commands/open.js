@@ -76,8 +76,8 @@ export function registerGo(program) {
 export function registerCd(program) {
   program
     .command('cd <path> [opener] [count]')
-    .description('Print a folder (a path, else a shortcut) for the shell wrapper to cd into; an opener opens it there, like upex <name> <opener>')
-    .summary('cd into a path or shortcut; an opener opens it there')
+    .description('Print a folder (a path, else a shortcut, else a learned folder: upex learned) for the shell wrapper to cd into; an opener opens it there, like upex <name> <opener>')
+    .summary('cd into a path, shortcut or learned folder; an opener opens it there')
     .action((query, opener, count) => {
       const r = cdTarget(query);
       if (r.error) {

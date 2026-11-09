@@ -11,6 +11,7 @@ import { registerRename } from './commands/rename.js';
 import { registerEdit } from './commands/edit.js';
 import { registerCheck } from './commands/check.js';
 import { registerResolve, registerGo, registerCd, handleOpen } from './commands/open.js';
+import { registerLearned } from './commands/learned.js';
 import { registerSetup } from './commands/setup.js';
 import { registerHelp } from './commands/help.js';
 import { registerCopy } from './commands/copy.js';
@@ -70,6 +71,7 @@ export function createProgram() {
   registerResolve(program);
   registerGo(program);
   registerCd(program);
+  registerLearned(program);
   registerSetup(program);
   registerHelp(program);
   registerCopy(program);
