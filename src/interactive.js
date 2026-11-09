@@ -21,7 +21,7 @@ import { runChecks } from './commands/doctor.js';
 import { sparkline } from './commands/stats.js';
 import { bundleOf, importBundle } from './commands/transfer.js';
 import * as ui from './ui.js';
-import { VERSION } from './update.js';
+import { VERSION, cachedLatest, fetchLatest, isNewer, updateText } from './update.js';
 
 // Terminal width from which the version shows outside Settings.
 const VERSION_WIDTH = 100;
@@ -714,7 +714,7 @@ function settingNote(key, s, wt) {
 }
 
 // Settings rows after the settings: what Enter does and the note under the list.
-const EXTRA_KEYS = { opener: 'edit command', newOpener: 'add', broken: 'prune', stale: 'archive all', stats: 'show', doctor: 'run', export: 'export', import: 'import', archived: 'restore' };
+const EXTRA_KEYS = { opener: 'edit command', newOpener: 'add', broken: 'prune', stale: 'archive all', stats: 'show', doctor: 'run', update: 'check', export: 'export', import: 'import', archived: 'restore' };
 const EXTRA_NOTES = {
   opener: 'A custom opener: upex runs this command with the folder. It shows in the opener row, like upex app.',
   newOpener: 'Adds an opener from a command that opens a folder, like cursor or subl, like upex app <name> <command>.',
@@ -722,6 +722,7 @@ const EXTRA_NOTES = {
   stale: 'Not opened in the Stale after days (General). Enter archives them all, like upex stale --yes. ^z undoes, or restore one under Archived.',
   stats: 'Most opened in the last 30 days. Enter shows more, like upex stats.',
   doctor: 'Checks the store, openers, shell wrapper and completion, like upex doctor.',
+  update: 'Asks npm now for a newer upex. Update with npm i -g @uplift-beyond/upex@latest.',
   export: 'Shortcuts and settings as one JSON file, like upex export.',
   import: 'Merges a file from Export: new names are added, same names updated, like upex import.',
 };
@@ -2005,6 +2006,12 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
     const staleDays = () => Number(settings.staleAfter);
     // Maintenance rows with their counts now; doctor keeps its last result.
     let doctorSummary = '';
+    let checking = false;
+    const updateRow = () => {
+      if (checking) return chalk.dim('checking npm…');
+      const latest = cachedLatest();
+      return isNewer(latest, VERSION) ? chalk.yellow(updateText(latest)) : chalk.dim(`v${VERSION}, Enter checks npm`);
+    };
     const buildExtras = () => {
       const links = loadLinks();
       const broken = pruneBroken(links).removed;
@@ -2018,6 +2025,7 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
         row('Maintenance', 'stale', 'Stale', stale.length ? chalk.yellow(`${stale.length} not opened in ${staleDays()}+ days`) : chalk.dim('none')),
         row('Maintenance', 'stats', 'Stats', top.length ? top.map(([n, c]) => `${n} ${chalk.dim(c)}`).join(chalk.dim(' · ')) : chalk.dim('no opens in 30 days')),
         row('Maintenance', 'doctor', 'Doctor', doctorSummary || chalk.dim('store, openers, shell setup')),
+        row('Maintenance', 'update', 'Updates', updateRow()),
         row('Maintenance', 'export', 'Export', chalk.dim('shortcuts and settings to a file')),
         row('Maintenance', 'import', 'Import', chalk.dim('from an exported file')),
       ];
@@ -2054,6 +2062,19 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
       else if (x.kind === 'newOpener') startAction('openerName', '');
       else if (x.kind === 'export') startAction('export', tidyPath(path.join(HOME, 'upex-export.json')));
       else if (x.kind === 'import') startAction('import', '');
+      else if (x.kind === 'update') {
+        if (checking) return;
+        checking = true;
+        extras = buildExtras();
+        const end = guard((text, ok) => {
+          checking = false;
+          if (closed) return;
+          if (view === 'settings') extras = buildExtras();
+          if (ok) done(text); else flash = text;
+          redraw();
+        });
+        fetchLatest().then(v => end(updateText(v), !isNewer(v, VERSION)), err => end(`can't reach npm: ${err.message}`, false));
+      }
       else if (x.kind === 'broken') {
         const n = pruneBroken(loadLinks()).removed.length;
         if (!n) done('no broken paths');

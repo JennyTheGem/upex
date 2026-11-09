@@ -1319,10 +1319,11 @@ for (const total of [20, 40, 80, 120]) {
 chalk.level = lvl3;
 
 // -- update notice: version compare, version on the bottom rule --
-import { isNewer, VERSION } from '../src/update.js';
+import { isNewer, VERSION, updateText } from '../src/update.js';
 assert.ok(isNewer('1.15.0', '1.14.9') && isNewer('2.0.0', '1.99.99') && isNewer('1.10.0', '1.9.0'), 'newer x.y.z');
 assert.ok(!isNewer('1.14.0', '1.14.0') && !isNewer('1.9.0', '1.10.0') && !isNewer(undefined, '1.0.0'), 'same, older or missing is not newer');
 assert.ok(!isNewer('1.14.0-beta.1', '1.14.0'), 'pre-release tag ignored');
+assert.ok(updateText('99.0.0').startsWith('v99.0.0 out') && updateText(VERSION) === `v${VERSION} is the latest`, 'Settings update line');
 const bottom = (flash, more = {}) => stripAnsi(renderInteractiveView({ ...viewArgs, flash, width: 119, ...more })).split('\n').filter(l => l.includes('─')).at(-1);
 assert.ok(bottom('').endsWith(`─ v${VERSION} ──`) && bottom('').length === 119, 'wide: version at the right end of the bottom rule');
 assert.ok(!bottom('saved').includes(`v${VERSION}`) && bottom('saved').includes(' saved '), 'a flash covers the version');

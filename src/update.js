@@ -43,10 +43,20 @@ export function updateNotice(now = Date.now()) {
   }
 }
 
-async function fetchLatest() {
+// Newest version seen by a check, or undefined.
+export const cachedLatest = () => readCache().latest;
+
+// Fetches the latest version from npm into the cache and returns it. Throws when npm can't be reached.
+export async function fetchLatest(now = Date.now()) {
   const res = await fetch(`https://registry.npmjs.org/${PKG}/latest`, { signal: AbortSignal.timeout(10000) });
+  if (!res.ok) throw new Error(`npm answered ${res.status}`);
   const { version } = await res.json();
-  if (typeof version === 'string') writeCache({ ...readCache(), latest: version });
+  if (typeof version !== 'string') throw new Error('npm sent no version');
+  writeCache({ ...readCache(), latest: version, checked: now });
+  return version;
 }
+
+// The Settings line for a version: newer one out, or up to date.
+export const updateText = latest => (isNewer(latest, VERSION) ? `v${latest} out, run npm i -g ${PKG}@latest` : `v${VERSION} is the latest`);
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) fetchLatest().catch(() => {});
