@@ -1360,10 +1360,11 @@
       "title": "Middle-clip long paths",
       "body": "ui.truncate cuts the end, so a narrow window hides the last folder, the part you need. Clip the middle instead: E:\\Downloads\\...\\Assets\\upex.",
       "phase": "next",
-      "status": "planned",
+      "status": "done",
       "size": "S",
       "created": "2026-11-09",
-      "updated": "2026-11-09"
+      "updated": "2026-11-09",
+      "note": "clipMiddle drops whole middle folders in rows, edit form, add prompt, suggest row"
     },
     {
       "id": "is-new-and-is-temp-filter-tokens",
@@ -1371,10 +1372,11 @@
       "title": "is:new and is:temp filter tokens",
       "body": "is:new = added in the last 7 days, is:temp = has an expiry from --ttl. Fits next to is:pinned, is:missing, is:stale, is:app.",
       "phase": "next",
-      "status": "planned",
+      "status": "done",
       "size": "S",
       "created": "2026-11-09",
-      "updated": "2026-11-09"
+      "updated": "2026-11-09",
+      "note": "is:new (added in 7 days), is:temp (has --ttl expiry) in selector and upex ui"
     },
     {
       "id": "live-reload-in-the-selector",
@@ -1382,10 +1384,11 @@
       "title": "Live reload in the selector",
       "body": "Watch links.json (fs.watch, debounced) and refresh the list when upex ui or another shell changes it, instead of showing stale rows until restart.",
       "phase": "next",
-      "status": "planned",
+      "status": "done",
       "size": "S",
       "created": "2026-11-09",
-      "updated": "2026-11-09"
+      "updated": "2026-11-09",
+      "note": "fs.watch on the store folder (links.json, config.json), debounced, waits for browse mode, keeps offer and Settings row"
     },
     {
       "id": "subfolder-drill-in-in-the-selector",

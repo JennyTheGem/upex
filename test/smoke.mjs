@@ -23,7 +23,7 @@ import { COMMAND_NAMES } from '../src/fast.js';
 import { createProgram } from '../src/index.js';
 import { readScripts, detectPm } from '../src/commands/run.js';
 import { pickedNames, pickedPaths } from '../src/commands/pick.js';
-import { usageText, stepColor, renderInteractiveView, nextView, backTo, accentOf, pathLook, inView, tidyPath, byOrder, optionRow, listRows, readMouse, hitTest, rowClick, undoFlash, clipName, prefill, editLine, kindOf, retyped, setField, fieldWords, completeTag, expiryOptions, formRows, formLines, statLines, doctorLines, inputLine, missingFlash, staysOpen, expandHome, underlineHits, movePinned, sameGroup, withRecent, withGroups, filterChoices, noMatchOffers, expiryText, maxListOf, jumpIndex, isAlt, detailLines, rowOptions, pickedOf, settingsList, goalSummary, goalsOf, goalText, oneLine, scriptLines, markLines, paneShown, paneToggles, paneWidthOf, withSamePath, archivedList, clipPath, asksMany, dotLines, lr, wrapHint, splice, overlayMenu } from '../src/interactive.js';
+import { usageText, stepColor, renderInteractiveView, nextView, backTo, accentOf, pathLook, inView, tidyPath, byOrder, optionRow, listRows, readMouse, hitTest, rowClick, undoFlash, clipName, prefill, editLine, kindOf, retyped, setField, fieldWords, completeTag, expiryOptions, formRows, formLines, statLines, doctorLines, inputLine, missingFlash, staysOpen, expandHome, underlineHits, movePinned, sameGroup, withRecent, withGroups, filterChoices, noMatchOffers, expiryText, maxListOf, jumpIndex, isAlt, detailLines, rowOptions, pickedOf, settingsList, goalSummary, goalsOf, goalText, oneLine, scriptLines, markLines, paneShown, paneToggles, paneWidthOf, withSamePath, archivedList, clipPath, clipMiddle, asksMany, dotLines, lr, wrapHint, splice, overlayMenu } from '../src/interactive.js';
 import { parseStatus, parseDiff, parseLog, gitOf, stopGit } from '../src/git.js';
 import chalk from 'chalk';
 import { resolveTarget, resolveName, suggestNames } from '../src/fuzzy.js';
@@ -479,7 +479,7 @@ assert.equal(strip(truncate('abcdefghij', 1)), '…', 'width 1 -> ellipsis only'
 
 // -- selector: Tab view lists workspaces, hides the opener row --
 const viewArgs = { query: '', choices: [{ name: 's', path: 'P', exists: true }], selectedIndex: 0, appChoices: [{ key: 'explorer', label: 'Explorer' }], selectedAppIndex: 0, cmdCount: 1 };
-// a learned folder is offered as a "+" row under the list: a blank row above, the footer rule below
+// a learned folder is offered as a "+" row on top of the list: the header rule above, a blank row below
 {
   const tipHits = [];
   const frame = (extra) => strip(renderInteractiveView({ ...viewArgs, suggest: { name: 'site', path: '/x/site' }, width: 80, ...extra })).split('\n');
@@ -487,13 +487,13 @@ const viewArgs = { query: '', choices: [{ name: 's', path: 'P', exists: true }],
   const at = inline.findIndex(l => l.includes('^n add'));
   assert.match(inline[at], /^ {2}\+ site +\/x\/site +you cd here often {2}\^n add {2}\^l hide$/, 'suggested row: + name, path, why and keys');
   assert.equal(inline[at].indexOf('/x/site'), inline.find(l => l.startsWith('  › s')).indexOf('P'), 'lined up with the list columns');
-  assert.ok(inline[at - 1] === '' && inline[at - 2].startsWith('  › s') && inline[at + 1].startsWith('  ──'), 'blank row above, rule below');
+  assert.ok(inline[at - 1].startsWith('  ──') && inline[at + 1] === '' && inline[at + 2].startsWith('  › s'), 'rule above, blank row, then the list');
   assert.ok(tipHits.some(t => t.suggest && t.line === at), 'suggested row is clickable');
   assert.match(frame({ width: 44 }).find(l => l.includes('^n add')), /^ {2}\+ site +\/x\/site +\^n add {2}\^l hide$/, 'narrow: keys only');
   const fullFrame = frame({ full: true, height: 24 });
   assert.equal(fullFrame.length, 24, 'full screen: still fills the height exactly');
   const fullAt = fullFrame.findIndex(l => l.includes('^n add'));
-  assert.ok(fullFrame[fullAt - 1].trim() === '' && fullFrame[fullAt + 1].startsWith('  ──'), 'full screen: at the bottom of the list, over the rule');
+  assert.ok(fullFrame[fullAt - 1].startsWith('  ──') && fullFrame[fullAt + 2].startsWith('  › s'), 'full screen: on top of the list too');
   const long = height => frame({ full: true, height, choices: Array.from({ length: 30 }, (_, i) => ({ name: `n${i}`, path: 'P', exists: true })) });
   assert.ok(long(24).length === 24 && long(24).some(l => l.includes('^n add')), 'a long list leaves room for it');
   assert.ok(long(16).length === 16 && !long(16).some(l => l.includes('^n add')), 'a short screen keeps its rows for the list');
@@ -928,6 +928,43 @@ await send('\x03'); await run;
   const left = JSON.parse(fs.readFileSync(file, 'utf-8'));
   assert.deepEqual([r.stderr, !!left.two.pinned, !!left.one.archived], ['', true, true], 'right-click menu pins by click, archives by keys');
 }
+// -- live reload on fake streams: another save shows up; a reload keeps the picked "search archived" offer --
+{
+  const shome = fs.mkdtempSync(path.join(os.tmpdir(), 'upex-live-'));
+  const file = path.join(shome, '.upex', 'links.json');
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.writeFileSync(file, JSON.stringify({ one: { path: 'A' }, zzarc: { path: 'Z', archived: true } }));
+  const drive = path.join(shome, 'drive.mjs');
+  fs.writeFileSync(drive, String.raw`
+import fs from 'node:fs';
+import { PassThrough } from 'node:stream';
+import { runInteractiveMode } from '${new URL('../src/interactive.js', import.meta.url).href}';
+const stdin = Object.assign(new PassThrough(), { isTTY: true, setRawMode() {} });
+const stdout = Object.assign(new PassThrough(), { isTTY: true, columns: 100, rows: 40 });
+let out = '';
+stdout.on('data', d => { out += d; });
+const frame = () => out.slice(out.lastIndexOf('\x1b[H')).replace(/\x1b\[[\d;?<]*[A-Za-z]/g, '');
+const send = async (s, ms = 30) => { stdin.write(s); await new Promise(r => setTimeout(r, ms)); };
+const save = (name) => {
+  const links = JSON.parse(fs.readFileSync(${JSON.stringify(file)}, 'utf-8'));
+  fs.writeFileSync(${JSON.stringify(file)} + '.tmp', JSON.stringify({ ...links, [name]: { path: 'B' } }));
+  fs.renameSync(${JSON.stringify(file)} + '.tmp', ${JSON.stringify(file)});
+};
+const run = runInteractiveMode({ stdin, stdout });
+await send('');
+save('two');
+await new Promise(r => setTimeout(r, 500));
+console.log(frame().includes(' two ') ? 'reloaded' : 'stale');
+await send('zz'); await send('\x1b[B');
+save('three');
+await new Promise(r => setTimeout(r, 500));
+await send('\r');
+await send('\x03'); await run;
+`);
+  const r = spawnSync(process.execPath, [drive], { encoding: 'utf-8', env: { ...process.env, USERPROFILE: shome, HOME: shome } });
+  const left = JSON.parse(fs.readFileSync(file, 'utf-8'));
+  assert.deepEqual([r.stderr, r.stdout.trim(), Object.keys(left).sort().join()], ['', 'reloaded', 'one,three,two,zzarc'], 'live reload shows a save from elsewhere, keeps the picked offer');
+}
 // -- Settings filter on fake streams: a Shortcuts filter doesn't move the picked setting; a change that hides a row above keeps the picked one --
 {
   const shome = fs.mkdtempSync(path.join(os.tmpdir(), 'upex-setf-'));
@@ -1174,6 +1211,12 @@ const olds = [{ name: 'd40', lastUsed: Date.now() - 40 * 86400000 }, { name: 'd1
 assert.deepEqual(['30', undefined, '90', '180'].map(staleAfter => filterChoices(olds, 'is:stale', { staleAfter }).map(c => c.name).join()), ['d40,d100', 'd100', 'd100', ''], 'is:stale follows stale after');
 assert.deepEqual([by('is:pinned'), by('IS:p'), by('is:missing'), by('is:stale'), by('is:app'), by('@vs'), by('is:nope'), by('is:')], ['p', 'p', 'm', 'ap', 'ap', 'p', '', 'p,m,ap'], 'is: and @ tokens');
 assert.deepEqual([by('apis:app'), by('is:pinned@vs'), by('is:pinned is:app')], ['ap', 'p', ''], 'tokens chain and all must match');
+const ages = [{ name: 'fresh', added: Date.now() - 86400000, expires: Date.now() + 86400000 }, { name: 'old', added: Date.now() - 8 * 86400000 }, { name: 'none' }, { name: 'w', entries: [] }];
+assert.deepEqual(['is:new', 'is:n', 'is:temp', 'is:t'].map(q => filterChoices(ages, q).map(c => c.name).join()), ['fresh', 'fresh', 'fresh', 'fresh'], 'is:new = added in 7 days, is:temp = has an expiry');
+// Middle clip keeps the first part and the last folders.
+const P = 'E:\\Downloads\\Projects\\Assets\\upex';
+assert.deepEqual([clipMiddle(P, 40), clipMiddle(P, 26), clipMiddle(P, 20), clipMiddle(P, 10), clipMiddle(P, 6), clipMiddle('/home/me/a/b/c', 12), clipMiddle('abcdefgh', 4)],
+  [P, 'E:\\Downloads\\…\\Assets\\upex', 'E:\\…\\Assets\\upex', 'E:\\…\\upex', '…\\upex', '/home/…/b/c', '…fgh'], 'clipMiddle');
 // Fuzzy and searchIn settings on the filter.
 const fz = [{ name: 'website', path: '/x/api', aliases: ['ws'] }, { name: 'other', path: '/x/webkit' }];
 const names = (q, s) => filterChoices(fz, q, s).map(c => c.name).join();

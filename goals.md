@@ -18,9 +18,6 @@ Closed sections: §5 Platform support · §9 Detail pane
 
 ## 3. Resolution & UX
 
-- `middle-clip-long-paths` Middle-clip long paths (next)
-- `is-new-and-is-temp-filter-tokens` is:new and is:temp filter tokens (next)
-- `live-reload-in-the-selector` Live reload in the selector (next)
 - Plus 1 way later: `upgo list --section 3 --phase wayLater`
 
 ## 4. Shell integration

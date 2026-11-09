@@ -143,6 +143,7 @@ function state() {
         uses: e.uses || 0,
         lastUsed: e.lastUsed || 0,
         added: e.added || 0,
+        expires: e.expires || 0,
         score: frecency(e),
         broken: Boolean(e.path) && !fs.existsSync(e.path),
         // A file opens in its default app, not the default opener.

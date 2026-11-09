@@ -11,7 +11,7 @@ import Fuse from 'fuse.js';
 import { getInteractiveAppChoices, getAppMap, isTerminalApp, hasWindowsTerminal, defaultOpener, readSettings, setting, startTab, shownTabs, isHex, copyToClipboard, readClipboard, launchUrl, configApps, SETTINGS, settingValues, settingShown } from './launcher.js';
 import { gitOf, stopGit } from './git.js';
 import { fuseOpts } from './fuzzy.js';
-import { loadLinks, activeLinks, unarchived, aliasesOf, takenError, checkAliases, frecency, removeLinks, saveLinks, setLink, renameLink, loadWorkspaces, saveWorkspaces, removeWorkspace, nameError, loadConfig, saveConfig, withPinned, setPinOrder, StoreError, undoLast, hasBackups, pruneBroken, staleLinks, loadHistory, statsFrom, parseColor, colorOf, COLORS, pathKey, topSuggestion, hideVisit } from './store.js';
+import { loadLinks, activeLinks, unarchived, aliasesOf, takenError, checkAliases, frecency, removeLinks, saveLinks, setLink, renameLink, loadWorkspaces, saveWorkspaces, removeWorkspace, nameError, loadConfig, saveConfig, withPinned, setPinOrder, StoreError, undoLast, hasBackups, pruneBroken, staleLinks, loadHistory, statsFrom, parseColor, colorOf, COLORS, pathKey, topSuggestion, hideVisit, LINKS_FILE, CONFIG_FILE } from './store.js';
 import { describeEntry } from './commands/workspace.js';
 import { handleOpen } from './commands/open.js';
 import { startServer, applyOpener } from './commands/web.js';
@@ -150,6 +150,8 @@ const IS = {
   missing: c => c.exists === false,
   stale: (c, days) => c.lastUsed !== undefined && Date.now() - (c.lastUsed || c.added || 0) >= days * 86400000,
   app: c => c.isApp,
+  new: c => Date.now() - (c.added || 0) < 7 * 86400000,
+  temp: c => !!c.expires,
 };
 const TOKEN = /^(#|@|is:)(.*)$/i;
 // Test for a #tag, @opener or is:x word, prefix match, any case; null for a bare #, @ or is:. Unknown is:x matches none.
@@ -164,7 +166,7 @@ function tokenTest(w, staleDays) {
 
 // `fuzzy`, `searchIn` and `staleAfter` are the settings of the same name.
 export function filterChoices(choices, query, { fuzzy, searchIn, staleAfter = '60' } = {}) {
-  // Token words (#tag, @opener, is:pinned|missing|stale|app) narrow the list; the other words search fuzzy.
+  // Token words (#tag, @opener, is:pinned|missing|stale|app|new|temp) narrow the list; the other words search fuzzy.
   // Also split before each token: Space marks, so "#we#ui" or "apiis:pinned".
   const words = query.trim().split(/\s+|(?=[#@])|(?=is:)/i);
   const isToken = w => TOKEN.test(w);
@@ -235,7 +237,7 @@ export function pathLook(r, paths) {
   const style = r.style || 'path';
   if (style !== 'path' && style !== 'url') return r;
   if (paths === 'hidden') return { ...r, text: '' };
-  return paths === 'full' ? { ...r, style: 'plain' } : r;
+  return paths === 'full' ? { ...r, style: 'plain', middle: style === 'path' } : r;
 }
 // Pinned badge.
 export const PIN = '★';
@@ -279,6 +281,25 @@ export const underlineHits = (s, hits = []) => ui.graphemes(s)
 
 // Keeps the end of a too-long string, where the folder name is.
 const clipStart = (s, n) => (vis(s) <= n ? s : n <= 1 ? '…'.slice(0, n) : `…${ui.fit(s, n - 1, true)}`);
+// A too-long path loses whole middle folders: E:\Downloads\…\Assets\upex. Keeps the first part and the
+// last folder; when even those don't fit, the end like clipStart.
+export function clipMiddle(s, n) {
+  if (vis(s) <= n) return s;
+  const parts = s.split(/(?<=[/\\])/);
+  if (parts.length < 3) return clipStart(s, n);
+  const sep = parts[0].at(-1);
+  let i = 1;
+  let j = parts.length - 1;
+  const join = (a, b) => `${parts.slice(0, a).join('')}…${sep}${parts.slice(b).join('')}`;
+  if (vis(join(i, j)) > n) return clipStart(s, n);
+  // Grow the end first, then the start, a folder at a time.
+  for (let grew = true; grew && i < j;) {
+    grew = false;
+    if (i < j - 1 && vis(join(i, j - 1)) <= n) { j--; grew = true; }
+    if (i < j - 1 && vis(join(i + 1, j)) <= n) { i++; grew = true; }
+  }
+  return join(i, j);
+}
 
 // Word stops for ^←/^→ and word delete: path separators count, so ^⌫ drops one path segment.
 const SEP = /[\s/\\._-]/;
@@ -335,7 +356,7 @@ export function clipName(name, width, hits = []) {
 // One list row (`num`: a dim 1 to 9 in the pointer column): "› ● name  path ..... #tags  badge  3d ago". `style` = path | url | dim | plain (url looks plain).
 // `weight` styles the name (bold; the suggested row is plain).
 // `dot` (color label) sits in a `dotWidth` column before the name, 0 = no column. `usage` goes last, dropped when it doesn't fit.
-function renderRow({ sel, mark, name, nameWidth, hits, text = '', style = 'path', right = '', cw, pick = s => s, dot = '', dotWidth = 0, usage = '', num = '', weight = chalk.bold }) {
+function renderRow({ sel, mark, name, nameWidth, hits, text = '', style = 'path', middle = false, right = '', cw, pick = s => s, dot = '', dotWidth = 0, usage = '', num = '', weight = chalk.bold }) {
   const n = clipName(name, nameWidth, hits);
   const nm = weight(underlineHits(n.text, n.hits)) + ' '.repeat(Math.max(0, nameWidth - vis(n.text)));
   const dc = dotWidth ? dot + ' '.repeat(Math.max(0, dotWidth + 1 - vis(dot))) : '';
@@ -343,7 +364,7 @@ function renderRow({ sel, mark, name, nameWidth, hits, text = '', style = 'path'
   const withUsage = [right, usage].filter(Boolean).join('  ');
   if (usage && roomFor(withUsage) >= 0) right = withUsage;
   const room = roomFor(right);
-  const t = clipStart(text, Math.max(0, room));
+  const t = (style === 'path' || middle ? clipMiddle : clipStart)(text, Math.max(0, room));
   const body = sel || style === 'plain' || style === 'url' ? t : style === 'dim' ? chalk.dim(t) : ui.dimParent(t);
   const left = `${mark ? pick('●') : sel ? pick('›') : num ? chalk.dim(num) : ' '} ${dc}${nm}  ${body}`;
   const line = sel || right ? left + ' '.repeat(Math.max(right ? 2 : 0, cw - vis(left) - vis(right))) + right : left;
@@ -508,7 +529,7 @@ function getVisibleWindow(choices, selectedIndex, maxVisible = MAX_VISIBLE_CHOIC
 
 const PROMPT_LABEL = {
   rename: name => `rename "${name}" to:`,
-  add: (_, p) => `new shortcut name (path = ${p ? clipStart(tidyPath(p), 30) : 'cwd'}):`,
+  add: (_, p) => `new shortcut name (path = ${p ? clipMiddle(tidyPath(p), 30) : 'cwd'}):`,
   wsadd: n => `add the ${n} marked to workspace (new or existing):`,
   opener: name => `command for opener "${name}":`,
   openerName: () => 'new opener name:',
@@ -618,7 +639,7 @@ export function formLines(form, w, appChoices = [], pick = chalk.bold, now = Dat
       const folder = kindOf(e) === 'folder';
       const missing = folder && !fs.existsSync(t);
       // A long one keeps its end, the folder name.
-      const shown = clipStart(folder ? tidyPath(t) : t, vw - (missing ? 9 : 0));
+      const shown = (folder ? clipMiddle : clipStart)(folder ? tidyPath(t) : t, vw - (missing ? 9 : 0));
       return (folder ? ui.dimParent(shown) : shown) + (missing ? `  ${chalk.red('missing')}` : '');
     }
     if (f === 'type') return optionRow(KINDS.map(k => KIND_NAMES[k]), KINDS.indexOf(form.kind || kindOf(e)), vw, null, pick);
@@ -732,7 +753,7 @@ function settingNote(key, s, wt) {
   if (key === 'numberKeys') return 'Numbers the first 9 visible rows beside the › pointer, a digit opens that row. With a typed filter digits type, Alt+1 to 9 still opens.';
   if (key === 'enter') return 'What Enter does after opening. Stay open keeps upex open, to open more.';
   if (key === 'fuzzy') return 'How close a typed name must be, in this filter and for upex <name> / go. Exact: the letters in a row, no typos. Loose: more typos.';
-  if (key === 'searchIn') return 'What the filter looks at. Names only: names and aliases. #tag, @opener and is:pinned, is:missing, is:stale, is:app filter either way.';
+  if (key === 'searchIn') return 'What the filter looks at. Names only: names and aliases. #tag, @opener and is:pinned, is:missing, is:stale, is:app, is:new, is:temp filter either way.';
   if (key === 'updateCheck') return `Checks npm once a day in the background; after a command, one dim line when a newer upex is out. This is v${VERSION}.`;
   if (key === 'flash') return 'How long a success message (bottom right) stays. Warnings always stay until the next key.';
   if (key === 'maxRows') return s.fullScreen === 'off' ? 'List rows here.' : 'List rows here. Auto: as many as the screen fits.';
@@ -1219,12 +1240,20 @@ export function renderInteractiveView({
   // No footer rows above it: no blank row under the rule.
   foot.push(...(foot.length ? webRows : webRows.slice(-1)));
 
-  // A learned folder offered as a shortcut: a plain "+" row under the list, a blank row above it.
+  // A learned folder offered as a shortcut: a "+" row on top of the list, where it's seen, a blank row under it.
   // Not when the list would no longer fit: its least is 3 rows and a heading or "more" row, 3 rows with 0 or 1 (offers).
   const tipFits = height - lines.length - footRows(foot) - 2 >= (list.length > 1 ? 4 : 3);
-  const tipRows = suggest && !keysHelp && !listForm && !listScripts && tipFits ? 2 : 0;
-  // Name and color columns of the list, so it lines up with the rows.
-  let tipCols = { nameWidth: suggest ? nameCol([suggest]) : 0, dotWidth: 0 };
+  if (suggest && !keysHelp && !listForm && !listScripts && tipFits) {
+    // Lined up with the list's name and color columns.
+    const nameWidth = list.length ? nameCol(list) : nameCol([suggest]);
+    const dotWidth = Math.max(0, ...list.map(c => vis(ui.colorDot(c.color))));
+    const keys = keyHint([['^n', 'add'], ['^l', 'hide']]);
+    const why = `${chalk.dim('you cd here often')}${keys}`;
+    // The reason goes when it would leave the path under 12 columns.
+    const right = cw - 6 - dotWidth - nameWidth - vis(why) >= 12 ? why : keys.trimStart();
+    hit(lines.length, 0, lw, { suggest: true });
+    lines.push(renderRow({ num: '+', name: suggest.name, text: tidyPath(suggest.path), style: 'dim', middle: true, right, cw, weight: s => s, nameWidth, dotWidth }), '');
+  }
 
   if (keysHelp) {
     // ? or ^k: every key of this tab in groups, over the list.
@@ -1253,7 +1282,7 @@ export function renderInteractiveView({
   } else {
     const nameWidth = nameCol(list);
     // Rows left after the header and the footer (its rule included).
-    const room = height - lines.length - footRows(foot) - tipRows;
+    const room = height - lines.length - footRows(foot);
     // Pinned setting 'section': Pinned / All headings, unless a search reorders the list.
     // Recent strip rows (withRecent) go under their own Recent heading.
     const heads = settings.pinned === 'section' && !plain && !query?.trim() && list.find(c => !c.recent)?.pinned;
@@ -1272,7 +1301,6 @@ export function renderInteractiveView({
     const now = Date.now();
     const usageW = Math.max(0, ...list.map(c => usageText(c, settings.usage, now).length));
     const dotWidth = Math.max(0, ...list.map(c => vis(ui.colorDot(c.color))));
-    tipCols = { nameWidth, dotWidth };
     let shownRows = 0;
     for (const { head, i } of items.slice(start, end)) {
       if (head) { lines.push(chalk.dim(`    ${head}`)); continue; }
@@ -1307,16 +1335,6 @@ export function renderInteractiveView({
     if (more) lines.push(more);
   }
 
-  if (tipRows) {
-    // Full screen: at the bottom of the list, right over the footer's rule.
-    if (full) while (lines.length + tipRows + footRows(foot) < height) lines.push('');
-    const keys = keyHint([['^n', 'add'], ['^l', 'hide']]);
-    const why = `${chalk.dim('you cd here often')}${keys}`;
-    // The reason goes when it would leave the path under 12 columns.
-    const right = cw - 6 - tipCols.dotWidth - tipCols.nameWidth - vis(why) >= 12 ? why : keys.trimStart();
-    hit(lines.length + 1, 0, lw, { suggest: true });
-    lines.push('', renderRow({ num: '+', name: suggest.name, text: tidyPath(suggest.path), style: 'dim', right, cw, weight: s => s, ...tipCols }));
-  }
   // Before the opener hit below and the pane, which runs down to the footer.
   pin(foot);
   // Detail pane: the selected row's details right of the list, top-aligned.
@@ -1651,6 +1669,8 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
 
     const cleanup = () => {
       closed = true;
+      for (const w of watchers) w.close();
+      clearTimeout(reloadTimer);
       stopGit();
       clearTimeout(flashTimer);
       stopWeb();
@@ -1721,6 +1741,8 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
     const paneGoals = () => (paneOn() && !marks.size ? folderGoals(filteredChoices[selectedIndex], settings.goals) : null);
     // A git lookup landing redraws, which shows it (and looks up the row selected meanwhile).
     let closed = false;
+    const watchers = [];    // live reload, set up last
+    let reloadTimer = null;
     const gitFor = dir => gitOf(dir, guard(() => { if (!closed) redraw(); }));
     // ^g / a click on the pane's web line: the selected repo's web page.
     const openWeb = () => {
@@ -2870,11 +2892,46 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
         fail(error);
       }
     };
+    // Live reload: links.json or config.json (workspaces) changed, by upex ui, another shell or a save here.
+    // Waits for browse mode, so a confirm or form never acts on a row that moved; a broken file keeps the old rows.
+    let reloadDue = false;
+    const liveReload = () => {
+      if (closed) return;
+      if (mode !== 'browse' || menu) { reloadDue = true; return; }
+      reloadDue = false;
+      // The picked offer and Settings row stay picked when rows move.
+      const offerKey = offers[offerIndex]?.key;
+      const settingId = view === 'settings' && itemId(settingItems()[settingIndex]);
+      try {
+        rebuild(filteredChoices[selectedIndex]?.name, filteredWs[wsIndex]?.name);
+        if (view === 'settings') refreshSettings();
+      } catch { return; }
+      offerIndex = Math.max(0, offers.findIndex(o => o.key === offerKey));
+      const at = settingId ? settingItems().findIndex(x => itemId(x) === settingId) : -1;
+      if (at >= 0) settingIndex = at;
+      redraw();
+    };
+    try {
+      // A symlinked store saves next to its target, so watch the real folders.
+      const files = [LINKS_FILE, CONFIG_FILE].map(f => fs.realpathSync(f));
+      const names = files.map(f => path.basename(f));
+      for (const dir of new Set(files.map(f => path.dirname(f)))) {
+        const w = fs.watch(dir, { persistent: false }, (_, file) => {
+          if (file && !names.includes(file)) return;
+          clearTimeout(reloadTimer);
+          reloadTimer = setTimeout(guard(liveReload), 150);
+        });
+        w.on('error', () => {});
+        watchers.push(w);
+      }
+    } catch { /* no watching: rows refresh after an edit here, like before */ }
+
     const onKeypress = guard((str, key) => {
       const m = readMouse(mouse, key);
       mouse = m.state;
       if (m.event) handleMouse(m.event);
       if (m.pass) handleKey(str, key);
+      if (reloadDue) liveReload();
     });
     // The menu sits at screen cells, which a resize moves.
     const onResize = guard(() => { menu = null; redraw(); });
