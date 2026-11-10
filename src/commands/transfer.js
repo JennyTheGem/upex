@@ -37,9 +37,9 @@ export function importBundle(bundle, replace = false) {
   // Read config before saving links, so a corrupt config.json aborts without a partial import.
   const current = hasConfig ? loadConfig() : null;
   const { merged, added, updated } = mergeLinks(loadLinks(), incoming, { replace });
-  saveLinks(merged, { skipped: !replace });
 
-  // Merge config (apps + workspaces) without clobbering unless replacing.
+  // Merge config (apps + workspaces) without clobbering unless replacing. Saved first, so the first
+  // upex undo (and the upex ui import Undo) takes the shortcuts back, a second one the workspaces.
   if (hasConfig) {
     const inc = bundle.config;
     saveConfig(replace ? inc : {
@@ -49,6 +49,7 @@ export function importBundle(bundle, replace = false) {
       workspaces: { ...mapOf(current.workspaces), ...mapOf(inc.workspaces, Array.isArray) },
     });
   }
+  saveLinks(merged, { skipped: !replace });
   return { added, updated, clashes: aliasClashes(merged) };
 }
 

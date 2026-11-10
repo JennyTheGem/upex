@@ -510,10 +510,10 @@ async function api(method, path, body) {
 }
 
 let statusTimer;
-// `undo`: the toast gets an Undo button; true steps back one links.json backup like upex undo, a function runs that instead.
 const copyText = t => Promise.resolve().then(() => navigator.clipboard.writeText(t))
   .then(() => say('Copied ' + t), () => say('Could not copy to the clipboard.', true));
 
+// `undo`: the toast gets an Undo button; true steps back one backup like upex undo, a function runs that instead.
 function say(msg, isError, undo) {
   const el = document.getElementById('status');
   el.replaceChildren(msg);
@@ -950,15 +950,8 @@ function entryForm(key, init, onSubmit, editing) {
 }
 
 // prev: the list this page saw (null = new); the server refuses if it changed since.
-// `undoable`: the toast's Undo puts `prev` back (workspaces live in config.json, which upex undo doesn't cover).
-// Its own `prev` is the list right after this save, so a change since (CLI, then a reload) refuses instead of being overwritten.
-async function saveWs(name, entries, msg, prev, undoable) {
-  let after;
-  const ok = await act(() => api('PUT', 'workspace', { name, entries, prev }), msg,
-    undoable && (() => api('PUT', 'workspace', { name, entries: prev, prev: after })));
-  after = S.workspaces[name] ?? null;
-  return ok;
-}
+// `undoable`: the toast gets Undo, one upex undo step like a shortcut delete.
+const saveWs = (name, entries, msg, prev, undoable) => act(() => api('PUT', 'workspace', { name, entries, prev }), msg, undoable);
 const confirmWsDelete = name => { S.confirmWs = name; render(); document.getElementById('ws-keep')?.focus(); };
 function wsHead(name, entries) {
   if (S.confirmWs === name) {

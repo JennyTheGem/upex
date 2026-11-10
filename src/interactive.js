@@ -404,8 +404,8 @@ export function readMouse(state, key = {}) {
   return { state: null, pass: true };
 }
 
-// Flash for a ^z that stepped back one links.json backup (undoLast's result).
-export const undoFlash = (r, now = Date.now()) => [`undid the change from ${ui.span(now - r.at)} ago`,
+// Flash for a ^z that stepped back one backup (undoLast's result).
+export const undoFlash = (r, now = Date.now()) => [`undid the ${r.workspaces ? 'workspace ' : ''}change from ${ui.span(now - r.at)} ago`,
   ...[['brought back', r.added], ['removed', r.removed], ['reverted', r.changed]].filter(([, n]) => n.length).map(([l, n]) => `${l} ${n.join(', ')}`),
   r.left && `${r.left} more`].filter(Boolean).join(' · ');
 
@@ -1385,7 +1385,6 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
     let inputBuffer = '';
     let inputCursor = 0;
     let flash = '';
-    const wsUndo = []; // workspaces deleted this session { name, entry }, newest last: not in the links.json backups
     let canUndo = hasBackups();
     const marks = new Set(); // Space-marked shortcut names, across filtering and tabs
     let backView = view; // where Shift+Tab returns from Settings
@@ -1472,7 +1471,7 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
         inputBuffer,
         inputCursor,
         flash,
-        undo: wsUndo.length > 0 || canUndo,
+        undo: canUndo,
         settings,
         settingIndex,
         archived,
@@ -1862,11 +1861,10 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
       rebuild(form.name);
       done(msg);
     };
-    // Saves all workspaces, the form's one now under `name`; ^z puts the old set back.
+    // Saves all workspaces, the form's one now under `name`; ^z steps back its backup.
     const saveWs = (all, name, msg) => {
-      const before = loadWorkspaces();
-      if (JSON.stringify(all) === JSON.stringify(before)) return;
-      form.history.push({ name: form.name, all: before });
+      if (JSON.stringify(all) === JSON.stringify(loadWorkspaces())) return;
+      form.history.push(form.name);
       saveWorkspaces(all);
       form.name = name;
       rebuild(null, name);
@@ -2015,9 +2013,8 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
       } else if (key.ctrl && key.name === 'z') {
         const last = form.history.pop();
         if (last === undefined) flash = 'nothing to undo here';
-        else if (form.ws) { saveWorkspaces(last.all); form.name = last.name; rebuild(null, last.name); done('undone'); }
         else if (!undoLast()) flash = 'no backup left to undo';
-        else { form.name = last; rebuild(last); done('undone'); }
+        else { form.name = last; form.ws ? rebuild(null, last) : rebuild(last); done('undone'); }
         // Same row again: an undone type change adds or drops the opener row.
         if (formEntry()) form.field = Math.max(0, formRows({ ws: form.ws, entry: formEntry() }).indexOf(f));
       }
@@ -2496,10 +2493,8 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
           archive();
         } else if (yes && view === 'workspaces') {
           const victim = filteredWs[wsIndex];
-          const entry = victim && loadWorkspaces()[victim.name];
-          if (entry) {
+          if (victim && Object.hasOwn(loadWorkspaces(), victim.name)) {
             removeWorkspace(victim.name);
-            wsUndo.push({ name: victim.name, entry });
             done(`deleted workspace "${victim.name}" (^z undo)`);
           }
           rebuild();
@@ -2619,20 +2614,14 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
         return;
       }
 
-      // ^z: deleted workspaces first, else one step back through the links.json backups, like upex undo.
+      // ^z: one step back through the backups (shortcuts or workspaces), like upex undo.
       if (key.ctrl && key.name === 'z') {
-        const ws = wsUndo.pop();
-        const r = !ws && undoLast();
-        if (ws && Object.hasOwn(loadWorkspaces(), ws.name)) {
-          flash = `can't undo, workspace "${ws.name}" exists again`;
-        } else if (ws) {
-          saveWorkspaces({ ...loadWorkspaces(), [ws.name]: ws.entry });
-          rebuild(null, ws.name);
-          done(`restored workspace "${ws.name}"`);
-        } else if (r) {
+        const r = undoLast();
+        if (r) {
+          const back = [...r.added, ...r.changed];
           // Archived ones have no row to select.
-          const links = loadLinks();
-          rebuild([...r.added, ...r.changed].find(n => !links[n]?.archived));
+          if (r.workspaces) rebuild(null, back[0]);
+          else { const links = loadLinks(); rebuild(back.find(n => !links[n]?.archived)); }
           if (view === 'settings') refreshSettings();
           done(undoFlash(r));
         } else {

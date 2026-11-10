@@ -325,7 +325,7 @@ const routes = {
     return { removed };
   },
 
-  // One step back through the links.json backups, like upex undo.
+  // One step back through the backups (shortcuts or workspaces), like upex undo.
   'POST /api/undo': () => {
     if (!undoLast()) throw new HttpError(409, 'Nothing to undo.');
     return {};

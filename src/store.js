@@ -13,6 +13,7 @@ const CONFIG_FILE = path.join(UPEX_DIR, 'config.json');
 const BACKUP_DIR = path.join(UPEX_DIR, 'backups');
 const HISTORY_FILE = path.join(UPEX_DIR, 'history.jsonl');
 const KEEP_BACKUPS = 10;
+const KEEP_HISTORY = 5000;
 const VISITS_FILE = path.join(UPEX_DIR, 'visits.json');
 const KEEP_VISITS = 300;
 // Visits before a learned folder is offered as a shortcut.
@@ -152,32 +153,43 @@ export function loadLinks() {
 }
 
 // Only our own names, so a hand-saved file in backups/ is never touched.
-const BACKUP_RE = /^links-[\dTZ-]+\.json$/;
-const backupFiles = () => (fs.existsSync(BACKUP_DIR) ? fs.readdirSync(BACKUP_DIR).filter(f => BACKUP_RE.test(f)).sort() : []);
+// links-<stamp>-<i>.json holds a whole links.json, workspaces-<stamp>-<i>.json only the workspaces map.
+const BACKUP_RE = /^(links|workspaces)-[\dTZ-]+\.json$/;
+const stampOf = f => f.slice(f.indexOf('-') + 1);
+// Oldest first by stamp, both kinds on one timeline, or only `kind`.
+const backupFiles = kind => (fs.existsSync(BACKUP_DIR) ? fs.readdirSync(BACKUP_DIR) : [])
+  .filter(f => BACKUP_RE.test(f) && (!kind || f.startsWith(`${kind}-`)))
+  .sort((a, b) => (stampOf(a) < stampOf(b) ? -1 : stampOf(a) > stampOf(b) ? 1 : 0));
 export const hasBackups = () => backupFiles().length > 0;
 
-// Copy the current links.json to backups/ and keep only the newest KEEP_BACKUPS.
-function backupLinks(next) {
-  if (!fs.existsSync(LINKS_FILE)) return;
-  const current = fs.readFileSync(LINKS_FILE);
-  // A no-op save would only push real edits out.
-  if (current.toString('utf-8') === JSON.stringify(next, null, 2)) return;
+// Write `data` to backups/ as `kind` and keep only the newest KEEP_BACKUPS of that kind.
+function writeBackup(kind, data) {
   fs.mkdirSync(BACKUP_DIR, { recursive: true });
   const stamp = new Date().toISOString().replace(/[:.]/g, '-');
   // wx: a concurrent save in the same ms takes the next index instead of overwriting.
   for (let i = 0; ; i++) {
+    const file = k => path.join(BACKUP_DIR, `${k}-${stamp}-${i}.json`);
+    // One index per stamp for both kinds, so a same-ms backup of the other kind still sorts as older.
+    if (fs.existsSync(file(kind === 'links' ? 'workspaces' : 'links'))) continue;
     try {
-      fs.writeFileSync(path.join(BACKUP_DIR, `links-${stamp}-${i}.json`), current, { flag: 'wx' });
+      fs.writeFileSync(file(kind), data, { flag: 'wx' });
       break;
     } catch (err) {
       if (err.code !== 'EEXIST') throw err;
     }
   }
-  const old = backupFiles().slice(0, -KEEP_BACKUPS);
-  for (const f of old) {
+  for (const f of backupFiles(kind).slice(0, -KEEP_BACKUPS)) {
     // A locked old backup must not block the save.
     try { fs.rmSync(path.join(BACKUP_DIR, f), { force: true }); } catch {}
   }
+}
+
+function backupLinks(next) {
+  if (!fs.existsSync(LINKS_FILE)) return;
+  const current = fs.readFileSync(LINKS_FILE);
+  // A no-op save would only push real edits out.
+  if (current.toString('utf-8') === JSON.stringify(next, null, 2)) return;
+  writeBackup('links', current);
 }
 
 // Usage bumps skip the backup, or a few opens would push real edits out of the last 10,
@@ -207,24 +219,41 @@ export function keepUsage(restored, current) {
   return out;
 }
 
+const anyChange = d => d.added.length || d.removed.length || d.changed.length;
+
+// Put one backup back when it changes something: -> its diff, or null for a no-op.
+function restoreBackup(f) {
+  const file = path.join(BACKUP_DIR, f);
+  if (f.startsWith('workspaces-')) {
+    const config = loadConfig();
+    const restored = readJson(file);
+    const diff = diffLinks(asMap(config.workspaces), restored);
+    // Only the workspaces key: an undo never reverts a setting.
+    if (anyChange(diff)) writeJson(CONFIG_FILE, { ...config, workspaces: restored });
+    return anyChange(diff) ? { ...diff, workspaces: true } : null;
+  }
+  const current = loadLinks();
+  const old = checkLinks(readJson(file));
+  const restored = keepUsage(old.links, current);
+  const diff = diffLinks(current, restored);
+  // Unusable entries go back too: the backup's, and current ones (a newer hand edit wins) it has no real entry for.
+  if (anyChange(diff)) writeJson(LINKS_FILE, { ...old.skipped, ...withSkipped(restored) });
+  return anyChange(diff) ? diff : null;
+}
+
 /**
- * Roll links.json back to the newest backup that changes something, deleting the backups used,
- * so the next undo steps further back. Returns { added, removed, changed, at, left } or null.
+ * Roll back the newest backup (shortcuts or workspaces) that changes something, deleting the backups used,
+ * so the next undo steps further back. Returns { added, removed, changed, at, left, workspaces? } or null;
+ * `workspaces` true means the names are workspaces.
  */
 export function undoLast() {
-  const current = loadLinks();
   for (const f of backupFiles().reverse()) {
     const file = path.join(BACKUP_DIR, f);
     const at = fs.statSync(file).mtimeMs;
-    const old = checkLinks(readJson(file));
-    const restored = keepUsage(old.links, current);
-    const diff = diffLinks(current, restored);
-    const changes = diff.added.length || diff.removed.length || diff.changed.length;
-    // Unusable entries go back too: the backup's, and current ones (a newer hand edit wins) it has no real entry for.
-    if (changes) writeJson(LINKS_FILE, { ...old.skipped, ...withSkipped(restored) });
+    const diff = restoreBackup(f);
     // A locked backup must not fail an undo already written; the next undo skips it as a no-op.
     if (!dryRun) try { fs.rmSync(file, { force: true }); } catch {}
-    if (changes) return { ...diff, at, left: backupFiles().length };
+    if (diff) return { ...diff, at, left: backupFiles().length };
   }
   return null;
 }
@@ -402,11 +431,18 @@ export function recordUse(name, opener) {
 }
 
 // Open log from history.jsonl; malformed lines are skipped, a missing file is [].
+// Well past KEEP_HISTORY lines it is cut to the newest ones here, off the open path.
 export function loadHistory(file = HISTORY_FILE) {
   let text;
   try { text = fs.readFileSync(file, 'utf-8'); } catch { return []; }
+  let lines = text.split('\n');
+  if (lines.length > KEEP_HISTORY * 1.2) {
+    lines = lines.slice(-KEEP_HISTORY - 1);
+    // Stats only: a failed trim changes nothing.
+    if (!dryRun) try { fs.writeFileSync(file, lines.join('\n'), 'utf-8'); } catch {}
+  }
   const out = [];
-  for (const line of text.split('\n')) {
+  for (const line of lines) {
     try {
       const h = JSON.parse(line);
       if (h && typeof h.name === 'string' && Number.isFinite(h.ts)) out.push(h);
@@ -592,7 +628,16 @@ export function loadConfig() {
   return readJson(CONFIG_FILE);
 }
 
+const asMap = v => (v && typeof v === 'object' && !Array.isArray(v) ? v : {});
+
+// A save that changes the workspaces backs up the old map first, so upex undo covers them; settings make no backup.
 export function saveConfig(config) {
+  if (!dryRun) {
+    let old;
+    // An unreadable config has nothing to back up.
+    try { old = asMap(readJson(CONFIG_FILE).workspaces); } catch {}
+    if (old && JSON.stringify(old) !== JSON.stringify(asMap(config.workspaces))) writeBackup('workspaces', JSON.stringify(old, null, 2));
+  }
   writeJson(CONFIG_FILE, config);
 }
 

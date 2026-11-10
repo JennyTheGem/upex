@@ -44,7 +44,7 @@ npm link
 | `upex import <file> [--replace]` | Import a bundle (merge by default) |
 | `upex list [tag] [--git]` | Show all saved shortcuts (filter by tag; `--git` adds a branch column) |
 | `upex remove <name>` | Delete a saved shortcut |
-| `upex undo` | Undo the last change to your shortcuts (run again to step further back, up to 10; no redo) |
+| `upex undo` | Undo the last change to your shortcuts or workspaces (run again to step further back, up to 10; no redo) |
 | `upex color <name> [value]` | Color label: red, orange, yellow, green, blue, purple, gray, `#rrggbb` or one emoji, a dot before the name in the selector and web UI (`--clear` removes it) |
 | `upex pin <name>` / `upex unpin <name>` | Pin a shortcut to the top of the selector and web UI (`upex pin` lists pinned) |
 | `upex rename <old> <new>` | Rename a shortcut |
@@ -222,7 +222,7 @@ Run `upex` with no arguments to open the interactive selector. It reloads by its
 - `Ctrl+X` -- archive the selected shortcut, or all marked ones (confirm with `y`, any other key cancels; the key row shows just `y` and `n` meanwhile; `Ctrl+Z` undoes it, `upex restore <name>` later); a click on the detail pane's stale row archives the selected one. The selector never deletes a shortcut from its tab: delete an archived one in Settings > Archived
 - `Ctrl+Y` -- copy the selected shortcut's path (or app / URL) to the clipboard
 - `Ctrl+O` -- next sort (most used, A to Z, last opened, recently added), saved like the `sort` setting; a flash names it
-- `Ctrl+Z` -- step back one change to your shortcuts, like `upex undo` (again to go further back, up to 10); a flash says what came back. Workspaces deleted in this session come back first, newest first
+- `Ctrl+Z` -- step back one change to your shortcuts or workspaces, like `upex undo` (again to go further back, up to 10); a flash says what came back
 - `Ctrl+S` -- list the selected folder's package.json scripts (in the detail pane when it shows, else in place of the list); Enter runs one in a terminal (like `upex run`), Esc or Left goes back
 - `Ctrl+F` -- list what the selected folder holds as rows, subfolders then files (typing filters them by name); `Ctrl+F` on a subfolder goes deeper, Left or Esc goes back one level. Enter opens a subfolder like `upex name/sub` and a file in its default app (`upex pick` prints its path); marks, add, edit, rename, pin and archive are off there
 - While typing a path or name: `Left` / `Right` move the cursor, `Ctrl+Left` / `Ctrl+Right` jump a word, `Home` / `End`, `Ctrl+Backspace` (or `Ctrl+W`) deletes a word, `Del` deletes forward. `Ctrl+Backspace` also works in the filter
@@ -308,7 +308,7 @@ function upex {
 
 ## Storage
 
-Shortcuts are stored in `~/.upex/links.json` and created automatically on first use. Every edit (not the usage stats an open records) first copies the old file to `~/.upex/backups/` (newest 10 kept). `upex undo` restores the newest one (again to step further back), keeping usage stats; or copy a backup over `links.json` yourself.
+Shortcuts are stored in `~/.upex/links.json` and created automatically on first use. Every edit (not the usage stats an open records) first copies the old file to `~/.upex/backups/` (newest 10 kept). A workspace change backs up the old workspaces from `config.json` the same way (settings are not backed up). `upex undo` restores the newest backup of either kind (again to step further back), keeping usage stats; or copy a backup over `links.json` yourself.
 
 Each entry is an object with optional fields:
 
