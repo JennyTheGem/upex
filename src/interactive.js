@@ -195,12 +195,18 @@ export function filterChoices(choices, query, { fuzzy, searchIn, staleAfter = '6
 
 // No matches for the typed filter: what Enter offers. Add it as a folder shortcut on the cwd (Shortcuts tab,
 // no #@is: tokens), or the archived ones whose name or path has the text, in Settings.
-export function noMatchOffers(query, view, archived = [], cwd = process.cwd()) {
+// The current folder as a new shortcut's target, '' in System32 (where Win+R and the like start).
+export function cwdTarget(cwd = process.cwd(), platform = os.platform(), root = process.env.SystemRoot || 'C:\\Windows') {
+  return platform === 'win32' && cwd.replace(/[\\/]+$/, '').toLowerCase() === `${root}\\System32`.toLowerCase() ? '' : cwd;
+}
+
+export function noMatchOffers(query, view, archived = [], cwd = cwdTarget()) {
   const q = query.trim();
   if (!q || (view !== 'shortcuts' && view !== 'apps')) return [];
   const n = archived.filter(a => `${a.name} ${a.path}`.toLowerCase().includes(q.toLowerCase())).length;
   return [
-    view === 'shortcuts' && !/[#@]|is:/i.test(q) && { kind: 'add', name: q, label: `add "${q}" here`, text: tidyPath(cwd), key: 'add here' },
+    view === 'shortcuts' && !/[#@]|is:/i.test(q) && (cwd ? { kind: 'add', name: q, label: `add "${q}" here`, text: tidyPath(cwd), key: 'add here' }
+      : { kind: 'add', name: q, label: `add "${q}"`, text: 'its folder next', key: 'add' }),
     n > 0 && { kind: 'archived', label: 'search archived', text: `${n} match`, key: 'search archived' },
   ].filter(Boolean);
 }
@@ -523,7 +529,6 @@ function getVisibleWindow(choices, selectedIndex, maxVisible = MAX_VISIBLE_CHOIC
 
 const PROMPT_LABEL = {
   rename: name => `rename "${name}" to:`,
-  add: (_, p) => `new shortcut name (path = ${p ? clipMiddle(tidyPath(p), 30) : 'cwd'}):`,
   wsadd: n => `add the ${n} marked to workspace (new or existing):`,
   opener: name => `command for opener "${name}":`,
   openerName: () => 'new opener name:',
@@ -600,6 +605,10 @@ const openerOptions = appChoices => [['', 'default'], ...appChoices.filter(c => 
 function formNote(f, form) {
   if (form.ws) return f === 'name' ? 'Unique, no spaces.' : '←→ picks its opener, ↵ sets a start command (runs in a terminal), ^d removes it.';
   const kind = form.kind || kindOf(form.entry);
+  if (form.adding) {
+    if (f === 'target') return 'Folder path, ~ works. ↵ adds it, then the other rows can be changed.';
+    return targetOf(form.entry) ? 'Unique, no spaces. ↵ adds it with this target, then the other rows can be changed.' : 'Unique, no spaces. ↵ asks for its folder next.';
+  }
   if (f === 'name') return 'Unique, no spaces.';
   if (f === 'target') return { folder: 'Folder path, ~ works, empty = the current folder.', app: 'Program or command to launch.', cmd: 'Command line, runs in a terminal.', url: 'Web address, opens in the browser.' }[kind];
   if (f === 'type') return form.kind ? '↵ asks for its new target, esc keeps the type.' : '←→ picks another type, then ↵ asks for its target.';
@@ -630,6 +639,7 @@ export function formLines(form, w, appChoices = [], pick = chalk.bold, now = Dat
     if (f === 'name') return form.name;
     if (f === 'target') {
       const t = targetOf(e);
+      if (!t) return none;
       const folder = kindOf(e) === 'folder';
       const missing = folder && !fs.existsSync(t);
       // A long one keeps its end, the folder name.
@@ -1032,7 +1042,12 @@ export function renderInteractiveView({
   const isWs = view === 'workspaces';
   const isSettings = view === 'settings';
   const isScripts = mode === 'scripts' && !!scripts;
-  const isForm = mode === 'form' && !!form;
+  // ^a: the new shortcut as a form, its name typed first (then its folder, when it has none); ↵ adds it and goes on to the edit form.
+  if (mode === 'input' && (action === 'add' || action === 'addTarget')) {
+    const named = action === 'addTarget';
+    form = { name: named ? inputName : '', entry: { path: named ? '' : inputName || cwdTarget() }, field: named ? 1 : 0, editing: true, buffer: inputBuffer, cursor: inputCursor, adding: true };
+  }
+  const isForm = !!form && (mode === 'form' || !!form.adding);
   const currentChoice = (isWs ? workspaces : choices)[isWs ? wsIndex : selectedIndex];
   // `width` leaves the terminal's last column free.
   const pane = !isSettings && paneShown(width + 1, full, paneOpen || settings.narrowPane === 'always');
@@ -1096,7 +1111,7 @@ export function renderInteractiveView({
   lines.push(head, ...gap);
 
   // Prompt line: filter, or the live action (input / delete confirm).
-  if (mode === 'input') {
+  if (mode === 'input' && !isForm) {
     const label = PROMPT_LABEL[action](clipName(String(inputName ?? currentChoice?.name ?? ''), 24).text, inputName);
     // Keep the end of a long value in view, where the cursor is; a flash gets up to half the line,
     // the field at least 10 columns, and the label gives way.
@@ -1109,6 +1124,8 @@ export function renderInteractiveView({
     const name = clipName(currentChoice?.name || '', Math.max(1, w - vis(what) - 10)).text;
     const q = ask ? `  ? ${ui.truncate(ask, Math.max(1, w - 12))}` : action === 'archiveMarked' ? `${what}${marks.size} marked?` : `${what}"${name}"?`;
     lines.push(withRight(chalk.yellow(q) + chalk.dim('  y / n')));
+  } else if (form?.adding) {
+    lines.push(withRight(`  ${chalk.bold(pick('›'))} ${chalk.dim('new shortcut')}`));
   } else if (isForm) {
     lines.push(withRight(`  ${chalk.bold(pick('›'))} ${chalk.dim(form.ws ? 'edit workspace' : 'edit')} ${chalk.bold(clipName(form.name, 24).text)}`, chalk.dim('saved as you go')));
   } else if (isScripts) {
@@ -1140,7 +1157,7 @@ export function renderInteractiveView({
   const escKey = ['esc', isScripts ? 'back' : mode !== 'browse' ? 'cancel' : query ? 'clear' : many ? 'unmark' : toggles && pane ? 'hide details' : 'quit'];
   const undoKey = undo && ['^z', 'undo'];
   const uiKey = ['^u', webUrl ? 'stop web ui' : 'web ui'];
-  const inputRow = keyHint([['↵', 'save'], isForm && formRows(form)[form.field] === 'tags' && ['tab', 'complete'], ['←→', 'cursor'], ['^⌫', 'word'], ['^u', 'clear'], ['esc', 'cancel']]);
+  const inputRow = keyHint([['↵', !form?.adding ? 'save' : form.field || form.entry.path ? 'add' : 'next'], isForm && formRows(form)[form.field] === 'tags' && ['tab', 'complete'], ['←→', 'cursor'], ['^⌫', 'word'], ['^u', 'clear'], ['esc', 'cancel']]);
   // y / n: the only keys a question takes (any other key is no).
   const confirming = mode === 'confirm';
   const yes = { archiveMarked: `archive ${marks.size}`, stale: 'archive all', deleteArchived: 'delete for good', removeOpener: 'remove', prune: 'remove all', openMany: 'open them' }[action]
@@ -2038,6 +2055,15 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
       }
     };
 
+    // Adds a folder shortcut, then straight on to its type, target, tags and the rest.
+    const addLink = (name, p, field) => {
+      setLink(name, { path: p, added: Date.now() });
+      rebuild(name);
+      done(`added "${name}"`);
+      openForm(name, false, field);
+      return true;
+    };
+
     // Commit the pending input action; returns false + sets flash on validation error.
     const commitInput = (target) => {
       const buf = inputBuffer.trim();
@@ -2047,12 +2073,19 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
         if (bad) { flash = bad.toLowerCase().replace(/\.$/, ''); return false; }
         const taken = takenError(loadLinks(), buf);
         if (taken) { flash = taken.replace(/\.$/, ''); return false; }
-        setLink(buf, { path: inputName || process.cwd(), added: Date.now() });
-        rebuild(buf);
-        done(`added "${buf}"`);
-        // Straight on to its type, target, tags and the rest.
-        openForm(buf, false, 'target');
-        return true;
+        const p = inputName || cwdTarget();
+        // No folder yet (System32): ask it next.
+        if (!p) { startAction('addTarget', '', buf); return false; }
+        return addLink(buf, p, 'target');
+      }
+
+      if (action === 'addTarget') {
+        if (!buf) return nameFlash('type a folder path');
+        const p = path.resolve(expandHome(buf));
+        if (!fs.existsSync(p)) return nameFlash('path not found');
+        const taken = takenError(loadLinks(), inputName);
+        if (taken) return nameFlash(taken);
+        return addLink(inputName, p, 'type');
       }
 
       if (action === 'wsadd') {
