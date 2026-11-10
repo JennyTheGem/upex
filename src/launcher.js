@@ -33,11 +33,6 @@ const APP_MAP = {
     displayName: 'VS Code',
     installHint: 'Install VS Code and add "code" to your PATH.\nhttps://code.visualstudio.com/',
   },
-  code: {
-    cmd: () => 'code',
-    displayName: 'VS Code',
-    installHint: 'Install VS Code and add "code" to your PATH.\nhttps://code.visualstudio.com/',
-  },
   webstorm: {
     cmd: () => {
       if (platform === 'darwin') return 'open -na "WebStorm" --args';
@@ -45,15 +40,6 @@ const APP_MAP = {
     },
     displayName: 'WebStorm',
     installHint: 'Install WebStorm and ensure the CLI launcher is in your PATH.\nhttps://www.jetbrains.com/webstorm/',
-  },
-  finder: {
-    cmd: () => {
-      if (platform === 'darwin') return 'open';
-      if (platform === 'win32') return 'explorer';
-      return 'xdg-open';
-    },
-    displayName: platform === 'darwin' ? 'Finder' : platform === 'win32' ? 'Explorer' : 'File Manager',
-    installHint: 'This is a system app and should be available by default.',
   },
   explorer: {
     cmd: () => {
@@ -71,7 +57,7 @@ const APP_MAP = {
   },
   open: {
     cmd: () => {
-      if (platform === 'win32') return 'start';
+      if (platform === 'win32') return 'explorer';
       if (platform === 'darwin') return 'open';
       return 'xdg-open';
     },
@@ -93,6 +79,9 @@ const APP_MAP = {
     installHint: 'Install Claude Code and make sure "claude" is on your PATH.\nhttps://claude.com/claude-code',
   },
 };
+// Other names for an opener, the same entry.
+const ALIASES = { code: 'vscode', finder: 'explorer' };
+for (const [alias, key] of Object.entries(ALIASES)) APP_MAP[alias] = APP_MAP[key];
 
 const INTERACTIVE_APP_KEYS = [
   'explorer',
@@ -353,10 +342,15 @@ const terminalArgs = term => LINUX_TERMINALS[path.basename(term)] || ['-e'];
 // Single-quote for sh.
 export const shQuote = s => `'${String(s).replace(/'/g, `'\\''`)}'`;
 // A path in a shell command line: sh runs $(...) and backticks inside double quotes, and ^f lists any file name.
-const quotePath = p => (platform === 'win32' ? `"${p}"` : shQuote(p));
+// cmd.exe expands %VAR% even in quotes, so each % goes outside them caret-escaped ("a"^%"b"); backslashes before a quote double.
+const winQuote = p => `"${p.replace(/(\\*)(%|$)/g, (m, b, c) => b + b + (c && '"^%"'))}"`;
+const quotePath = p => (platform === 'win32' ? winQuote(p) : shQuote(p));
 
 // Detached and without a shell: xdg-open, terminals and IDEs can stay in the foreground until closed.
 const launchDetached = (cmd, args, opts = {}) => spawn(cmd, args, { detached: true, stdio: 'ignore', ...opts }).on('error', () => {}).unref();
+// Explorer splits a bare argument on commas, so a path with a comma or space goes in quotes (trailing backslashes doubled).
+const explorerArg = p => (/[\s,]/.test(p) ? `"${p.replace(/(\\*)$/, '$1$1')}"` : p);
+const launchExplorer = (p, select = false) => launchDetached('explorer', [...(select ? ['/select,'] : []), explorerArg(p)], { windowsVerbatimArguments: true });
 
 // Select a file in the file manager (Nautilus, Dolphin, ...) over D-Bus. False when none answers.
 function showItemLinux(file) {
@@ -526,8 +520,7 @@ function resolveWebStormCommand() {
 // The command an opener runs, or { error } when it isn't installed.
 function resolveOpener(key, app) {
   let cmdBase = app.cmd();
-  // `start` is a cmd.exe builtin, not a resolvable executable.
-  let skipCommandCheck = platform === 'win32' && key === 'open';
+  let skipCommandCheck = false;
 
   if (key === 'webstorm' && platform !== 'darwin') {
     const resolved = resolveWebStormCommand();
@@ -569,8 +562,8 @@ export function openerKey(name) {
   const key = String(name).toLowerCase();
   const map = getAppMap();
   if (!Object.hasOwn(map, key)) return null;
-  const same = (k) => map[k] && map[k].displayName === map[key].displayName && map[k].cmd() === map[key].cmd();
-  return INTERACTIVE_APP_KEYS.find(same) || key;
+  // A custom opener named like an alias is its own.
+  return Object.hasOwn(ALIASES, key) && map[key] === map[ALIASES[key]] ? ALIASES[key] : key;
 }
 
 // Opener for folder shortcuts without their own: config.defaultOpener, else Explorer. Copy opens nothing.
@@ -735,22 +728,16 @@ export function launchApp(appName, folderPath, count = 1, startCmd = '', { here 
       }
     } else if (key === 'open') {
       // Open the path in the OS default handler (default app for a file).
-      if (platform === 'win32') {
-        execSync('start "" ' + `"${folderPath}"`, { stdio: 'ignore' });
-      } else if (xdg) {
-        launchDetached(cmdBase, [folderPath]);
-      } else {
-        execSync(`${cmdBase} ${quotePath(folderPath)}`, { stdio: 'ignore' });
-      }
-    } else if (key === 'webstorm' && platform !== 'darwin') {
-      // Detached: the IDE would otherwise hold upex until it closes. Windows goes through a shell (PATH command or .cmd).
-      if (platform === 'win32') launchDetached(cmdBase, [`"${folderPath}"`], { shell: true });
+      // Explorer opens a file in its default app; no shell, so a % in the path stays text.
+      if (platform === 'darwin') execSync(`${cmdBase} ${quotePath(folderPath)}`, { stdio: 'ignore' });
+      else if (platform === 'win32') launchExplorer(folderPath);
       else launchDetached(cmdBase, [folderPath]);
+    } else if (key === 'webstorm' && xdg) {
+      launchDetached(cmdBase, [folderPath]);
     } else if (isSystemFileManager) {
       // Reveal the file in its folder, or just open a folder directly.
       if (platform === 'win32') {
-        const args = targetIsFile ? ['/select,', folderPath] : [folderPath];
-        spawn('explorer', args, { detached: true, stdio: 'ignore', shell: false }).unref();
+        launchExplorer(folderPath, targetIsFile);
       } else if (platform === 'darwin') {
         execSync(`${cmdBase} ${targetIsFile ? '-R ' : ''}${quotePath(folderPath)}`, { stdio: 'ignore' });
       } else if (!targetIsFile || !showItemLinux(folderPath)) {
@@ -758,8 +745,9 @@ export function launchApp(appName, folderPath, count = 1, startCmd = '', { here 
         launchDetached(cmdBase, [targetIsFile ? path.dirname(folderPath) : folderPath]);
       }
     } else {
-      const fullCmd = `${cmdBase} ${quotePath(folderPath)}`;
-      for (let i = 0; i < repeat; i++) execSync(fullCmd, { stdio: 'ignore' });
+      // Detached: an IDE or custom opener can stay in the foreground. A shell runs the command line (PATH .cmd, args);
+      // on Windows it has no console (detached), windowsHide as for app shortcuts.
+      launchDetached(`${cmdBase} ${quotePath(folderPath)}`, [], { shell: true, windowsHide: true });
     }
     return {
       ok: true,
@@ -780,14 +768,20 @@ export function normalizeUrl(url) {
 }
 
 /**
- * Open a URL in the system default browser.
+ * Open a URL in the system default browser (or the app of its scheme).
+ * Stored URLs are untrusted: parsed first, then passed as one argument with no shell.
  */
 export function launchUrl(url) {
-  const target = normalizeUrl(url);
+  const target = normalizeUrl(String(url));
+  let href;
+  try { href = new URL(target).href; } catch { return { ok: false, message: `Not a valid URL: ${url}` }; }
   try {
-    if (platform === 'win32') execSync(`start "" "${target}"`, { stdio: 'ignore' });
-    else if (platform === 'darwin') execSync(`open "${target}"`, { stdio: 'ignore' });
-    else if (commandExists('xdg-open')) launchDetached('xdg-open', [target]);
+    if (platform === 'win32') launchDetached('rundll32', ['url.dll,FileProtocolHandler', href]);
+    else if (platform === 'darwin') {
+      const r = spawnSync('open', [href], { stdio: 'ignore' });
+      if (r.error) throw r.error;
+      if (r.status) throw new Error(`open exited with ${r.status}`);
+    } else if (commandExists('xdg-open')) launchDetached('xdg-open', [href]);
     else throw new Error('xdg-open not found, install xdg-utils');
     return { ok: true, displayName: 'Browser', url: target };
   } catch (err) {

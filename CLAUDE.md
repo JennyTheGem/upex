@@ -29,10 +29,12 @@ ESM Node CLI (`"type": "module"`) built on `commander`. Entry is `bin/upex.js` �
 **Two kinds of shortcut.** A *folder shortcut* has `path` and opens in an opener (Explorer, VS Code, ...). An *app shortcut* has `app` (an executable/command) and launches directly. `handleOpen` in `src/commands/open.js` branches on which is present; a bare `upex <file>` opens a file in its default app while a folder opens Explorer.
 
 **Launching (`src/launcher.js`).** `APP_MAP` holds built-in openers, each with a per-platform `cmd()` (`win32`/`darwin`/`linux`), display name, and install hint. `getAppMap()` merges user openers from `config.json.apps` (custom wins on name clash). `launchApp` handles the platform quirks, the hard part of this codebase:
-- Windows `explorer.exe` returns non-zero even on success, so system file managers get special-cased and are spawned detached rather than checked via exit code.
-- `start` is a `cmd.exe` builtin, not a resolvable binary, so its command-existence check is skipped.
-- Terminals (`cmd`) open N detached windows via `start "" cmd`; `cmd /k <startCmd>` keeps the window open running a command.
-- WebStorm on Windows is resolved through `resolveWindowsWebStormCommand` (PATH → `config.webstormPath` → `WEBSTORM_PATH` → JetBrains Toolbox versioned dirs → common install paths).
+- Windows `explorer.exe` returns non-zero even on success, so system file managers get special-cased and are spawned detached rather than checked via exit code. Explorer splits a bare argument on commas, so `launchExplorer` passes the path verbatim, quoted when it has a comma or space.
+- The `open` opener (a file's default app) is not a file manager: it runs `explorer <path>` on Windows and `xdg-open` on Linux detached with no shell (so a `%` in the path stays text), `open` on macOS.
+- Other openers (IDEs, custom ones) run `<command> <path>` detached through a shell, so upex never waits for them; `quotePath` quotes the path (`winQuote` on Windows keeps `%VAR%` as text, `shQuote` elsewhere). `code` and `finder` are `ALIASES` of `vscode` and `explorer`; `openerKey` maps them back.
+- `launchUrl` treats a URL as untrusted: parsed with `new URL`, then one argument with no shell (`rundll32 url.dll,FileProtocolHandler` on Windows, `open` on macOS, `xdg-open` on Linux).
+- Terminals (`cmd`, and `claude` inside one) open N windows via `start "" cmd`, run synchronously rather than detached so Ctrl+C still works in the window, or tabs/panes through `wt` per the `terminalLayout` setting; `cmd /s /k <startCmd>` keeps the window open running a command.
+- WebStorm on Windows and Linux is resolved through `resolveWebStormCommand` (PATH → `config.webstormPath` → `WEBSTORM_PATH` → JetBrains Toolbox dirs → versioned and common install paths).
 `launchExecutable` handles app shortcuts (detached spawn; `.bat`/`.cmd` run via `cmd.exe /c` with cwd at the script's dir).
 
 **Fuzzy resolution (`src/fuzzy.js`).** `resolveName` tries exact match first, then `fuse.js` (threshold 0.4). Callers report inexact matches to the user (`matched "x" --> "y"`). `resolveTarget` adds subpaths (`web/src` -> shortcut `web` + `src`), used by open/go/__resolve.

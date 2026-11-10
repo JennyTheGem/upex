@@ -592,6 +592,40 @@
       "note": "isPathArg + fullPath in fast.js, handled at the top of handleOpen; cd shares openIn/showOpened"
     },
     {
+      "id": "a-quote-or-in-a-url-shortcut-runs-as-a-command",
+      "section": 2,
+      "title": "A quote or $( ) in a URL shortcut runs as a command (launchUrl goes through a shell)",
+      "body": "Windows: start \"\" \"<url>\" lets a quote end the quoting. macOS: open \"<url>\" runs $( ) and backticks. Linux is fine. URLs can come from import and upex ui. See tmp/improve-review.html item 1.",
+      "phase": "later",
+      "status": "done",
+      "size": "S",
+      "pointers": {
+        "files": [
+          "src/launcher.js"
+        ]
+      },
+      "created": "2026-11-10",
+      "updated": "2026-11-10",
+      "note": "launchUrl parses the URL and launches with no shell on all platforms (rundll32 on Windows, open and xdg-open as plain arguments); unparsable URLs are refused; % in Windows paths stays text"
+    },
+    {
+      "id": "a-custom-opener-that-stays-in-the-foreground",
+      "section": 2,
+      "title": "A custom opener that stays in the foreground blocks upex until it exits",
+      "body": "launchApp's last branch uses execSync. Measured 3.2 s for a 3 s command; blocks the upex ui server and the selector with enter=stay. See tmp/improve-review.html item 2.",
+      "phase": "later",
+      "status": "done",
+      "size": "S",
+      "pointers": {
+        "files": [
+          "src/launcher.js"
+        ]
+      },
+      "created": "2026-11-10",
+      "updated": "2026-11-10",
+      "note": "generic and custom openers launch detached through a shell; measured 0.13 s for a 3 s command"
+    },
+    {
       "id": "exact-then-fuzzy-name-resolution-fuse-js",
       "section": 3,
       "title": "Exact-then-fuzzy name resolution (fuse.js)",
