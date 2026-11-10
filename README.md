@@ -372,6 +372,7 @@ Detail pane (selector only, full screen, 140+ columns, or narrower with `narrowP
 - `"paneWidth"`: `"normal"` (default, about 38% of the screen), `"narrow"` (about 28%, more room for the list) or `"wide"` (half the screen).
 - `"goals"`: `"off"` (default), `"3"`, `"5"` or `"10"`. A folder shortcut with an [upgo](https://github.com/JennyTheGem/upgo) `goals.json` shows a progress bar and done/total of its goals (dropped ones left out) and up to that many open goals, soonest phase first. Shift+→ picks one in the pane (↑↓ or the wheel move, Enter copies `id: title` and its body, Esc or ← goes back). A click on a goal copies it too.
 - `"git"`: `"off"` (default) or `"on"`. A folder shortcut inside a git repo shows its branch, ahead/behind, changed file count and last commit (age and message), looked up in the background and cached per folder for a few seconds, so scrolling stays fast. With an `origin` remote it also shows the repo's web page: Ctrl+G or a click opens it in the browser.
+- `"size"`: `"on"` (default) or `"off"`. A folder shortcut shows its size and file count on the pane's meta line, looked up in the background a moment after the row is picked (robocopy on Windows, du and find elsewhere) and cached per folder for a minute. A folder that takes over a minute shows none.
 
 ### WebStorm on Windows (without `setx`)
 

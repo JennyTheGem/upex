@@ -2182,12 +2182,12 @@
       "section": 9,
       "title": "Folder size in the detail pane",
       "body": "Size and file count, computed in the background and cached. only if it dosent impact performance\n",
-      "phase": "next",
-      "status": "dropped",
+      "phase": "now",
+      "status": "done",
       "size": "M",
       "created": "2026-11-08",
-      "updated": "2026-11-08",
-      "note": "Walking big folders on Windows takes minutes (200k entries took 2+ min), too costly for the pane"
+      "updated": "2026-11-10",
+      "note": "src/size.js: robocopy /L on Windows (0.2s vs 16s Node stat for 32k files), du -sk + find elsewhere; background, 250ms debounce, 60s cache; setting size on by default"
     },
     {
       "id": "detail-pane-width",

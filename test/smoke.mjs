@@ -25,6 +25,7 @@ import { readScripts, detectPm } from '../src/commands/run.js';
 import { pickedNames, pickedPaths } from '../src/commands/pick.js';
 import { usageText, stepColor, renderInteractiveView, nextView, backTo, accentOf, pathLook, inView, tidyPath, byOrder, optionRow, listRows, readMouse, hitTest, rowClick, undoFlash, clipName, prefill, editLine, kindOf, retyped, setField, fieldWords, completeTag, expiryOptions, formRows, formLines, statLines, doctorLines, inputLine, missingFlash, staysOpen, expandHome, underlineHits, movePinned, sameGroup, withRecent, withGroups, filterChoices, noMatchOffers, expiryText, maxListOf, jumpIndex, isAlt, detailLines, rowOptions, pickedOf, settingsList, goalSummary, goalsOf, goalText, goalPrompt, oneLine, scriptLines, markLines, paneShown, paneToggles, paneWidthOf, withSamePath, archivedList, clipPath, cwdTarget, targetEntry, clipMiddle, asksMany, dotLines, lr, wrapHint, splice, overlayMenu, subfolderChoices } from '../src/interactive.js';
 import { parseStatus, parseDiff, parseLog, gitOf, stopGit } from '../src/git.js';
+import { parseRobocopy, parseDu, formatBytes, sizeCommand, sizeOf, stopSize } from '../src/size.js';
 import chalk from 'chalk';
 import { resolveTarget, resolveName, suggestNames } from '../src/fuzzy.js';
 
@@ -575,8 +576,8 @@ assert.ok(!setView.includes('Archived'), 'no archived section when none');
 const arcArgs = { ...setArgs, archived: [{ name: 'old', path: '/old/dir' }], height: 80 };
 const arcView = strip(renderInteractiveView({ ...arcArgs, settingIndex: 0 }));
 assert.ok(arcView.includes('Archived 1') && arcView.includes('/old/dir') && arcView.includes('change (saved)'), 'archived section lists them');
-// 32 setting rows on Windows (pane split hidden), so index 32 is the first archived one.
-const arcSel = strip(renderInteractiveView({ ...arcArgs, settingIndex: 31 + win }));
+// 33 setting rows on Windows (pane split hidden), so index 33 is the first archived one.
+const arcSel = strip(renderInteractiveView({ ...arcArgs, settingIndex: 32 + win }));
 assert.ok(arcSel.includes('› old') && arcSel.includes('↵ restore') && arcSel.includes('upex restore old') && arcSel.includes('^d delete') && !arcView.includes('^d delete'), 'picked archived row: restore and delete keys, note');
 
 // color dot column before names, usage at the right edge
@@ -781,8 +782,8 @@ assert.ok(strip(renderInteractiveView({ ...setArgs, query: 'zzz', settingIndex: 
 const short = rowsOf({ ...setArgs, height: 14, settingIndex: 22 + win });
 assert.ok(short.length <= 14 && short.some(l => l.startsWith('  › Web theme')) && short.at(-1).includes('setting'), 'short terminal scrolls settings, keeps the footer');
 assert.equal(at({ ...setArgs, height: 14, settingIndex: 21 + win }, 3, short.findIndex(l => l.startsWith('  › Web theme')) + 1)?.setting, 21 + win, 'scrolled settings stay clickable');
-const arcShort = { ...setArgs, archived: [{ name: 'old', path: '/old/dir' }], height: 14, settingIndex: 31 + win };
-assert.equal(at(arcShort, 3, rowsOf(arcShort).findIndex(l => l.startsWith('  › old')) + 1)?.setting, 31 + win, 'last archived row scrolls into view, stays clickable');
+const arcShort = { ...setArgs, archived: [{ name: 'old', path: '/old/dir' }], height: 14, settingIndex: 32 + win };
+assert.equal(at(arcShort, 3, rowsOf(arcShort).findIndex(l => l.startsWith('  › old')) + 1)?.setting, 32 + win, 'last archived row scrolls into view, stays clickable');
 assert.equal(checkSettings({ accent: 'red' }).error, 'accent must be one of: default, green, blue, purple, orange, or a hex color like #ff66aa.', 'bad accent refused');
 assert.deepEqual([checkSettings({ accent: '#FF66aa' }).next.accent, checkSettings({ accent: 'ff66aa' }).next.accent, checkSettings({ sort: '#ff66aa' }).error?.slice(0, 4)], ['#ff66aa', '#ff66aa', 'sort'], 'hex only for accent, normalized');
 assert.deepEqual([setting('accent', { accent: '#ff66aa' }), setting('accent', { accent: '#ff66a' }), setting('accent', { accent: '"><x' })], ['#ff66aa', 'default', 'default'], 'stored hex read back, junk falls back');
@@ -840,11 +841,11 @@ assert.ok(v({}).includes('^u web ui') && v({ view: 'workspaces' }).includes('^u 
 {
   const extras = [{ section: 'Openers', kind: 'opener', name: 'zed', text: 'zed' }, { section: 'Maintenance', kind: 'stats', name: 'Stats', text: 'web 3' }];
   const ex = (i, more = {}) => strip(renderInteractiveView({ ...setArgs, extras, archived: [{ name: 'old', path: '/o' }], height: 80, settingIndex: i, ...more }));
-  const e0 = ex(31 + win);
+  const e0 = ex(32 + win);
   assert.ok(e0.indexOf('Openers') < e0.indexOf('Maintenance') && e0.indexOf('Maintenance') < e0.indexOf('Archived 1'), 'extra sections in order');
   assert.ok(e0.includes('› zed') && e0.includes('↵ edit command') && e0.includes('^d remove'), 'opener row keys');
-  assert.ok(ex(32 + win, { expanded: { kind: 'stats', lines: ['web  3'] } }).includes('↵ hide') && ex(32 + win, { expanded: { kind: 'stats', lines: ['web  3'] } }).includes('      web  3'), 'stats lines under its row');
-  assert.ok(ex(33 + win).includes('› old') && ex(33 + win).includes('↵ restore'), 'archived index after the extras');
+  assert.ok(ex(33 + win, { expanded: { kind: 'stats', lines: ['web  3'] } }).includes('↵ hide') && ex(33 + win, { expanded: { kind: 'stats', lines: ['web  3'] } }).includes('      web  3'), 'stats lines under its row');
+  assert.ok(ex(34 + win).includes('› old') && ex(34 + win).includes('↵ restore'), 'archived index after the extras');
   assert.ok(strip(renderInteractiveView({ ...setArgs, mode: 'confirm', ask: 'remove opener "zed"?' })).includes('? remove opener "zed"?  y / n'), 'settings confirm question');
   const day = 86400000;
   const sl = statLines({ code: { displayName: 'VS Code' } }, [{ name: 'web', opener: 'code', ts: 10 * day }, { name: 'web', ts: 11 * day }, { name: 'api', ts: 11 * day }], 12 * day).map(strip);
@@ -1509,6 +1510,35 @@ assert.deepEqual([parseLog('1700000000 fix it'), parseLog(''), parseLog(null)], 
   assert.deepEqual(seen, [a, b, c], 'gitOf one at a time, cached, stoppable');
   for (const d of [a, b, c]) fs.rmSync(d, { recursive: true, force: true });
 }
+// Folder size: robocopy summary in any language, du + wc, the pane line, a real lookup.
+{
+  const de = '\n  Verzeich.:      3893      3893         0         0         0         0\n  Dateien:     32218     32218         0         0         0         0\n    Bytes: 835633619 835633619         0         0         0         0\n   Zeiten:   0:00:00   0:00:00                       0:00:00   0:00:00\n';
+  const en = '2026/11/10 02:39:05 ERROR 5 (0x00000005) Access denied\n   Dirs :  2  2  0  0  0  0\r\n  Files :  1  1  0  0  0  0\r\n  Bytes :  5  5  0  0  0  0\r\n';
+  assert.deepEqual([parseRobocopy(de), parseRobocopy(en), parseRobocopy('ERROR : bad\n')], [{ files: 32218, bytes: 835633619 }, { files: 1, bytes: 5 }, null], 'parseRobocopy');
+  assert.deepEqual([parseDu('12\t/a b\n  3\n'), parseDu(''), parseDu('0\n')], [{ files: 3, bytes: 12288 }, null, null], 'parseDu');
+  assert.deepEqual([0, 1023, 2048, 835633619, 3.2 * 2 ** 30].map(formatBytes), ['0 B', '1023 B', '2.0 KB', '797 MB', '3.2 GB'], 'formatBytes');
+  assert.equal(sizeCommand('C:\\', 'win32')[1][0], 'C:\\.', 'drive root keeps no bare trailing backslash');
+  assert.equal(sizeCommand('D:\\a b\\', 'win32')[1][0], 'D:\\a b', 'trailing backslash dropped');
+  assert.equal(sizeCommand('/x y', 'linux')[1].at(-1), '/x y', 'path passed as $1, not in the script');
+  const sargs = { ...viewArgs, choices: [det], full: true, width: 150, height: 30, gitFor: () => null, sizeFor: () => ({ files: 1200, bytes: 5 * 2 ** 20 }) };
+  assert.ok(strip(renderInteractiveView({ ...sargs, settings: { size: 'on' } })).includes('5.0 MB in 1,200 files'), 'pane shows folder size');
+  assert.ok(!strip(renderInteractiveView({ ...sargs, settings: { size: 'off' } })).includes('5.0 MB'), 'size off hides it');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'upex size '));
+  fs.mkdirSync(path.join(dir, 'sub'));
+  fs.writeFileSync(path.join(dir, 'a.txt'), 'hello');
+  fs.writeFileSync(path.join(dir, 'sub', 'b.txt'), 'x'.repeat(3000));
+  sizeOf(path.join(dir, 'gone'), () => assert.fail('a dropped lookup landed'));
+  const got = await new Promise(res => sizeOf(dir, () => res(sizeOf(dir))));
+  assert.equal(got?.files, 2, 'real lookup counts files');
+  assert.ok(os.platform() === 'win32' ? got.bytes === 3005 : got.bytes >= 3005, 'real lookup sizes them');
+  const link = `${dir} link`;
+  fs.symlinkSync(dir, link, 'junction');
+  assert.equal((await new Promise(res => sizeOf(link, () => res(sizeOf(link)))))?.files, 2, 'a linked folder is sized, not the link');
+  fs.unlinkSync(link);
+  sizeOf(path.join(dir, 'sub'), () => assert.fail('a stopped lookup landed'));
+  stopSize();
+  fs.rmSync(dir, { recursive: true, force: true });
+}
 // ^s with the pane: scripts there, the shortcut list stays; a pane row click picks that script.
 {
   const sargs = { ...viewArgs, choices: [det], full: true, width: 150, height: 30, mode: 'scripts', scriptIndex: 1, scripts: { pm: 'npm', list: [{ name: 'dev', path: 'vite' }, { name: 'build', path: 'vite build' }] } };
@@ -1654,7 +1684,7 @@ try {
   assert.equal(cfg2.paneSplit, 'horizontal', 'refused request saved nothing, later one did');
   assert.equal(cfg2.defaultOpener, 'vscode', 'default opener stored as its key');
   const st2 = await (await fetch(base + '/api/state', { headers: { 'x-upex-token': token } })).json();
-  assert.deepEqual(st2.settings, { startView: 'apps', sort: 'name', terminalLayout: 'panes', paneSplit: 'horizontal', terminalShell: 'powershell', fullScreen: 'on', mouse: 'on', theme: 'system', accent: 'default', density: 'comfortable', paths: 'dim', keyHints: 'short', maxRows: 'auto', recentStrip: 'off', staleAfter: '60', views: 'all', enter: 'quit', numberKeys: 'off', confirmMany: '5', fuzzy: 'normal', searchIn: 'all', flash: '3', updateCheck: 'on', usage: 'off', rowDetails: 'both', pinned: 'top', groups: 'off', narrowPane: 'toggle', paneWidth: 'normal', goals: 'off', git: 'off', glyphs: 'unicode', defaultOpener: 'vscode' }, 'state reports settings');
+  assert.deepEqual(st2.settings, { startView: 'apps', sort: 'name', terminalLayout: 'panes', paneSplit: 'horizontal', terminalShell: 'powershell', fullScreen: 'on', mouse: 'on', theme: 'system', accent: 'default', density: 'comfortable', paths: 'dim', keyHints: 'short', maxRows: 'auto', recentStrip: 'off', staleAfter: '60', views: 'all', enter: 'quit', numberKeys: 'off', confirmMany: '5', fuzzy: 'normal', searchIn: 'all', flash: '3', updateCheck: 'on', usage: 'off', rowDetails: 'both', pinned: 'top', groups: 'off', narrowPane: 'toggle', paneWidth: 'normal', goals: 'off', git: 'off', size: 'on', glyphs: 'unicode', defaultOpener: 'vscode' }, 'state reports settings');
   assert.deepEqual(Object.keys(cfg2.workspaces), ['work'], 'settings save keeps workspaces');
   const note = path.join(webHome, 'note.txt');
   fs.writeFileSync(note, '');

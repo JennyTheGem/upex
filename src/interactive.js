@@ -10,6 +10,7 @@ import chalk from 'chalk';
 import Fuse from 'fuse.js';
 import { getInteractiveAppChoices, getAppMap, isTerminalApp, hasWindowsTerminal, defaultOpener, readSettings, setting, startTab, shownTabs, isHex, copyToClipboard, readClipboard, launchUrl, configApps, SETTINGS, settingValues, settingShown } from './launcher.js';
 import { gitOf, stopGit } from './git.js';
+import { sizeOf, stopSize, formatBytes } from './size.js';
 import { fuseOpts } from './fuzzy.js';
 import { loadLinks, activeLinks, unarchived, aliasesOf, takenError, checkAliases, frecency, removeLinks, saveLinks, setLink, renameLink, loadWorkspaces, saveWorkspaces, removeWorkspace, nameError, loadConfig, saveConfig, withPinned, setPinOrder, StoreError, undoLast, hasBackups, pruneBroken, staleLinks, loadHistory, statsFrom, parseColor, colorOf, COLORS, pathKey, topSuggestion, hideVisit, LINKS_FILE, CONFIG_FILE } from './store.js';
 import { describeEntry } from './commands/workspace.js';
@@ -745,6 +746,7 @@ const SETTING_ROWS = [
   { section: 'Detail pane', key: 'paneWidth', label: 'Width', scope: 'tui', names: { normal: 'Normal', narrow: 'Narrow', wide: 'Wide' } },
   { section: 'Detail pane', key: 'goals', label: 'Open goals', scope: 'tui+web', names: { off: 'Off', 3: '3', 5: '5', 10: '10' } },
   { section: 'Detail pane', key: 'git', label: 'Git status', scope: 'tui', names: { off: 'Off', on: 'On' } },
+  { section: 'Detail pane', key: 'size', label: 'Folder size', scope: 'tui', names: { on: 'On', off: 'Off' } },
 ];
 // Pane split only matters for split panes, mouse for full screen; Windows-only rows hide elsewhere.
 const visibleRows = s => SETTING_ROWS.filter(r => settingShown(r.key) && (r.key !== 'paneSplit' || s.terminalLayout === 'panes')
@@ -799,6 +801,7 @@ function settingNote(key, s, wt) {
   if (key === 'narrowPane') return 'Under 140 columns (full screen): Shift+→ opens the pane, Shift+← or Esc closes it, or it always shows. Not under 60.';
   if (key === 'paneWidth') return 'How much of the screen the pane takes: Narrow leaves the list more room, Wide shows more details.';
   if (key === 'goals') return 'Pane right of the list (full screen): open upgo goals of a folder, up to this many. S-→ picks one, Enter copies it, ^↵ hands it to Claude; a click copies, Ctrl+click hands it to Claude. upex ui shows them on one line under the name.';
+  if (key === 'size') return 'Pane right of the list (full screen): size and file count of a folder, looked up in the background (robocopy on Windows, du elsewhere).';
   if (key === 'git') return 'Pane right of the list (full screen): branch, ahead/behind, changes and last commit of a folder in git. ^g opens its web page.';
   if (key === 'keyHints') return 'Keys under the list. Short: one row of what the picked row can do now. Full: every key. Off: more room for the list. ? on an empty filter (or ^k) shows every key in any mode. Settings keeps its keys.';
   if (key === 'glyphs') return 'ASCII swaps arrows, pointers, lines and the ellipsis for plain characters, for fonts that show boxes.';
@@ -888,6 +891,8 @@ function folderGoals(c, max) {
 }
 // Git status the pane shows for a row (git setting on, folder shortcuts only); `gitFor(dir)` never blocks.
 const folderGit = (c, on, gitFor) => (on === 'on' && isFolder(c) ? gitFor(c.path) : null);
+// Folder size the pane shows for a row (size setting on, folders only); `sizeFor(dir)` never blocks.
+const folderSize = (c, on, sizeFor) => (on === 'on' && isFolder(c) ? sizeFor(c.path) : null);
 // Short name of a repo's web host for the ^g hint: github, gitlab, ... (a one-label host as is).
 const hostName = url => new URL(url).hostname.split('.').slice(-2)[0];
 // What Enter copies in the goal picker: "id: title" and the body below.
@@ -934,7 +939,7 @@ export function gitLines(g, pw, now = Date.now()) {
 
 // Detail pane lines for the selected row, each at most `pw` wide; clickable ones are { text, web | copy, msg }.
 // `goals` from goalSummary, `sel` the picked one.
-export function detailLines(c, pw, appChoices = [], now = Date.now(), { goals = null, sel = -1, pick = chalk.bold, git = null } = {}) {
+export function detailLines(c, pw, appChoices = [], now = Date.now(), { goals = null, sel = -1, pick = chalk.bold, git = null, size = null } = {}) {
   if (!c) return [];
   if (c.entries) return [chalk.bold(clipName(c.name, pw).text), '', ...c.entries.map(describeEntry)].map(l => ui.truncate(l, pw));
   const opener = c.opener && (appChoices.find(a => a.key === c.opener)?.label || c.opener);
@@ -961,6 +966,7 @@ export function detailLines(c, pw, appChoices = [], now = Date.now(), { goals = 
     c.tags?.length && `#${c.tags.join(' #')}`,
     c.aliases?.length && `aka ${c.aliases.join(' ')}`,
     !isNaN(added) && `added ${added.toLocaleDateString('sv-SE')}`,
+    size && `${formatBytes(size.bytes)} in ${size.files.toLocaleString('en-US')} file${size.files === 1 ? '' : 's'}`,
     c.expires && `expires in ${ui.span(c.expires - now, Math.ceil)}`], pw).map(l => chalk.dim(l)));
   if (c.same?.length || stale || note.length) out.push(...GAP);
   if (c.same?.length) out.push(chalk.yellow(`same path as ${c.same.join(' ')}`));
@@ -1053,6 +1059,7 @@ export function renderInteractiveView({
   marked = [], // the marked rows as Enter opens them: [{ c, app, count }]
   goalIndex = 0, // goal picker (mode 'goals', S-→ into the pane)
   gitFor = gitOf, // dir -> cached git status or null, never blocks
+  sizeFor = sizeOf, // dir -> cached { files, bytes } or null, never blocks
   width = 80,
   height = 24,
   maxList = Infinity,
@@ -1092,6 +1099,7 @@ export function renderInteractiveView({
   const goals = pane && !isWs && !marking && !isForm ? folderGoals(currentChoice, settings.goals) : null;
   const isGoals = mode === 'goals' && !!goals?.next.length;
   const git = pane && !isWs && !isScripts && !marking && !isForm ? folderGit(currentChoice, settings.git, gitFor) : null;
+  const size = pane && !isWs && !isScripts && !marking && !isForm ? folderSize(currentChoice, settings.size, sizeFor) : null;
   const w = Math.max(width, 20);
   const pw = pane ? paneWidthOf(w, settings.paneWidth) : 0; // pane width
   const lw = pane ? w - pw - 3 : w; // list width, " │ " between
@@ -1417,7 +1425,7 @@ export function renderInteractiveView({
     const sel = isGoals ? Math.min(goalIndex, goals.next.length - 1) : -1;
     const detail = isForm ? formLines(form, pw, appChoices, pick) : isScripts ? scriptLines(scripts, scriptIndex, pw, lines.length - bodyStart, pick)
       : marking ? markLines(marked, pw, lines.length - bodyStart, appChoices, pick)
-      : detailLines(currentChoice, pw, appChoices, Date.now(), { goals, sel, pick, git });
+      : detailLines(currentChoice, pw, appChoices, Date.now(), { goals, sel, pick, git, size });
     // Picking and taller than the pane: scroll to its end (the goals), the picked one in view.
     const skip = isGoals ? Math.max(0, Math.min(detail.length - (lines.length - bodyStart), detail.length - goals.next.length + sel)) : 0;
     for (let i = bodyStart; i < lines.length; i++) {
@@ -1601,6 +1609,7 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
         marked: marking() ? markedPlan() : [],
         goalIndex,
         gitFor,
+        sizeFor,
         counts: { shortcuts: allChoices.filter(inView('shortcuts')).length, apps: allChoices.filter(inView('apps')).length, workspaces: wsChoices.length },
         width,
         height,
@@ -1760,6 +1769,7 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
       for (const w of watchers) w.close();
       clearTimeout(reloadTimer);
       stopGit();
+      stopSize();
       clearTimeout(flashTimer);
       stopWeb();
       stdin.removeListener('keypress', onKeypress);
@@ -1865,6 +1875,7 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
     const watchers = [];    // live reload, set up last
     let reloadTimer = null;
     const gitFor = dir => gitOf(dir, guard(() => { if (!closed) redraw(); }));
+    const sizeFor = dir => sizeOf(dir, guard(() => { if (!closed) redraw(); }));
     // ^g / a click on the pane's web line: the selected repo's web page.
     const openWeb = () => {
       const url = paneOn() && folderGit(filteredChoices[selectedIndex], settings.git, gitFor)?.web;
