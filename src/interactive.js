@@ -255,14 +255,8 @@ export function usageText(c, usage = 'ago', now = Date.now()) {
 let asciiHints = false;
 const ASCII_KEYS = [['↑↓', 'up/down'], ['←→', 'left/right'], ['→', 'right'], ['←', 'left'], ['↵', 'enter'], ['⌫', 'bs']];
 const hintKey = k => (asciiHints ? ASCII_KEYS.reduce((s, [a, b]) => s.replace(a, b), k) : k);
-// HINT_SEP in a pair list: a dim | between key groups, dropped at a row's start or end.
-const HINT_SEP = '|';
-const keyHint = (pairs) => {
-  const ps = pairs.filter(Boolean);
-  while (ps[0] === HINT_SEP) ps.shift();
-  while (ps.at(-1) === HINT_SEP) ps.pop();
-  return '  ' + ps.map(p => (p === HINT_SEP ? chalk.dim(HINT_SEP) : `${hintKey(p[0])} ${chalk.dim(p[1])}`)).join('  ');
-};
+// The word is what you read, so the key is dim and the word plain.
+const keyHint = pairs => '  ' + pairs.filter(Boolean).map(p => `${chalk.dim(hintKey(p[0]))} ${p[1]}`).join('  ');
 // One hint row of at most w columns: from the first pair that doesn't fit on, pairs are left out.
 const fitHint = (pairs, w) => keyHint(pairs.filter(Boolean).filter((p, i, a) => vis(keyHint(a.slice(0, i + 1))) <= w));
 // Hint rows of at most w columns: a pair that doesn't fit starts the next row.
@@ -617,7 +611,7 @@ function formNote(f, form) {
   return 'Archived on its own after this long, like add --ttl.';
 }
 
-// Form lines in `w` columns: name and type on top, a row per field (the picked one with its input while editing), then its note.
+// Form lines in `w` columns: a row per field (the picked one with its input while editing), then its note.
 // `form` = { name, entry (shortcut entry | workspace entries), ws, field, editing, buffer, cursor, kind (type picked, not saved) }.
 export function formLines(form, w, appChoices = [], pick = chalk.bold, now = Date.now()) {
   const e = form.entry;
@@ -652,7 +646,8 @@ export function formLines(form, w, appChoices = [], pick = chalk.bold, now = Dat
     return optionRow(x.labels, x.at, vw, null, pick);
   };
   const label = f => (form.ws && f !== 'name' ? clipName(String(e[f]?.shortcut ?? '?'), 9).text : f);
-  const out = [lr(chalk.bold(form.name), chalk.dim(form.ws ? 'workspace' : KIND_NAMES[kindOf(e)]), w, 10), ''];
+  // The prompt line above already names it.
+  const out = [];
   rows.forEach((f, i) => {
     const sel = i === form.field;
     const v = sel && form.editing ? inputLine(form.buffer, form.cursor, vw) : value(f);
@@ -755,7 +750,7 @@ function settingNote(key, s, wt) {
   if (key === 'fuzzy') return 'How close a typed name must be, in this filter and for upex <name> / go. Exact: the letters in a row, no typos. Loose: more typos.';
   if (key === 'searchIn') return 'What the filter looks at. Names only: names and aliases. #tag, @opener and is:pinned, is:missing, is:stale, is:app, is:new, is:temp filter either way.';
   if (key === 'updateCheck') return `Checks npm once a day in the background; after a command, one dim line when a newer upex is out. This is v${VERSION}.`;
-  if (key === 'flash') return 'How long a success message (bottom right) stays. Warnings always stay until the next key.';
+  if (key === 'flash') return 'How long a success message (right of the filter) stays. Warnings always stay until the next key.';
   if (key === 'maxRows') return s.fullScreen === 'off' ? 'List rows here.' : 'List rows here. Auto: as many as the screen fits.';
   if (key === 'defaultOpener') return 'Opens folder shortcuts that have no opener of their own.';
   if (key === 'fullScreen') return 'Whole terminal, restored on exit. Off: inline, no mouse.';
@@ -770,7 +765,7 @@ function settingNote(key, s, wt) {
   if (key === 'paneWidth') return 'How much of the screen the pane takes: Narrow leaves the list more room, Wide shows more details.';
   if (key === 'goals') return 'Pane right of the list (full screen): open upgo goals of a folder, up to this many. S-→ picks one to copy, a click copies it, Ctrl+click hands it to Claude. upex ui shows them on one line under the name.';
   if (key === 'git') return 'Pane right of the list (full screen): branch, ahead/behind, changes and last commit of a folder in git. ^g opens its web page.';
-  if (key === 'keyHints') return 'Key rows under the list. Short: one row of the main keys. ? on an empty filter shows every key (Full and Off too). Off: more room for the list. Settings keeps its keys.';
+  if (key === 'keyHints') return 'Keys under the list. Short: one row of what the picked row can do now. Full: every key. Off: more room for the list. ? on an empty filter (or ^k) shows every key in any mode. Settings keeps its keys.';
   if (key === 'glyphs') return 'ASCII swaps arrows, pointers, lines and the ellipsis for plain characters, for fonts that show boxes.';
   if (key === 'theme') return 'Colors of upex ui. The terminal keeps its own.';
   if (key === 'terminalLayout') {
@@ -978,13 +973,13 @@ export function markLines(marked, pw, rows, appChoices = [], pick = chalk.bold) 
   const shown = n <= room ? marked : marked.slice(0, Math.max(1, room - 1));
   const how = ({ c, app, count }) => (c.exists === false ? chalk.red('missing') : c.isUrl ? 'browser' : c.isApp ? 'launches'
     : `${appChoices.find(a => a.key === app)?.label || app}${count > 1 ? ` ×${count}` : ''}`);
-  const out = [`${pick('●')} ${chalk.bold(`${n} marked`)}`, '', `${hintKey('↵')} ${chalk.dim('opens')}`,
+  const out = [`${pick('●')} ${chalk.bold(`${n} marked`)}`, '', `${chalk.dim(hintKey('↵'))} opens`,
     ...shown.map((m) => {
       const name = clipName(m.c.name, nw).text;
       return `  ${name}${' '.repeat(nw - vis(name) + 2)}${how(m)}`;
     })];
   if (shown.length < n) out.push(chalk.dim(`  ↓ ${n - shown.length} more`));
-  out.push('', `${hintKey('^x')} ${chalk.dim(`archives ${n > 1 ? `all ${n}` : 'it'}, ^z undo`)}`);
+  out.push('', `${chalk.dim(hintKey('^x'))} archives ${n > 1 ? `all ${n}` : 'it'}${chalk.dim(', ^z undo')}`);
   return out.map(l => ui.truncate(l, pw));
 }
 
@@ -1062,13 +1057,20 @@ export function renderInteractiveView({
   // With the pane, the rules join its │ with ┬ (top) and ┴ (bottom).
   const ruleText = j => (pane ? `  ${'─'.repeat(lw - 1)}${j}${'─'.repeat(pw + 1)}` : `  ${'─'.repeat(w - 2)}`);
   const ruleOf = j => chalk.dim(ruleText(j));
-  // A plain string is a warning; { text, ok: true } a success. One line, right end of the bottom rule, so nothing moves.
-  const flashText = flash ? ui.truncate(` ${String(flash.text ?? flash).replace(/\s*\n\s*/g, ' ')} `, w - 6) : '';
-  const flashOn = (flash.ok ? chalk.green : chalk.yellow)(flashText);
-  // Without a flash, the version sits there (dim): always on Settings, elsewhere only from VERSION_WIDTH columns.
-  const tagText = flash ? flashText : isSettings || width + 1 >= VERSION_WIDTH ? ` v${VERSION} ` : '';
+  // A plain string is a warning; { text, ok: true } a success. One line at the right end of the prompt line,
+  // where the eye already is, so nothing moves.
+  const flashText = flash ? oneLine(flash.text ?? flash) : '';
+  const flashOn = flash ? (flash.ok ? chalk.green : chalk.yellow)(flashText) : '';
+  // `left` with `right` (clipped) at the right edge; a flash takes the place of `right`.
+  const withRight = (left, right = '') => {
+    const r = flashOn || right;
+    const room = w - vis(left) - 2;
+    return r && room >= Math.min(8, vis(r)) ? left + ' '.repeat(Math.max(2, w - vis(left) - Math.min(vis(r), room))) + ui.truncate(r, room) : left;
+  };
+  // The version, dim, at the right end of the bottom rule: always on Settings, elsewhere only from VERSION_WIDTH columns.
+  const tagText = isSettings || width + 1 >= VERSION_WIDTH ? ` v${VERSION} ` : '';
   const at = w - vis(tagText) - 2;
-  const rule = chalk.dim(ruleText('┴').slice(0, at)) + (flash ? flashOn : chalk.dim(tagText)) + chalk.dim(ruleText('┴').slice(at + vis(tagText)));
+  const rule = chalk.dim(ruleText('┴').slice(0, at) + tagText + ruleText('┴').slice(at + vis(tagText)));
   const terminal = isTerminalApp(appChoices[selectedAppIndex]?.key);
   const pick = accentOf(settings.accent);
   // Compact: no spacer lines.
@@ -1096,40 +1098,39 @@ export function renderInteractiveView({
   // Prompt line: filter, or the live action (input / delete confirm).
   if (mode === 'input') {
     const label = PROMPT_LABEL[action](clipName(String(inputName ?? currentChoice?.name ?? ''), 24).text, inputName);
-    // Keep the end of a long value in view, where the cursor is.
-    lines.push(`  ${chalk.bold(pick('›'))} ${label} ${inputLine(inputBuffer, inputCursor, Math.max(1, w - vis(label) - 5))}`);
+    // Keep the end of a long value in view, where the cursor is; a flash gets up to half the line,
+    // the field at least 10 columns, and the label gives way.
+    const msg = flashText ? Math.min(vis(flashText), Math.floor(w / 2)) + 2 : 0;
+    const n = Math.max(10, w - vis(label) - 5 - msg);
+    lines.push(withRight(`  ${chalk.bold(pick('›'))} ${ui.truncate(label, Math.max(1, w - 5 - n - msg))} ${inputLine(inputBuffer, inputCursor, n)}`));
   } else if (mode === 'confirm') {
     const what = `  ? ${action?.startsWith('archive') ? 'archive' : 'delete'} ${isWs ? 'workspace ' : ''}`;
     // Clip the name, not the line, so "y / n" stays visible.
     const name = clipName(currentChoice?.name || '', Math.max(1, w - vis(what) - 10)).text;
     const q = ask ? `  ? ${ui.truncate(ask, Math.max(1, w - 12))}` : action === 'archiveMarked' ? `${what}${marks.size} marked?` : `${what}"${name}"?`;
-    lines.push(chalk.yellow(q) + chalk.dim('  y / n'));
+    lines.push(withRight(chalk.yellow(q) + chalk.dim('  y / n')));
   } else if (isForm) {
-    const left = `  ${chalk.bold(pick('›'))} ${chalk.dim(form.ws ? 'edit workspace' : 'edit')} ${chalk.bold(clipName(form.name, 24).text)}`;
-    const right = chalk.dim('saved as you go');
-    lines.push(left + (vis(left) + vis(right) + 2 <= w ? ' '.repeat(w - vis(left) - vis(right)) + right : ''));
+    lines.push(withRight(`  ${chalk.bold(pick('›'))} ${chalk.dim(form.ws ? 'edit workspace' : 'edit')} ${chalk.bold(clipName(form.name, 24).text)}`, chalk.dim('saved as you go')));
   } else if (isScripts) {
     const name = clipName(currentChoice?.name || '', 24).text;
-    lines.push(`  ${chalk.bold(pick('›'))} ${chalk.dim('run a script of')} ${chalk.bold(name)} ${chalk.dim(`(${scripts.pm})`)}`);
+    lines.push(withRight(`  ${chalk.bold(pick('›'))} ${chalk.dim('run a script of')} ${chalk.bold(name)} ${chalk.dim(`(${scripts.pm})`)}`));
   } else if (isGoals) {
-    lines.push(`  ${chalk.bold(pick('›'))} ${chalk.dim('copy a goal of')} ${chalk.bold(clipName(currentChoice.name, 24).text)}`);
+    lines.push(withRight(`  ${chalk.bold(pick('›'))} ${chalk.dim('copy a goal of')} ${chalk.bold(clipName(currentChoice.name, 24).text)}`));
   } else {
     const left = `  ${chalk.bold(pick('›'))} ${query ? `${query}${chalk.dim('▏')}` : chalk.dim('▏type to filter')}`;
-    const right = !isWs && !isSettings && marks.size ? pick(`● ${marks.size} marked`) : '';
-    lines.push(right ? left + ' '.repeat(Math.max(2, w - vis(left) - vis(right))) + right : left);
+    lines.push(withRight(left, !isWs && !isSettings && marks.size ? pick(`● ${marks.size} marked`) : ''));
   }
   lines.push(isSettings ? ruleOf('┴') : ruleOf('┬'));
   const bodyStart = lines.length;
 
-  // Rows under the body: footer rows and their rule, or just a flash row.
-  const footRows = rows => (rows.length ? rows.length + 1 : flash ? 1 : 0);
+  // Rows under the body: footer rows and their rule.
+  const footRows = rows => (rows.length ? rows.length + 1 : 0);
   // Full screen: blank rows push the footer (its rule included) to the bottom.
   const pin = (rows) => { if (full) while (lines.length + footRows(rows) < height) lines.push(''); };
-  // No rows (key hints off): no rule either, the flash gets its own row.
+  // No rows (key hints off): no rule either.
   const footer = (rows) => {
     pin(rows);
     if (rows.length) lines.push(rule, ...rows);
-    else if (flash) lines.push(' '.repeat(Math.max(0, w - vis(flashText))) + flashOn);
     return lines.join('\n');
   };
   const next = nextView(view, settings.views);
@@ -1140,6 +1141,11 @@ export function renderInteractiveView({
   const undoKey = undo && ['^z', 'undo'];
   const uiKey = ['^u', webUrl ? 'stop web ui' : 'web ui'];
   const inputRow = keyHint([['↵', 'save'], isForm && formRows(form)[form.field] === 'tags' && ['tab', 'complete'], ['←→', 'cursor'], ['^⌫', 'word'], ['^u', 'clear'], ['esc', 'cancel']]);
+  // y / n: the only keys a question takes (any other key is no).
+  const confirming = mode === 'confirm';
+  const yes = { archiveMarked: `archive ${marks.size}`, stale: 'archive all', deleteArchived: 'delete for good', removeOpener: 'remove', prune: 'remove all', openMany: 'open them' }[action]
+    || (action?.startsWith('archive') ? 'archive' : 'delete');
+  const confirmRow = keyHint([['y', yes], ['n', 'cancel']]);
   // Blank row first, so the link sits apart from the key hints.
   const webRows = webUrl ? [...gap, webStatus(webUrl, w)] : [];
 
@@ -1189,7 +1195,7 @@ export function renderInteractiveView({
       : onExtra ? EXTRA_NOTES[onExtra.kind] : rows[settingIndex] ? settingNote(rows[settingIndex].key, settings, wt) : '';
     lines.push(...gap, chalk.dim(`    ${note}`));
     const enter = onExtra && ['↵', expanded && expanded.kind === onExtra.kind ? 'hide' : onExtra.kind === 'update' && isNewer(cachedLatest(), VERSION) ? 'update' : EXTRA_KEYS[onExtra.kind]];
-    const keys = mode === 'input' ? inputRow
+    const keys = mode === 'input' ? inputRow : confirming ? confirmRow
       : keyHint([['↑↓', 'setting'], enter || (rows[settingIndex] && ['←→', 'change (saved)']), onExtra?.kind === 'opener' && ['^d', 'remove'], onArchived && ['^d', 'delete'], undoKey, tabKey, ['S-Tab', 'back'], escKey, uiKey]);
     return footer([keys, ...webRows]);
   }
@@ -1207,7 +1213,7 @@ export function renderInteractiveView({
   const goalsKey = goals?.next.length && ['S-→', 'goals'];
   const webKey = git?.web && ['^g', hostName(git.web)];
   const paneKey = toggles && (pane ? ['S-←', 'hide details'] : ['S-→', 'details']);
-  const editKeys = [(isShortcuts || isWs) && ['^a', isWs ? 'add marked' : 'add'], list.length > 0 && ['^e', 'edit'], !isWs && ['^r', 'rename']];
+  const editKeys = [(isShortcuts || isWs) && ['^a', isWs ? 'add marked' : 'add'], list.length > 0 && ['^e', 'edit'], !isWs && list.length > 0 && ['^r', 'rename']];
   const pinKey = !isWs && list.length > 0 && ['^p', currentChoice?.pinned ? 'unpin' : 'pin'];
   // Shortcuts are archived, not deleted (^d deletes in Settings > Archived); workspaces have no archive.
   const dropKey = isWs ? list.length > 0 && ['^d', 'delete'] : (list.length > 0 || many) && ['^x', many ? `archive ${many} marked` : 'archive'];
@@ -1218,8 +1224,14 @@ export function renderInteractiveView({
   const paneHint = escKey[1] !== paneKey[1] && paneKey;
   const fullRows = ({ open = openKey, win = windows, esc = escKey, pane: pk = paneHint, pin = movePin, goals: gk = goalsKey, p = pinKey, drop = dropKey, z = undoKey, web = webKey } = {}) => [
     ...wrapHint([open, ['↑↓', 'move'], opener, win, tabKey, esc, pk, pin, markKey, gk], w),
-    ...wrapHint([...editKeys, p, drop, z, uiKey, copyKey, sortKey, HINT_SEP, scriptsKey, web], w),
+    ...wrapHint([...editKeys, p, drop, z, uiKey, copyKey, sortKey, scriptsKey, web], w),
   ];
+  // Short: one row of what the picked row (or the marks) can do now, every key behind ? at the right end.
+  // Esc only when it does something other than quit.
+  const helpKey = keyHint([query ? ['^k', 'all keys'] : ['?', 'all keys']]).trimStart();
+  const nowRow = fitHint([(list.length > 0 || offer || many) && openKey, opener, windows, many ? dropKey : markKey, list.length > 0 ? ['^e', 'edit'] : editKeys[0],
+    escKey[1] !== 'quit' && escKey, goalsKey || paneHint], w - vis(helpKey) - 2);
+  const shortRow = nowRow + ' '.repeat(Math.max(2, w - vis(nowRow) - vis(helpKey))) + helpKey;
   const most = `${Math.max(many, 9)} marked`;
   const widest = fullRows({
     open: isWs ? openKey : ['↵', isShortcuts ? `open ${most}` : 'open in browser'],
@@ -1234,15 +1246,18 @@ export function renderInteractiveView({
     web: isShortcuts && pane && settings.git === 'on' && (webKey || ['^g', 'github']),
   });
   const padTo = (rows, n) => [...rows, ...Array(Math.max(0, n - rows.length)).fill('')];
-  // Key hints setting. Full: the rows above (typing: input keys, same height so the list stays put). Short: one row
-  // without the keys you learn first (↑↓, tab, esc), cut to the width; ? shows them all. Off: none.
+  // Key hints setting. Full: the rows above (typing or a question: their keys, padded to the same height so the
+  // list stays put). Short: shortRow. Off: none.
+  const short = settings.keyHints === 'short';
+  const pad = rows => (short ? rows : padTo(rows, widest.length));
   const hints = settings.keyHints === 'off' ? []
-    : settings.keyHints === 'short' ? [mode === 'input' ? inputRow : fitHint([['?', 'keys'], openKey, opener, windows, ...editKeys, pinKey, dropKey, undoKey, markKey, scriptsKey, goalsKey, webKey, paneKey, uiKey, copyKey, sortKey, movePin], w)]
-      : padTo(mode === 'input' ? [inputRow] : fullRows(), widest.length);
-  const foot = isForm ? (hints.length ? padTo([formKeys(form, inputRow)], settings.keyHints === 'short' ? 1 : widest.length) : [])
+    : pad(mode === 'input' ? [inputRow] : confirming ? [confirmRow] : short ? [shortRow] : fullRows());
+  // A question dims the opener row, it doesn't apply.
+  const openWith = confirming ? chalk.dim(`  open with  ${ui.stripAnsi(openers)}`) : `  ${chalk.dim('open with')}  ${openers}`;
+  const foot = isForm ? (hints.length ? pad([formKeys(form, inputRow)]) : [])
     : isScripts ? (hints.length ? [keyHint([['↵', 'run in a terminal'], ['↑↓', 'move'], escKey])] : [])
     : isGoals ? (hints.length ? [keyHint([['↵', 'copy'], ['↑↓', 'move'], ['esc', 'back']])] : [])
-    : [...(isShortcuts ? [`  ${chalk.dim('open with')}  ${openers}`, ...(hints.length ? gap : [])] : []), ...hints];
+    : [...(isShortcuts ? [openWith, ...(hints.length ? gap : [])] : []), ...hints];
   // No footer rows above it: no blank row under the rule.
   foot.push(...(foot.length ? webRows : webRows.slice(-1)));
 
@@ -1276,9 +1291,9 @@ export function renderInteractiveView({
     const empty = {
       workspaces: 'No workspaces yet. Mark shortcuts with space, then ^a here',
       apps: 'No app or URL shortcuts yet. Add one: upex add <name> <exe> --app',
-      shortcuts: 'No folder shortcuts yet. Add one with ^A (uses the current folder)',
+      shortcuts: 'No folder shortcuts yet. Add one with ^a (uses the current folder)',
     };
-    lines.push(query ? chalk.yellow('    no matches') : chalk.dim(`    ${empty[view]}`));
+    lines.push(chalk.dim(`    ${query ? 'no matches' : empty[view]}`));
     // What Enter offers instead, as rows; a click runs one. Not while typing a name or confirming.
     const nameWidth = Math.max(...offers.map(o => vis(o.label)));
     if (offer) offers.forEach((o, i) => {
@@ -1318,7 +1333,9 @@ export function renderInteractiveView({
       const via = c.via ? chalk.dim(`via ${c.via}`) : '';
       // Picking in the pane: its rows are the clickable ones.
       if (!isScripts || listScripts) hit(lines.length, 0, lw, { row: i });
-      lines.push(renderRow(pathLook({
+      // A question keeps the rows it is about and dims the rest.
+      const aside = confirming && !(action === 'archiveMarked' || (action === 'openMany' && marks.size && !isWs) ? marks.has(c.name) : c.name === currentChoice?.name);
+      lines.push((aside ? s => chalk.dim(ui.stripAnsi(s)) : s => s)(renderRow(pathLook({
         sel: i === index,
         mark: !plain && marks.has(c.name),
         name: c.name,
@@ -1333,7 +1350,7 @@ export function renderInteractiveView({
         dotWidth,
         usage: usageW ? chalk.dim(usageText(c, settings.usage, now).padStart(usageW)) : '',
         num: numbered && shownRows <= 9 ? String(shownRows) : '',
-      }, settings.paths)));
+      }, settings.paths))));
     }
     // Counts rows, not headings.
     const rowsIn = a => a.filter(x => !x.head).length;

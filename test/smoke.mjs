@@ -627,23 +627,28 @@ assert.equal(toAscii('‹ a › ▏▎─│┬┴…↑↓←→●★×'), '< 
 const asc = withHints('full', { settings: { glyphs: 'ascii' } }).join('\n');
 assert.ok(asc.includes('enter open') && asc.includes('up/down move') && !full.join('\n').includes('enter open'), 'ascii hint keys');
 assert.ok(full.some(l => l.includes('tab apps')) && full.some(l => l.includes('^a add')), 'full: both rows');
-assert.ok(!short1.some(l => l.includes('tab apps')) && short1.at(-1).includes('^a add') && short1.at(-1).includes('←→ opener'), 'short: one row, no learned keys');
+assert.ok(!short1.some(l => l.includes('tab apps') || l.includes('^a add')) && short1.at(-1).includes('←→ opener') && short1.at(-1).includes('^e edit'), 'short: one row of what the row can do now');
+assert.ok(/ \? all keys$/.test(short1.at(-1)) && withHints('short', { query: 'p' }).at(-1).endsWith(' ^k all keys'), 'short: all keys at the right end, ^k while filtering');
+assert.ok(!short1.at(-1).includes('esc') && withHints('short', { query: 'p' }).at(-1).includes('esc clear'), 'short: esc only when it does more than quit');
+assert.ok(withHints('short', { marks: new Set(['p1']) }).at(-1).includes('^x archive 1 marked'), 'short: marks swap space for ^x');
+assert.ok(!withHints('short', { choices: [] }).at(-1).includes('↵') && withHints('short', { choices: [] }).at(-1).includes('^a add'), 'short: nothing to open on an empty list');
+assert.equal(setting('keyHints', {}), 'short', 'short hints by default');
 assert.ok(!off.some(l => l.includes('^a add') || l.includes('↵ open')) && off.at(-1).includes('open with'), 'off: no hints, opener row kept');
 assert.ok(off.filter(l => /^  [ ›] p\d/.test(l)).length > full.filter(l => /^  [ ›] p\d/.test(l)).length, 'off: more list rows');
 const cut = withHints('short', { width: 40 }).at(-1);
-assert.ok(cut.length <= 40 && cut.includes('↵ open') && !cut.includes('^u'), 'short row cut to the width');
+assert.ok(cut.length <= 40 && cut.includes('↵ open') && cut.endsWith('? all keys'), 'short row cut to the width, all keys kept');
 assert.ok(withHints('off', { view: 'apps' }).at(-1).includes('↓'), 'off in apps: no footer rule, list runs to the bottom');
 assert.ok(/^ {2}─+$/.test(withHints('off', { view: 'apps', webUrl: 'http://h/?t=x' }).at(-2)), 'off: web link right under the rule');
 assert.ok(withHints('off', { view: 'settings' }).some(l => l.includes('change (saved)')), 'settings keeps its keys');
 assert.equal(withHints('short', { mode: 'input', action: 'rename' }).at(-1).trim().startsWith('↵ save'), true, 'short: typing shows input keys');
-// full rows wrap instead of cutting; ^s and ^g sit last behind a |; the row count ignores the selection
-assert.deepEqual(wrapHint([['a', 'one'], ['b', 'two'], '|', ['c', 'three']], 14).map(strip), ['  a one  b two', '  c three'], 'wrapHint wraps, a | starting a row goes');
-assert.deepEqual(wrapHint([['a', 'one'], '|', false], 40).map(strip), ['  a one'], 'trailing | dropped');
+// full rows wrap instead of cutting; the row count ignores the selection
+assert.deepEqual(wrapHint([['a', 'one'], ['b', 'two'], false, ['c', 'three']], 14).map(strip), ['  a one  b two', '  c three'], 'wrapHint wraps');
+assert.ok(wrapHint([['^x', 'archive']], 40)[0] === `  ${chalk.dim('^x')} archive`, 'hint: key dim, word plain');
 {
   const nar = withHints('full', { width: 50 });
   const rule = nar.findLastIndex(l => /^ *─+$/.test(l));
   const keys = nar.slice(rule + 1).join(' ');
-  assert.ok(nar.slice(rule).every(l => l.length <= 50) && keys.includes('^y copy') && keys.includes('^u web ui') && keys.includes('|  ^s scripts'), 'narrow full: keys wrap, nothing cut, | before ^s');
+  assert.ok(nar.slice(rule).every(l => l.length <= 50) && keys.includes('^y copy') && keys.includes('^u web ui') && keys.includes('^s scripts') && !keys.includes('|'), 'narrow full: keys wrap, nothing cut');
   // Rows under the last rule (full screen, so S-→ details shows): the same with the pinned row (A-↑↓ move pin, ^p unpin) or the other one selected, marks, a filter, a confirm or typing.
   const footOf = (extra) => {
     const l = withHints('full', { full: true, choices: [{ name: 'a', path: 'P', exists: true, pinned: true }, { name: 'b', path: 'Q', exists: true }], ...extra });
@@ -653,7 +658,6 @@ assert.deepEqual(wrapHint([['a', 'one'], '|', false], 40).map(strip), ['  a one'
   assert.ok([60, 99].every(width => states.every(s => footOf({ width, ...s }) === footOf({ width }))), 'key rows keep their count when the selection, marks, filter or mode change');
   const apps = { view: 'apps', width: 89, choices: [{ name: 'x', path: 'x.exe', isApp: true, exists: true }, { name: 'u', path: 'http://x', isUrl: true, exists: true }] };
   assert.equal(footOf(apps), footOf({ ...apps, selectedIndex: 1 }), 'apps: launch app and open in browser rows count the same');
-  assert.ok(withHints('short').at(-1).trim().startsWith('? keys'), 'short: ? first');
   const help = withHints('short', { keysHelp: true }).join('\n');
   assert.ok(help.includes('Move') && help.includes('tab apps') && help.includes('^x archive') && help.includes('any key closes') && !help.includes('p0 '), 'key overlay lists every key over the list');
   assert.deepEqual(['on', 'off'].map(mouse => withHints('short', { keysHelp: true, full: true, settings: { keyHints: 'short', mouse } }).join(' ').includes('right-click')), [true, false], 'key overlay: right-click only with the mouse on');
@@ -717,11 +721,22 @@ const rowsOf = a => strip(renderInteractiveView(a)).split('\n');
 const twoLine = { ...viewArgs, height: 20, flash: 'Command "claude" not found.\nInstall it.' };
 const noFlash = rowsOf({ ...twoLine, flash: '' });
 const flashed = rowsOf(twoLine);
-const ruleAt = noFlash.findLastIndex(l => l.trim().startsWith('─'));
-assert.ok(flashed.length === noFlash.length && flashed.every((l, i) => i === ruleAt || l === noFlash[i]), 'flash moves no row');
-assert.ok(flashed[ruleAt].endsWith(' Command "claude" not found. Install it. ──'), 'multi-line flash: one line, right end of the bottom rule');
+const promptAt = noFlash.findIndex(l => l.includes('type to filter'));
+assert.ok(flashed.length === noFlash.length && flashed.every((l, i) => i === promptAt || l === noFlash[i]), 'flash moves no row');
+assert.ok(flashed[promptAt].endsWith(' Command "claude" not found. Install it.') && flashed[promptAt].length === 80, 'multi-line flash: one line, right end of the prompt line');
 const bare = { ...viewArgs, view: 'apps', settings: { keyHints: 'off' } };
-assert.ok(rowsOf({ ...bare, flash: 'x' }).at(-1).endsWith(' x ') && rowsOf({ ...bare, flash: 'x' }).length === rowsOf(bare).length + 1, 'no footer: flash gets its own bottom row');
+assert.equal(rowsOf({ ...bare, flash: 'x' }).length, rowsOf(bare).length, 'no footer: the flash still adds no row');
+assert.ok(rowsOf({ ...viewArgs, flash: 'too long '.repeat(20) })[3].length <= 80, 'long flash clips to the width');
+assert.ok(rowsOf({ ...viewArgs, mode: 'input', action: 'rename', inputBuffer: 'a b', flash: 'no spaces' })[3].includes('a b▏') && rowsOf({ ...viewArgs, mode: 'input', action: 'rename', inputBuffer: 'a b', flash: 'no spaces' })[3].endsWith('no spaces'), 'typing: the input and its flash share the line');
+{
+  const typed = (width, action, inputBuffer, flash, inputName) => rowsOf({ ...viewArgs, width, mode: 'input', action, inputBuffer, flash, inputName })[3];
+  assert.ok(typed(80, 'rename', 'x'.repeat(70), 'taken').endsWith('▏  taken'), 'typing: a short flash shows beside a long value');
+  const ws = typed(60, 'wsadd', 'my work', 'names cannot contain spaces', 3);
+  assert.ok(ws.length <= 60 && ws.includes('my work▏') && ws.endsWith(' names cannot contain spaces'), 'typing: a long label gives way to the value and the flash');
+  assert.ok(typed(60, 'wsadd', 'x'.repeat(30), '', 3).length <= 60 && typed(60, 'wsadd', 'x'.repeat(30), '', 3).endsWith('x▏'), 'typing: the cursor end stays in the width');
+}
+assert.ok(rowsOf({ ...viewArgs, flash: 'a\tb\r\nc' })[3].endsWith(' a b c'), 'flash: tabs and line breaks become spaces');
+assert.ok(rowsOf({ ...viewArgs, marks: new Set(['s']), flash: 'hi' })[3].endsWith('hi') && rowsOf({ ...viewArgs, marks: new Set(['s']) })[3].endsWith('● 1 marked'), 'a flash covers the marked count for a moment');
 const at = (args, x, y) => { const targets = []; renderInteractiveView({ ...args, targets }); return hitTest(targets, x, y); };
 const tabArgs = { ...viewArgs, counts: { shortcuts: 1, apps: 2, workspaces: 0 } };
 const head = strip(renderInteractiveView(tabArgs)).split('\n')[1];
@@ -802,7 +817,7 @@ assert.ok(v({}).includes('^u web ui') && v({ view: 'workspaces' }).includes('^u 
   assert.deepEqual(formRows({ ws: true, entry: [{ shortcut: 'a' }, { shortcut: 'b' }] }), ['name', 0, 1], 'workspace rows: name, then entries');
   const entry = { path: home, tags: ['work'], note: 'hi there', opener: 'explorer' };
   const fl = formLines({ name: 'web', entry, field: 4, editing: false }, 60, [{ key: 'explorer', label: 'Explorer' }]).map(strip);
-  assert.ok(fl[0].startsWith('web') && fl[0].endsWith('folder') && fl.some(l => l.startsWith('› tags') && l.includes('#work')) && fl.some(l => l.includes('‹ Explorer ›')), 'form rows');
+  assert.ok(fl[0].startsWith('  name') && !fl.some(l => l.endsWith('folder')) && fl.some(l => l.startsWith('› tags') && l.includes('#work')) && fl.some(l => l.includes('‹ Explorer ›')), 'form rows');
   assert.ok(fl.some(l => l.includes('tab completes')) && fl.every(l => l.length <= 60), 'form note, in width');
   const typing = formLines({ name: 'web', entry, field: 6, editing: true, buffer: 'new note', cursor: 8 }, 60).map(strip);
   assert.ok(typing.some(l => l.startsWith('› note') && l.includes('new note▏')), 'editing shows the input');
@@ -856,8 +871,14 @@ assert.ok(v({ webUrl: webAt }).includes('^u stop web ui') && !v({}).includes('st
 assert.ok(!v({}).includes('^z') && v({ undo: true }).includes('^z undo') && v({ view: 'apps', undo: true }).includes('^z undo'), '^z hint only while undo is available');
 const lvl = chalk.level;
 chalk.level = 1;
-assert.ok(renderInteractiveView({ ...viewArgs, flash: { text: 'added "x"', ok: true } }).includes(chalk.green(' added "x" ')), 'success flash is green');
-assert.ok(renderInteractiveView({ ...viewArgs, flash: 'path not found' }).includes(chalk.yellow(' path not found ')), 'plain flash stays yellow');
+assert.ok(renderInteractiveView({ ...viewArgs, flash: { text: 'added "x"', ok: true } }).includes(chalk.green('added "x"')), 'success flash is green');
+assert.ok(renderInteractiveView({ ...viewArgs, flash: 'path not found' }).includes(chalk.yellow('path not found')), 'plain flash stays yellow');
+{
+  // A shortcut shown twice (two tags, recent strip) keeps both rows lit while its archive is asked.
+  const dup = [{ name: 'a', path: 'P', exists: true }, { name: 'b', path: 'Q', exists: true }, { name: 'a', path: 'P', exists: true }];
+  const dimmed = renderInteractiveView({ ...viewArgs, choices: dup, mode: 'confirm', action: 'archive' }).split('\n').filter(l => l.startsWith(chalk.dim(' ').slice(0, 4)) && / [ab] /.test(strip(l)));
+  assert.deepEqual(dimmed.map(l => strip(l).trim()[0]), ['b'], 'confirm dims only the rows it is not about');
+}
 chalk.level = lvl;
 assert.equal(undoFlash({ at: 0, added: ['a', 'b'], removed: [], changed: ['c'], left: 3 }, 120000), 'undid the change from 2m ago · brought back a, b · reverted c · 3 more', 'selector ^z flash says what came back');
 assert.equal(undoFlash({ at: 0, added: [], removed: ['x'], changed: [], left: 0 }, 0), 'undid the change from 0m ago · removed x', 'no steps left: no count');
@@ -1553,7 +1574,7 @@ try {
   assert.equal(cfg2.paneSplit, 'horizontal', 'refused request saved nothing, later one did');
   assert.equal(cfg2.defaultOpener, 'vscode', 'default opener stored as its key');
   const st2 = await (await fetch(base + '/api/state', { headers: { 'x-upex-token': token } })).json();
-  assert.deepEqual(st2.settings, { startView: 'apps', sort: 'name', terminalLayout: 'panes', paneSplit: 'horizontal', terminalShell: 'powershell', fullScreen: 'on', mouse: 'on', theme: 'system', accent: 'default', density: 'comfortable', paths: 'dim', keyHints: 'full', maxRows: 'auto', recentStrip: 'off', staleAfter: '60', views: 'all', enter: 'quit', numberKeys: 'off', confirmMany: '5', fuzzy: 'normal', searchIn: 'all', flash: '3', updateCheck: 'on', usage: 'off', rowDetails: 'both', pinned: 'top', groups: 'off', narrowPane: 'toggle', paneWidth: 'normal', goals: 'off', git: 'off', glyphs: 'unicode', defaultOpener: 'vscode' }, 'state reports settings');
+  assert.deepEqual(st2.settings, { startView: 'apps', sort: 'name', terminalLayout: 'panes', paneSplit: 'horizontal', terminalShell: 'powershell', fullScreen: 'on', mouse: 'on', theme: 'system', accent: 'default', density: 'comfortable', paths: 'dim', keyHints: 'short', maxRows: 'auto', recentStrip: 'off', staleAfter: '60', views: 'all', enter: 'quit', numberKeys: 'off', confirmMany: '5', fuzzy: 'normal', searchIn: 'all', flash: '3', updateCheck: 'on', usage: 'off', rowDetails: 'both', pinned: 'top', groups: 'off', narrowPane: 'toggle', paneWidth: 'normal', goals: 'off', git: 'off', glyphs: 'unicode', defaultOpener: 'vscode' }, 'state reports settings');
   assert.deepEqual(Object.keys(cfg2.workspaces), ['work'], 'settings save keeps workspaces');
   const note = path.join(webHome, 'note.txt');
   fs.writeFileSync(note, '');
@@ -1655,7 +1676,7 @@ assert.ok(!isNewer('1.14.0-beta.1', '1.14.0'), 'pre-release tag ignored');
 assert.ok(updateText('99.0.0').startsWith('v99.0.0 out') && updateText(VERSION) === `v${VERSION} is the latest`, 'Settings update line');
 const bottom = (flash, more = {}) => stripAnsi(renderInteractiveView({ ...viewArgs, flash, width: 119, ...more })).split('\n').filter(l => l.includes('─')).at(-1);
 assert.ok(bottom('').endsWith(`─ v${VERSION} ──`) && bottom('').length === 119, 'wide: version at the right end of the bottom rule');
-assert.ok(!bottom('saved').includes(`v${VERSION}`) && bottom('saved').includes(' saved '), 'a flash covers the version');
+assert.ok(bottom('saved').includes(`v${VERSION}`) && !bottom('saved').includes('saved'), 'a flash leaves the version alone');
 assert.ok(!bottom('', { width: 60 }).includes(`v${VERSION}`), 'narrow: no version');
 assert.ok(bottom('', { ...setArgs, width: 60 }).includes(`v${VERSION}`), 'settings: version at any width');
 // Hook on a fake terminal, fresh cache (so no check spawns): notice after a command, not after completion, __names or with updateCheck off.

@@ -1403,6 +1403,17 @@
       "updated": "2026-11-09"
     },
     {
+      "id": "tui-critique-fixes",
+      "section": 3,
+      "title": "Selector critique fixes: short key row, flash on the filter line, honest confirm",
+      "phase": "later",
+      "status": "done",
+      "size": "M",
+      "created": "2026-11-10",
+      "updated": "2026-11-10",
+      "note": "Short hints default (key dim, word plain, ? all keys right); flash at the right of the prompt line; confirm shows only y / n and dims other rows; form header, ^A, lone |, ^r on empty, no-matches color fixed. Pane path tried and dropped."
+    },
+    {
       "id": "cd-support-via-wrapper-hidden-resolve-public-go",
       "section": 4,
       "title": "`cd` support via wrapper + hidden `__resolve` / public `go`",

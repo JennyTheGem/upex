@@ -144,7 +144,7 @@ export const SETTINGS = {
   accent: ['default', 'green', 'blue', 'purple', 'orange'],
   density: ['comfortable', 'compact'],
   paths: ['dim', 'full', 'hidden'],
-  // Selector footer: both key rows, one row, or none. Settings always keeps its keys.
+  // Selector footer: every key, one row of the keys for now (default), or none. Settings always keeps its keys.
   keyHints: ['full', 'short', 'off'],
   // Selector list height; auto = fill in full screen, 8 inline. A dropped 'fill' reads as auto.
   maxRows: ['auto', '8', '12', '16'],
@@ -176,7 +176,7 @@ export const settingShown = key => platform === 'win32' || !WINDOWS_ONLY.include
 export const isHex = v => typeof v === 'string' && /^#[0-9a-f]{6}$/i.test(v);
 const valid = (key, v) => SETTINGS[key].includes(v) || (key === 'accent' && isHex(v));
 // Defaults that aren't the first value, so options keep their natural order.
-const DEFAULTS = { staleAfter: '60', confirmMany: '5', usage: 'off' };
+const DEFAULTS = { staleAfter: '60', confirmMany: '5', usage: 'off', keyHints: 'short' };
 // Dropped values that still read as a current one.
 const LEGACY = { recentStrip: { on: '3' } };
 export const setting = (key, config = loadConfig()) => {
