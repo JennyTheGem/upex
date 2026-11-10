@@ -4,13 +4,9 @@
 
 import chalk from 'chalk';
 import { loadConfig, saveConfig } from '../store.js';
-import { SETTINGS, settingValues, settingShown, readSettings, checkSettings, getInteractiveAppChoices, resetSettings } from '../launcher.js';
+import { readSettings, checkSettings, getInteractiveAppChoices } from '../launcher.js';
+import { SETTINGS, settingValues, settingShown, resetSettings } from '../settings.js';
 import * as ui from '../ui.js';
-
-const fail = (msg) => {
-  ui.error(msg);
-  process.exit(1);
-};
 
 // Allowed values per setting; openers are the selector's row minus copy.
 const choices = (key) => (key === 'defaultOpener'
@@ -28,7 +24,7 @@ export function registerConfig(program) {
     .summary('Show or change settings')
     .action((action, key, value) => {
       const settings = readSettings();
-      const known = (k) => Object.hasOwn(settings, k) || fail(checkSettings({ [k]: '' }).error);
+      const known = (k) => Object.hasOwn(settings, k) || ui.fail(checkSettings({ [k]: '' }).error);
 
       if (!action || action === 'list') {
         ui.heading('Settings');
@@ -40,7 +36,7 @@ export function registerConfig(program) {
       }
 
       if (action === 'get') {
-        if (!key) fail('Usage: upex config get <setting>');
+        if (!key) ui.fail('Usage: upex config get <setting>');
         known(key);
         // Raw value only, for scripts.
         console.log(settings[key]);
@@ -48,10 +44,10 @@ export function registerConfig(program) {
       }
 
       if (action === 'set') {
-        if (!key || value === undefined) fail('Usage: upex config set <setting> <value>');
+        if (!key || value === undefined) ui.fail('Usage: upex config set <setting> <value>');
         known(key);
         const { next, error } = checkSettings({ [key]: value });
-        if (error) fail(error);
+        if (error) ui.fail(error);
         saveConfig({ ...loadConfig(), ...next });
         ui.success(`${key} = ${next[key]}`);
         return;
@@ -64,6 +60,6 @@ export function registerConfig(program) {
         return;
       }
 
-      fail(`Unknown action "${action}". Use: upex config, config get <setting>, config set <setting> <value>, config reset [setting]`);
+      ui.fail(`Unknown action "${action}". Use: upex config, config get <setting>, config set <setting> <value>, config reset [setting]`);
     });
 }

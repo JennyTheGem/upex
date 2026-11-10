@@ -32,10 +32,7 @@ export function registerStats(program) {
     .option('--all', 'Count every recorded open')
     .action((options) => {
       const days = Number(options.days);
-      if (!options.all && !(Number.isInteger(days) && days > 0)) {
-        ui.error(`--days needs a whole number above 0, got "${options.days}".`);
-        process.exit(1);
-      }
+      if (!options.all && !(Number.isInteger(days) && days > 0)) ui.fail(`--days needs a whole number above 0, got "${options.days}".`);
 
       const history = loadHistory();
       if (!history.length) {

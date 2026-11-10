@@ -33,10 +33,7 @@ export function registerAlias(program) {
       }
 
       const resolved = resolveName(name, links);
-      if (!resolved) {
-        ui.error(`Shortcut not found: ${name}`);
-        process.exit(1);
-      }
+      if (!resolved) ui.fail(`Shortcut not found: ${name}`);
       if (!resolved.exact) {
         ui.warn(`No exact match. Did you mean "${resolved.name}"?`);
         return;
@@ -55,10 +52,7 @@ export function registerAlias(program) {
         next = current.filter(a => !aliases.includes(a));
       } else if (!options.clear) {
         const checked = checkAliases(links, owner, [...current, ...aliases]);
-        if (checked.error) {
-          ui.error(checked.error);
-          process.exit(1);
-        }
+        if (checked.error) ui.fail(checked.error);
         next = checked.aliases;
       }
 

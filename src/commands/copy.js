@@ -16,12 +16,7 @@ export function registerCopy(program) {
       const links = loadLinks();
       const resolved = resolveName(name, links);
 
-      if (!resolved) {
-        ui.error(`Shortcut not found: ${name}`);
-        const hint = didYouMean(name, links);
-        if (hint) ui.dim(hint);
-        process.exit(1);
-      }
+      if (!resolved) ui.fail(`Shortcut not found: ${name}`, didYouMean(name, links));
 
       const entry = links[resolved.name];
       const targetPath = entry.path || entry.url;
@@ -37,8 +32,7 @@ export function registerCopy(program) {
       try {
         copyToClipboard(targetPath);
       } catch (err) {
-        ui.error(`Failed to copy: ${err.message}`);
-        process.exit(1);
+        ui.fail(`Failed to copy: ${err.message}`);
       }
 
       if (!resolved.exact) {

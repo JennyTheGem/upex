@@ -8,7 +8,7 @@ import chalk from 'chalk';
 import { loadLinks, activeLinks, aliasesOf } from '../store.js';
 import { gitStatus } from '../git.js';
 import { printRows, tidyPath, showsDetail, PIN, badgeText, expiryText } from '../rows.js';
-import { setting } from '../launcher.js';
+import { setting } from '../settings.js';
 import * as ui from '../ui.js';
 
 // Compact git cell: "main" (clean, dim) or "main*" (dirty, yellow); none outside a repo.

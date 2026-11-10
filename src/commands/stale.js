@@ -7,7 +7,7 @@ import readline from 'node:readline/promises';
 import chalk from 'chalk';
 import { loadLinks, saveLinks, staleLinks } from '../store.js';
 import { printRows, tidyPath } from '../rows.js';
-import { setting } from '../launcher.js';
+import { setting } from '../settings.js';
 import * as ui from '../ui.js';
 
 export function registerStale(program) {
@@ -17,10 +17,7 @@ export function registerStale(program) {
     .summary('List unused shortcuts, offer to archive them')
     .option('-y, --yes', 'Archive all listed shortcuts without asking')
     .action(async (days = setting('staleAfter'), options) => {
-      if (!/^\d+$/.test(days)) {
-        ui.error(`Days must be a whole number, got "${days}".`);
-        process.exit(1);
-      }
+      if (!/^\d+$/.test(days)) ui.fail(`Days must be a whole number, got "${days}".`);
       const now = Date.now();
       const stale = staleLinks(loadLinks(), Number(days), now);
       if (!stale.length) {

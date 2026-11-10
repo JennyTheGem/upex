@@ -98,7 +98,7 @@ export function registerOpenGroup(program) {
 
       ui.dim(`Opening ${matches.length} shortcut${matches.length === 1 ? '' : 's'} tagged #${tag}: ${matches.join(', ')}`);
       for (const shortcut of matches) {
-        await handleOpen(shortcut, undefined, 1, '', { batch: true });
+        await handleOpen(shortcut, undefined, 1, '', { here: false });
       }
     });
 }

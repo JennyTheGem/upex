@@ -38,25 +38,16 @@ export function registerRun(program) {
     .command('run <name> [script]')
     .description('Run a package.json script in a terminal at the shortcut folder')
     .summary('Run a package.json script in a terminal')
-    .action((name, script) => {
+    .action(async (name, script) => {
       const links = loadLinks();
       const resolved = resolveName(name, links);
-      if (!resolved) {
-        ui.error(`Shortcut not found: ${name}`);
-        process.exit(1);
-      }
+      if (!resolved) ui.fail(`Shortcut not found: ${name}`);
 
       const dir = links[resolved.name].path;
-      if (!dir || !fs.existsSync(dir)) {
-        ui.error(`No valid folder for "${resolved.name}".`);
-        process.exit(1);
-      }
+      if (!dir || !fs.existsSync(dir)) ui.fail(`No valid folder for "${resolved.name}".`);
 
       const scripts = readScripts(dir);
-      if (!scripts) {
-        ui.error(`No package.json in ${dir}`);
-        process.exit(1);
-      }
+      if (!scripts) ui.fail(`No package.json in ${dir}`);
 
       const pm = detectPm(dir);
 
@@ -77,11 +68,8 @@ export function registerRun(program) {
         return;
       }
 
-      if (!Object.hasOwn(scripts, script)) {
-        ui.error(`No "${script}" script in ${resolved.name}. Available: ${Object.keys(scripts).join(', ') || '(none)'}`);
-        process.exit(1);
-      }
+      if (!Object.hasOwn(scripts, script)) ui.fail(`No "${script}" script in ${resolved.name}. Available: ${Object.keys(scripts).join(', ') || '(none)'}`);
 
-      return handleOpen(resolved.name, 'cmd', 1, scriptLine(dir, script));
+      if (!(await handleOpen(resolved.name, 'cmd', 1, scriptLine(dir, script)))) process.exit(1);
     });
 }

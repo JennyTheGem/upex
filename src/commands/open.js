@@ -86,23 +86,27 @@ export function registerCd(program) {
     .summary('cd into a path, shortcut or learned folder; an opener opens it there')
     .action((query, opener, count) => {
       const r = cdTarget(query);
-      if (r.error) {
-        ui.error(r.error);
-        process.exit(1);
-      }
+      if (r.error) ui.fail(r.error);
       const result = opener && openIn(opener, r.path, Number(count) || 1);
+      if (opener && !result) process.exit(1);
       if (r.name) recordUse(r.name, opener ? openerKey(opener) : 'cd');
       if (!opener) return process.stdout.write(r.path);
       showOpened(r.name || path.basename(r.path) || r.path, opener, r.path, result);
     });
 }
 
-// Launch p in an opener; on failure prints why and exits (batch: returns nothing).
-function openIn(appKey, p, count, startCmd = '', batch = false) {
-  const result = launchApp(appKey, p, count, startCmd, { here: !batch });
+// Launch p in an opener; on failure prints why and returns nothing.
+function openIn(appKey, p, count, startCmd = '', here = true) {
+  const result = launchApp(appKey, p, count, startCmd, { here });
   if (result.ok) return result;
   ui.error(result.message);
-  if (!batch) process.exit(1);
+}
+
+// Why an open failed (and a dim hint), then false.
+function notOpened(msg, hint, print = ui.error) {
+  print(msg);
+  if (hint) ui.dim(hint);
+  return false;
 }
 
 function showOpened(label, appKey, p, result) {
@@ -118,73 +122,47 @@ function runHere(result) {
 }
 
 /**
- * Handle the default open/launch action.
- * Returns true when opened; in batch mode a failure returns false instead of exiting.
+ * Open a shortcut or path (upex <name> [app]). Never exits: true when opened, else prints why and returns false.
+ * `here: false` (group, workspace, selector and upex ui opens) never hands this terminal to a shell.
  */
-export async function handleOpen(name, app, count = 1, startCmd = '', { batch = false } = {}) {
-  // In batch mode (group/workspace open) a bad shortcut must not exit the whole run.
-  const bail = (fn) => { fn(); if (batch) return true; process.exit(1); };
-
+export async function handleOpen(name, app, count = 1, startCmd = '', { here = true } = {}) {
   const links = loadLinks();
 
   // `upex . claude`: a path opens without a shortcut (a shortcut of that exact name still wins).
   if (isPathArg(name) && !Object.hasOwn(links, name)) {
     const p = fullPath(name);
-    if (!fs.existsSync(p)) {
-      if (bail(() => ui.error(`No such file or folder: ${name}`))) return false;
-    }
+    if (!fs.existsSync(p)) return notOpened(`No such file or folder: ${name}`);
     const appKey = app || (isFile(p) ? 'open' : defaultOpener());
-    const result = openIn(appKey, p, count, startCmd, batch);
+    const result = openIn(appKey, p, count, startCmd, here);
     if (result) showOpened(path.basename(p) || p, appKey, p, result);
     return !!result;
   }
 
   const resolved = resolveTarget(name, links);
-
-  if (!resolved) {
-    if (bail(() => {
-      ui.error(`Shortcut not found: ${name}`);
-      const hint = didYouMean(name, links);
-      if (hint) ui.dim(hint);
-    })) return false;
-  }
+  if (!resolved) return notOpened(`Shortcut not found: ${name}`, didYouMean(name, links));
 
   const shortcutName = resolved.name;
   const entry = links[shortcutName];
+  const matched = () => { if (!resolved.exact) ui.dim(`matched "${name}" --> "${shortcutName}"`); };
 
-  if (resolved.sub && !entry.path) {
-    if (bail(() => ui.error(`"${shortcutName}" has no folder, so "${resolved.sub}" can't be opened inside it.`))) return false;
-  }
+  if (resolved.sub && !entry.path) return notOpened(`"${shortcutName}" has no folder, so "${resolved.sub}" can't be opened inside it.`);
 
-  // ── URL shortcut: open in the browser directly ──
+  // URL shortcut: the browser.
   if (entry.url) {
     const result = launchUrl(entry.url);
-    if (!result.ok) {
-      if (bail(() => ui.error(result.message))) return false;
-    }
+    if (!result.ok) return notOpened(result.message);
     recordUse(shortcutName, 'url');
-    if (!resolved.exact) {
-      ui.dim(`matched "${name}" --> "${shortcutName}"`);
-    }
+    matched();
     ui.card(shortcutName, [['url', chalk.bold(result.url)]]);
     return true;
   }
 
-  // ── App shortcut: launch stored executable directly ──
+  // App shortcut: the stored executable; a command line runs in a terminal at the home folder.
   if (entry.app && !app && !resolved.sub) {
-    // A command line opens a terminal in the home folder and runs there.
-    const result = entry.terminal ? launchApp('cmd', os.homedir(), 1, entry.app, { here: !batch }) : launchExecutable(entry.app);
-
-    if (!result.ok) {
-      if (bail(() => ui.error(result.message))) return false;
-    }
-
+    const result = entry.terminal ? launchApp('cmd', os.homedir(), 1, entry.app, { here }) : launchExecutable(entry.app);
+    if (!result.ok) return notOpened(result.message);
     recordUse(shortcutName, entry.terminal ? 'cmd' : 'app');
-
-    if (!resolved.exact) {
-      ui.dim(`matched "${name}" --> "${shortcutName}"`);
-    }
-
+    matched();
     ui.card(shortcutName, [
       ['app', chalk.bold(result.displayName)],
       ['run', entry.terminal && entry.app],
@@ -194,35 +172,16 @@ export async function handleOpen(name, app, count = 1, startCmd = '', { batch = 
     return true;
   }
 
-  // ── Folder shortcut: open in specified or default opener ──
+  // Folder shortcut: the given opener, else the shortcut's own, else a file's default app or the default opener.
   const targetPath = withSub(entry, resolved.sub);
+  if (!targetPath) return notOpened(`No folder path stored for "${shortcutName}".`, `This is an app shortcut. Run without an opener: upex ${shortcutName}`, ui.warn);
+  if (!fs.existsSync(targetPath)) return notOpened(`Path does not exist: ${targetPath}`, `Use "upex edit ${shortcutName} <newPath>" to update.`, ui.warn);
 
-  if (!targetPath) {
-    if (bail(() => {
-      ui.warn(`No folder path stored for "${shortcutName}".`);
-      ui.dim(`This is an app shortcut. Run without an opener: upex ${shortcutName}`);
-    })) return false;
-  }
-
-  if (!fs.existsSync(targetPath)) {
-    if (bail(() => {
-      ui.warn(`Path does not exist: ${targetPath}`);
-      ui.dim(`Use "upex edit ${shortcutName} <newPath>" to update.`);
-    })) return false;
-  }
-
-  // No opener given: the shortcut's own, else a file opens in its default app and a folder in the default opener.
   const appKey = app || entry.opener || (isFile(targetPath) ? 'open' : defaultOpener());
-  const result = openIn(appKey, targetPath, count, startCmd, batch);
+  const result = openIn(appKey, targetPath, count, startCmd, here);
   if (!result) return false;
-
   recordUse(shortcutName, openerKey(appKey) || appKey);
-
-  // -- Structured output card --
-  if (!resolved.exact) {
-    ui.dim(`matched "${name}" --> "${shortcutName}"`);
-  }
-
+  matched();
   showOpened(shortcutName, appKey, targetPath, result);
   return true;
 }

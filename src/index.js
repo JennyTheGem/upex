@@ -64,7 +64,7 @@ export async function createProgram(argv) {
   program.hook('postAction', async (_root, cmd) => {
     if (!process.stderr.isTTY || (cmd === program && !cmd.args.length)) return;
     if (cmd.name().startsWith('__') || ['go', 'cd', 'pick', 'ui', 'completion'].includes(cmd.name())) return;
-    const { setting } = await import('./launcher.js');
+    const { setting } = await import('./settings.js');
     try {
       if (setting('updateCheck') === 'off') return;
     } catch { return; }
@@ -72,23 +72,18 @@ export async function createProgram(argv) {
     if (notice) console.error(chalk.dim(`  ${notice}`));
   });
 
-  // Default action: upex <name> [app]
-  // Commander doesn't support a default positional command well,
-  // so we handle unknown commands manually.
+  // Default action: upex <name> [app]. Commander dispatches a sub-command itself, so a name here is a shortcut or a path.
   program
     .argument('[name]', 'Shortcut name, or a path (., ~/x, C:\\x) to open')
     .argument('[app]', 'App to open the folder in (e.g. vscode, webstorm)')
     .argument('[count]', 'How many windows to open (cmd only)')
     .action(async (name, app, count) => {
-      // Only handle if it's the root command (not a sub-command)
-      // Commander calls this for sub-commands too, but name will be the subcommand name
-      // We need to check if name matches a known sub-command
       const { handleOpen } = await import('./commands/open.js');
       if (!name) {
         const [{ runInteractiveMode }, { openEntries, openWorkspace }] = await Promise.all([import('./interactive.js'), import('./commands/workspace.js')]);
         const result = await runInteractiveMode({ preferredApp: program.opts().app });
         if (result.status === 'selected') {
-          await handleOpen(result.name, result.app, result.count || 1, result.start);
+          if (!(await handleOpen(result.name, result.app, result.count || 1, result.start))) process.exit(1);
           return;
         }
         // Marked rows (Space), opened after the selector closed.
@@ -111,16 +106,8 @@ export async function createProgram(argv) {
         return;
       }
 
-      const subCommands = program.commands.map(c => c.name()).concat(
-        program.commands.flatMap(c => c.aliases())
-      );
-
-      if (subCommands.includes(name)) {
-        // Let commander handle it
-        return;
-      }
-
-      await handleOpen(name, app, Number(count) || 1);
+      // Exit now: a failed open skips the postAction update notice, as it always has.
+      if (!(await handleOpen(name, app, Number(count) || 1))) process.exit(1);
     });
 
   return program;

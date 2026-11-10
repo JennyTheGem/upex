@@ -68,6 +68,13 @@ export function dim(msg) {
   console.log(chalk.dim(`  ${msg}`));
 }
 
+// Error, a dim hint line when given, then exit 1.
+export function fail(msg, hint) {
+  error(msg);
+  if (hint) dim(hint);
+  process.exit(1);
+}
+
 /**
  * Print a nicely aligned table from an array of [col1, col2, ...] rows.
  * When header=true, the first row is a dim lowercase label row.

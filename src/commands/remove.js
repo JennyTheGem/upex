@@ -57,10 +57,7 @@ export function registerRemove(program) {
     .action((name) => {
       const links = loadLinks();
       const resolved = resolveName(name, links, true);
-      if (!resolved) {
-        ui.error(nameOwner(links, name) ? `${nameOwner(links, name)} is not archived.` : `No archived shortcut: ${name}`);
-        process.exit(1);
-      }
+      if (!resolved) ui.fail(nameOwner(links, name) ? `${nameOwner(links, name)} is not archived.` : `No archived shortcut: ${name}`);
       if (!resolved.exact) {
         ui.warn(`No exact match. Did you mean "${resolved.name}"?`);
         ui.info(`Run: upex restore ${resolved.name}`);

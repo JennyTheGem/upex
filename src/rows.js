@@ -6,7 +6,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import chalk from 'chalk';
-import { setting } from './launcher.js';
+import { setting } from './settings.js';
 import * as ui from './ui.js';
 
 // Badge text for a shortcut from add --ttl: "2d left", '' without one or once past.

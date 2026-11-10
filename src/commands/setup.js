@@ -211,21 +211,12 @@ export function registerSetup(program) {
         ui.dim(shell === 'fish' ? 'Works in new fish shells.' : `Open a new shell, or run: source ${file}`);
         return;
       }
-      if (shell && shell !== 'cmd') {
-        ui.error(`Unknown shell "${shell}". Supported: bash, zsh, fish${platform === 'win32' ? ', cmd' : ''}`);
-        process.exit(1);
-      }
+      if (shell && shell !== 'cmd') ui.fail(`Unknown shell "${shell}". Supported: bash, zsh, fish${platform === 'win32' ? ', cmd' : ''}`);
 
       if (shell === 'cmd') {
-        if (platform !== 'win32') {
-          ui.error('The cmd.exe wrapper is Windows-only.');
-          process.exit(1);
-        }
+        if (platform !== 'win32') ui.fail('The cmd.exe wrapper is Windows-only.');
         const shimDir = findShimDir();
-        if (!shimDir) {
-          ui.error('upex.cmd not found on PATH. Install upex globally first (npm i -g upex).');
-          process.exit(1);
-        }
+        if (!shimDir) ui.fail('upex.cmd not found on PATH. Install upex globally first (npm i -g upex).');
         const target = installCmdWrapper(shimDir);
         ui.success(`Installed ${target}`);
         ui.dim('"upex go <name>", "upex cd <path>" and "upex <name>" now cd in cmd.exe (current session too).');

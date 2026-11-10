@@ -12,12 +12,12 @@ export function registerLast(program) {
     .command('last')
     .description('Reopen the most recently used shortcut')
     .summary('Reopen the most recent shortcut (alias: upex -)')
-    .action(() => {
+    .action(async () => {
       const name = lastUsedName();
       if (!name) {
         ui.warn('No shortcut has been used yet.');
         process.exit(1);
       }
-      return handleOpen(name);
+      if (!(await handleOpen(name))) process.exit(1);
     });
 }

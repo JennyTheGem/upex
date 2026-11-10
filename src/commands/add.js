@@ -42,24 +42,15 @@ export function registerAdd(program) {
     .option('--alias <names>', 'Comma-separated extra names for the shortcut')
     .option('--ttl <time>', 'Archive the shortcut automatically after this long (30m, 12h, 7d, 2w)')
     .action((name, targetPath, options) => {
-      if (options.opener && (options.app || options.url || options.cmd)) {
-        ui.error('A default opener only applies to folder shortcuts.');
-        process.exit(1);
-      }
+      if (options.opener && (options.app || options.url || options.cmd)) ui.fail('A default opener only applies to folder shortcuts.');
 
       const ttl = options.ttl === undefined ? null : parseDuration(options.ttl);
-      if (options.ttl !== undefined && !ttl) {
-        ui.error(`Invalid --ttl "${options.ttl}". Use a number plus m, h, d or w, e.g. 7d.`);
-        process.exit(1);
-      }
+      if (options.ttl !== undefined && !ttl) ui.fail(`Invalid --ttl "${options.ttl}". Use a number plus m, h, d or w, e.g. 7d.`);
 
       // No name, or ".", names a folder shortcut after its folder (cwd by default). Others need a real name.
       if (!name || name === '.') name = options.app || options.url || options.cmd ? undefined : defaultName(targetPath || '.');
       const bad = nameError(name);
-      if (bad) {
-        ui.error(bad);
-        process.exit(1);
-      }
+      if (bad) ui.fail(bad);
 
       const links = loadLinks();
       const taken = takenError(links, name);
@@ -70,20 +61,14 @@ export function registerAdd(program) {
       }
 
       const { aliases, error } = checkAliases(links, undefined, parseTags(options.alias) || [], name);
-      if (error) {
-        ui.error(error);
-        process.exit(1);
-      }
+      if (error) ui.fail(error);
       const tags = parseTags(options.tag);
       const now = Date.now();
       const extra = { ...(tags && { tags }), ...(aliases.length && { aliases }), added: now, ...(ttl && { expires: now + ttl }) };
 
       // URL shortcut: the positional is a URL, opened in the browser.
       if (options.url) {
-        if (!targetPath) {
-          ui.error('Provide the URL: upex add <name> <url> --url');
-          process.exit(1);
-        }
+        if (!targetPath) ui.fail('Provide the URL: upex add <name> <url> --url');
         setLink(name, { url: targetPath, ...extra });
         ui.success(`Added: ${name} --> ${targetPath}`);
         return;
@@ -93,10 +78,9 @@ export function registerAdd(program) {
       // --cmd: a command line run in a terminal window instead.
       if (options.app || options.cmd) {
         if (!targetPath) {
-          ui.error(options.cmd
+          ui.fail(options.cmd
             ? 'Provide the command line in quotes: upex add <name> "<command>" --cmd'
             : 'Provide the app path or command: upex add <name> <app> --app');
-          process.exit(1);
         }
         setLink(name, { app: targetPath, ...(options.cmd && { terminal: true }), ...extra });
         ui.success(`Added: ${name} --> ${targetPath}`);
@@ -105,10 +89,7 @@ export function registerAdd(program) {
 
       // Folder shortcut (defaults to cwd).
       const resolved = targetPath ? path.resolve(targetPath) : process.cwd();
-      if (!fs.existsSync(resolved)) {
-        ui.error(`Path does not exist: ${resolved}`);
-        process.exit(1);
-      }
+      if (!fs.existsSync(resolved)) ui.fail(`Path does not exist: ${resolved}`);
       let entry = { path: resolved, ...extra };
       if (options.opener) entry = withOpener(entry, options.opener);
       if (!entry) process.exit(1);

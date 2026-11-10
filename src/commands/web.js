@@ -9,7 +9,8 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import { createRequire } from 'node:module';
 import { loadLinks, saveLinks, loadWorkspaces, saveWorkspaces, pruneBroken, targetField, nameError, takenError, checkAliases, aliasesOf, frecency, parseColor, colorOf, loadConfig, saveConfig, withPinned, undoLast, topSuggestion, hideVisit, loadHistory, statsFrom, LINKS_FILE } from '../store.js';
-import { getInteractiveAppChoices, launchUrl, openerKey, isTerminalApp, checkSettings, readSettings, resetSettings, startTab, SETTING_KEYS, hasWindowsTerminal, configApps, getAppMap } from '../launcher.js';
+import { getInteractiveAppChoices, launchUrl, openerKey, isTerminalApp, checkSettings, readSettings, hasWindowsTerminal, configApps, getAppMap } from '../launcher.js';
+import { resetSettings, startTab, SETTING_KEYS } from '../settings.js';
 import { handleOpen, isFile } from './open.js';
 import { openEntries } from './workspace.js';
 import { parseTags, defaultName } from './add.js';
@@ -230,7 +231,7 @@ const routes = {
     if (!Object.hasOwn(links, name) || links[name].archived) throw new HttpError(404, `Shortcut not found: ${name}`);
     const [e] = cleanEntries([{ shortcut: name, app: b.app, count: b.count, start: b.start }]) || [];
     if (!e) throw new HttpError(400, 'Window count must be at least 1.');
-    const ok = await handleOpen(name, e.app, e.count || 1, e.start || '', { batch: true });
+    const ok = await handleOpen(name, e.app, e.count || 1, e.start || '', { here: false });
     if (!ok) throw new HttpError(422, `Could not open "${b.name}". Details are in the upex ui terminal.`);
     return {};
   },
@@ -246,7 +247,7 @@ const routes = {
     if (!dir || !fs.existsSync(dir)) throw new HttpError(404, `No folder shortcut named "${name}".`);
     const scripts = readScripts(dir);
     if (!scripts || !Object.hasOwn(scripts, script)) throw new HttpError(404, `No "${script}" script in ${name}.`);
-    const ok = await handleOpen(name, 'cmd', 1, scriptLine(dir, script), { batch: true });
+    const ok = await handleOpen(name, 'cmd', 1, scriptLine(dir, script), { here: false });
     if (!ok) throw new HttpError(422, `Could not run "${script}". Details are in the upex ui terminal.`);
     return {};
   },
@@ -467,8 +468,7 @@ export function startServer({ port = DEFAULT_PORT, open = true, onReady, onError
       return;
     }
     if (onError) return onError(err);
-    ui.error(`Cannot start server: ${err.message}`);
-    process.exit(1);
+    ui.fail(`Cannot start server: ${err.message}`);
   });
   server.on('listening', ready);
   server.listen(port, '127.0.0.1');
@@ -484,10 +484,7 @@ export function registerWeb(program) {
     .option('--no-open', 'Do not open the browser')
     .action((options) => {
       const port = Number(options.port);
-      if (!Number.isInteger(port) || port < 0 || port > 65535) {
-        ui.error(`Invalid port: ${options.port}`);
-        process.exit(1);
-      }
+      if (!Number.isInteger(port) || port < 0 || port > 65535) ui.fail(`Invalid port: ${options.port}`);
       startServer({ port, open: options.open });
     });
 }

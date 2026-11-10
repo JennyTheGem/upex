@@ -32,10 +32,7 @@ export function registerPick(program) {
     .description('Choose shortcuts in the selector (drawn on stderr) and print their paths to stdout, one per line; Esc prints nothing and exits 1')
     .summary('Selector that prints the chosen path')
     .action(async () => {
-      if (!process.stdin.isTTY || !process.stderr.isTTY) {
-        ui.error('upex pick needs a terminal (stdin and stderr)');
-        process.exit(1);
-      }
+      if (!process.stdin.isTTY || !process.stderr.isTTY) ui.fail('upex pick needs a terminal (stdin and stderr)');
       // Colors follow the terminal the selector draws on, not the pipe.
       chalk.level = chalkStderr.level;
       const { runInteractiveMode } = await import('../interactive.js');

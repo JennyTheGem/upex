@@ -81,15 +81,11 @@ export function registerImport(program) {
       try {
         bundle = JSON.parse(fs.readFileSync(file, 'utf-8'));
       } catch (err) {
-        ui.error(`Cannot read ${file}: ${err.message}`);
-        process.exit(1);
+        ui.fail(`Cannot read ${file}: ${err.message}`);
       }
 
       const { added, updated, clashes, error } = importBundle(bundle, options.replace);
-      if (error) {
-        ui.error(error);
-        process.exit(1);
-      }
+      if (error) ui.fail(error);
       ui.success(`Imported: ${added.length} added, ${updated.length} updated.`);
       if (added.length) ui.dim(`Added: ${added.join(', ')}`);
       if (updated.length) ui.dim(`Updated: ${updated.join(', ')}`);

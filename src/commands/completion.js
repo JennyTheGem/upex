@@ -64,10 +64,7 @@ export function registerCompletion(program) {
       const key = (shell || detectShell()).toLowerCase();
       const names = program.createHelp().visibleCommands(program).flatMap(c => [c.name(), ...c.aliases()]);
       const script = scripts(names.join(' '))[key === 'pwsh' ? 'powershell' : key];
-      if (!script) {
-        ui.error(`No completion for "${shell}". Supported: bash, zsh, fish, powershell`);
-        process.exit(1);
-      }
+      if (!script) ui.fail(`No completion for "${shell}". Supported: bash, zsh, fish, powershell`);
       process.stdout.write(script + '\n');
     });
 }

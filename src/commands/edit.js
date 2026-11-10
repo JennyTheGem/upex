@@ -68,13 +68,9 @@ export function registerEdit(program) {
 
       if (field === 'path') {
         value = target ? path.resolve(target) : process.cwd();
-        if (!fs.existsSync(value)) {
-          ui.error(`Path does not exist: ${value}`);
-          process.exit(1);
-        }
+        if (!fs.existsSync(value)) ui.fail(`Path does not exist: ${value}`);
       } else if (!value) {
-        ui.error(`Provide the new ${field === 'url' ? 'URL' : 'app path or command'}: upex edit ${name} <${field}>`);
-        process.exit(1);
+        ui.fail(`Provide the new ${field === 'url' ? 'URL' : 'app path or command'}: upex edit ${name} <${field}>`);
       }
 
       const next = options.opener === undefined ? entry : withOpener(entry, options.opener);

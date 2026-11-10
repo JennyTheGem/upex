@@ -8,7 +8,8 @@ import path from 'node:path';
 import readline from 'node:readline';
 import chalk from 'chalk';
 import Fuse from 'fuse.js';
-import { getInteractiveAppChoices, getAppMap, isTerminalApp, hasWindowsTerminal, defaultOpener, readSettings, setting, startTab, shownTabs, isHex, copyToClipboard, readClipboard, launchUrl, configApps, SETTINGS, settingValues, settingShown } from './launcher.js';
+import { getInteractiveAppChoices, getAppMap, isTerminalApp, hasWindowsTerminal, defaultOpener, readSettings, copyToClipboard, readClipboard, launchUrl, configApps } from './launcher.js';
+import { setting, startTab, shownTabs, isHex, SETTINGS, settingValues, settingShown } from './settings.js';
 import { gitOf, stopGit } from './git.js';
 import { sizeOf, stopSize, formatBytes } from './size.js';
 import { fuseOpts } from './fuzzy.js';
@@ -1595,7 +1596,7 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
           const out = [];
           outs.push(out);
           console.log = console.error = (...a) => out.push(ui.stripAnsi(a.join(' ')).trim());
-          return handleOpen(shortcut, app || undefined, count, start, { batch: true });
+          return handleOpen(shortcut, app || undefined, count, start, { here: false });
         });
       } finally {
         Object.assign(console, { log, error });

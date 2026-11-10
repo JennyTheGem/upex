@@ -26,10 +26,7 @@ export function registerColor(program) {
         return;
       }
       const r = options.clear ? { color: '' } : parseColor(value);
-      if (r.error) {
-        ui.error(r.error);
-        process.exit(1);
-      }
+      if (r.error) ui.fail(r.error);
       const { color, ...rest } = entry;
       setLink(owner, r.color ? { ...rest, color: r.color } : rest);
       ui.success(r.color ? `${owner}: ${ui.colorLabel(r.color)}` : `${owner}: color removed`);

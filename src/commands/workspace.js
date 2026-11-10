@@ -39,7 +39,7 @@ function listWorkspaces(workspaces) {
 export async function openEntries(entries) {
   let failed = 0;
   for (const { shortcut, app, count = 1, start = '' } of entries) {
-    if (!(await handleOpen(shortcut, app || undefined, count, start, { batch: true }))) failed++;
+    if (!(await handleOpen(shortcut, app || undefined, count, start, { here: false }))) failed++;
   }
   return failed;
 }
@@ -47,10 +47,8 @@ export async function openEntries(entries) {
 export async function openWorkspace(workspaces, name) {
   const entries = Object.hasOwn(workspaces, name) && workspaces[name];
   if (!entries) {
-    ui.error(`No workspace named "${name}".`);
     const names = Object.keys(workspaces);
-    if (names.length) ui.dim(`Available: ${names.join(', ')}`);
-    process.exit(1);
+    ui.fail(`No workspace named "${name}".`, names.length && `Available: ${names.join(', ')}`);
   }
   ui.dim(`Opening workspace "${name}" (${entries.length} entr${entries.length === 1 ? 'y' : 'ies'})`);
   const failed = await openEntries(entries);
@@ -77,15 +75,9 @@ export function registerWorkspace(program) {
 
       if (verb === 'add') {
         const [name, shortcut, app, ...tail] = rest;
-        if (!name || !shortcut) {
-          ui.error('Usage: upex ws add <name> <shortcut> [app] [count] [start...]');
-          process.exit(1);
-        }
+        if (!name || !shortcut) ui.fail('Usage: upex ws add <name> <shortcut> [app] [count] [start...]');
         const bad = !Object.hasOwn(workspaces, name) && nameError(name);
-        if (bad) {
-          ui.error(bad);
-          process.exit(1);
-        }
+        if (bad) ui.fail(bad);
         if (!resolveTarget(shortcut, loadLinks())?.exact) {
           ui.warn(`Shortcut "${shortcut}" doesn't exist yet, adding anyway.`);
         }
@@ -111,10 +103,7 @@ export function registerWorkspace(program) {
 
       if (verb === 'rm' || verb === 'remove') {
         const [name, shortcut] = rest;
-        if (!name || !Object.hasOwn(workspaces, name)) {
-          ui.error(`No workspace named "${name}".`);
-          process.exit(1);
-        }
+        if (!name || !Object.hasOwn(workspaces, name)) ui.fail(`No workspace named "${name}".`);
         if (!shortcut) {
           removeWorkspace(name);
           ui.success(`Removed workspace "${name}".`);

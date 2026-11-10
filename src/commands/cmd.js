@@ -18,9 +18,9 @@ export function registerCmd(program) {
     .enablePositionalOptions()
     .passThroughOptions()
     .allowUnknownOption()
-    .action((name, count, start = []) => {
+    .action(async (name, count, start = []) => {
       // A non-numeric "count" is really the first word of the start command.
       if (count && !/^\d+$/.test(count)) [count, start] = [1, [count, ...start]];
-      return handleOpen(name, 'cmd', Number(count) || 1, start.join(' '));
+      if (!(await handleOpen(name, 'cmd', Number(count) || 1, start.join(' ')))) process.exit(1);
     });
 }
