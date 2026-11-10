@@ -24,7 +24,7 @@ export const COMMANDS = [
   ['pin unpin', 'pin', 'registerPin'], ['undo', 'undo', 'registerUndo'], ['note', 'note', 'registerNote'],
   ['color', 'color', 'registerColor'], ['pick', 'pick', 'registerPick'],
 ];
-// Every sub-command name and alias. __resolve must not cd into a shortcut that shadows one; smoke.mjs checks this list.
+// Every sub-command name and alias. __resolve must not cd into a shortcut that shadows one; test/fuzzy.test.mjs checks this list.
 export const COMMAND_NAMES = COMMANDS.flatMap(c => c[0].split(' '));
 
 // Folder path of a shortcut plus an optional subpath ("web/src").

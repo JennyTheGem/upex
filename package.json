@@ -14,7 +14,7 @@
     "LICENSE"
   ],
   "scripts": {
-    "test": "node test/smoke.mjs && node test/edges.mjs"
+    "test": "node --test --test-reporter=spec test/cli-edit.test.mjs test/cli-go.test.mjs test/edges.test.mjs test/fuzzy.test.mjs test/launcher.test.mjs test/selector-drive.test.mjs test/selector-edit.test.mjs test/selector-pane.test.mjs test/selector-view.test.mjs test/store.test.mjs test/ui.test.mjs test/web.test.mjs"
   },
   "keywords": [
     "cli",

@@ -8,7 +8,7 @@ Goals live in goals.json, managed by upgo; goals.md is generated and auto-loaded
 
 ## Commands
 
-- `npm test`: run the smoke asserts (`node test/smoke.mjs`, the non-trivial pure logic plus CLI round-trips against a temp home) and `test/edges.mjs` (fuzzy edge cases, launcher command building per platform with `os.platform` and `child_process` stubbed, in its own process). There is no build or lint step.
+- `npm test`: runs `test/*.test.mjs` with Node's built-in runner (`node --test`), one process per file, files in parallel, every failure listed at the end. Files by area: `store`, `fuzzy` (plus the fast path), `launcher`, `ui`, `selector-view` / `-edit` / `-pane` (render and helpers), `selector-drive` (the selector on fake streams), `web`, `cli-go` / `cli-edit` (CLI round trips, each a chain of tests in order on one temp home), and `edges` (fuzzy edge cases, launcher command building per platform with `os.platform` and `child_process` stubbed). `test/helpers.mjs` (imported first by every file: temp home before `src/` loads, `run(args)` for the CLI, cleanup) and `test/view.mjs` (selector fixtures) are not test files. The script lists each file by name (Node 20 takes no globs); a new file must be added there, a test fails if one is missing. One file: `node --test test/store.test.mjs`. One test: `node --test --test-name-pattern="frecency" test/store.test.mjs`. There is no build or lint step.
 - `npm link` then `upex ...`: install globally and exercise the CLI end-to-end. This is the primary way to verify behavior.
 - `node bin/upex.js <args>`: run without linking.
 
@@ -41,7 +41,7 @@ ESM Node CLI (`"type": "module"`) built on `commander`. Entry is `bin/upex.js` â
 
 **Fuzzy resolution (`src/fuzzy.js`).** `resolveName` tries exact match first, then `fuse.js` (threshold 0.4). Callers report inexact matches to the user (`matched "x" --> "y"`). `resolveTarget` adds subpaths (`web/src` -> shortcut `web` + `src`), used by open/go/__resolve.
 
-**Shell integration.** A Node process can't change the parent shell's cwd, so `cd` support relies on wrapper functions (see `upex setup`) that call the hidden `__resolve` command, which prints the raw path to stdout and exits non-zero on failure. `go` is the public equivalent. Both are answered by `fastPath` in `src/fast.js` before `bin/upex.js` loads commander and the commands (fuse.js loads only on a fuzzy search); anything it can't answer falls through to the full CLI. Its `COMMAND_NAMES` (from `COMMANDS`) must match the registered commands (smoke asserts check it and that each name loads its command). Completion uses the hidden `__names` command.
+**Shell integration.** A Node process can't change the parent shell's cwd, so `cd` support relies on wrapper functions (see `upex setup`) that call the hidden `__resolve` command, which prints the raw path to stdout and exits non-zero on failure. `go` is the public equivalent. Both are answered by `fastPath` in `src/fast.js` before `bin/upex.js` loads commander and the commands (fuse.js loads only on a fuzzy search); anything it can't answer falls through to the full CLI. Its `COMMAND_NAMES` (from `COMMANDS`) must match the registered commands (`test/fuzzy.test.mjs` checks it and that each name loads its command). Completion uses the hidden `__names` command.
 
 **Web UI (`src/commands/web.js` + `src/web/index.html`).** `upex ui` serves one static page from a `node:http` server bound to 127.0.0.1. Per-run token (needed as `?t=` to get the page, baked into it, sent as `x-upex-token`) plus a Host-header check guard the JSON API. Edits go through the pure `applyShortcut`/`cleanEntries`, then the normal store functions; opening reuses `handleOpen` with `{ here: false }`, which returns `true`/`false`. Custom openers (`config.json` `apps`) are edited through `applyOpener` (add or change the command, no rename). The page builds DOM with text nodes only (no `innerHTML` with data).
 
@@ -51,5 +51,5 @@ ESM Node CLI (`"type": "module"`) built on `commander`. Entry is `bin/upex.js` â
 
 - Cross-platform is a hard requirement: any launch/path logic must branch on `os.platform()` and be considered for all three platforms.
 - Preserve backward compatibility of the on-disk format (the legacy-string migration exists for this reason).
-- Non-trivial pure logic that could regress belongs in `test/smoke.mjs` as a plain `assert` (no framework).
+- Non-trivial pure logic that could regress gets a `test()` from `node:test` in the matching file under `test/`, with plain `node:assert` inside (no third-party framework).
 - Keep the upex skill (`skill/SKILL.md`, linked into `~/.claude/skills/upex`) in sync: any added, renamed or removed command, option or behavior updates its Rules and Commands table in the same change.

@@ -1,8 +1,10 @@
 /**
- * edges.mjs -- Fuzzy resolution edge cases and launcher command building per platform.
+ * Fuzzy resolution edge cases and launcher command building per platform.
  * Own process: os.platform and child_process are stubbed, home is a temp dir.
  */
 
+import { home } from './helpers.mjs';
+import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -11,42 +13,13 @@ import cp from 'node:child_process';
 import { syncBuiltinESMExports } from 'node:module';
 import { pathToFileURL } from 'node:url';
 
-// Temp home before anything loads store.js (it captures ~/.upex at import).
-const home = fs.mkdtempSync(path.join(os.tmpdir(), 'upex-edges-'));
-process.env.HOME = process.env.USERPROFILE = home;
+// Temp home (helpers.mjs) before anything loads store.js (it captures ~/.upex at import).
 process.env.LOCALAPPDATA = process.env.ProgramFiles = process.env['ProgramFiles(x86)'] = home;
 delete process.env.WEBSTORM_PATH;
 const { resolveName, resolveTarget } = await import('../src/fuzzy.js');
 const { CONFIG_FILE } = await import('../src/store.js');
 assert.ok(CONFIG_FILE.startsWith(home), 'store uses the temp home');
-
-// -- resolveName / resolveTarget edge cases --
 const links = { web: {}, 'a/b': {}, notes: {}, 'my app': {} };
-assert.deepEqual(resolveName('web', links), { name: 'web', exact: true }, 'exact');
-assert.deepEqual(resolveName('WEB', links), { name: 'web', exact: false }, 'case differs -> fuzzy, not exact');
-assert.deepEqual(resolveName('wbe', links), { name: 'web', exact: false }, 'typo -> fuzzy');
-assert.equal(resolveName('', links), null, 'empty query matches nothing');
-assert.equal(resolveName(' \t', links), null, 'blank query matches nothing');
-assert.equal(resolveTarget(' /x', links), null, 'blank head matches nothing');
-assert.equal(resolveName('toString', links), null, 'prototype key is not a shortcut');
-assert.equal(resolveName('web', {}), null, 'no shortcuts -> null');
-assert.equal(resolveTarget('', links), null, 'empty target matches nothing');
-assert.equal(resolveTarget('web/x', {}), null, 'no shortcuts -> null target');
-assert.deepEqual(resolveTarget('web/', links), { name: 'web', exact: true, sub: '' }, 'trailing slash, no subpath');
-assert.deepEqual(resolveTarget('web//src', links), { name: 'web', exact: true, sub: 'src' }, 'repeated slashes collapse');
-assert.deepEqual(resolveTarget('web/src/', links), { name: 'web', exact: true, sub: 'src/' }, 'subpath keeps its trailing slash');
-assert.deepEqual(resolveTarget('my app/x', links), { name: 'my app', exact: true, sub: 'x' }, 'name with a space');
-assert.deepEqual(resolveTarget('notes\\\\x', links), { name: 'notes', exact: true, sub: 'x' }, 'repeated backslashes');
-assert.equal(resolveTarget('zz/src', links), null, 'unknown head -> null');
-assert.equal(resolveTarget('toString/x', links), null, 'prototype head is not a shortcut');
-// Fuzzy setting from config.json; an unreadable one falls back to normal.
-fs.writeFileSync(CONFIG_FILE, JSON.stringify({ fuzzy: 'exact' }));
-assert.equal(resolveName('wbe', links), null, 'exact: no typos');
-assert.deepEqual(resolveName('ote', links), { name: 'notes', exact: false }, 'exact: letters in a row still resolve');
-assert.deepEqual(resolveName('app', { 'myapp-old': {}, app2: {} }), { name: 'app2', exact: false }, 'exact: the earliest match wins');
-fs.writeFileSync(CONFIG_FILE, '{ broken');
-assert.deepEqual(resolveName('wbe', links), { name: 'web', exact: false }, 'unreadable config: normal');
-fs.writeFileSync(CONFIG_FILE, '{}');
 
 // -- launcher setup: fake child_process --
 fs.mkdirSync(path.join(home, '.upex'), { recursive: true });
@@ -105,29 +78,89 @@ function run(L, have, config, ...args) {
   return { r, calls: calls.map(c => c.slice(0, -1)), opts: calls.map(c => c.at(-1)) };
 }
 
-try {
-  // -- win32 --
-  const W = await on('win32');
+const W = await on('win32');
+const D = await on('darwin');
+const X = await on('linux');
+const tabs = { terminalLayout: 'tabs' };
+const win = { terminalLayout: 'windows' };
+const ws = path.join(dir, 'webstorm64.exe');
+const url = (L, u) => {
+  calls = [];
+  const r = L.launchUrl(u);
+  return { r, calls: calls.map(c => c.slice(0, 3)), opts: calls.map(c => c[3]) };
+};
+let t;
+
+test('resolveName / resolveTarget edge cases', () => {
+  assert.deepEqual(resolveName('web', links), { name: 'web', exact: true }, 'exact');
+  assert.deepEqual(resolveName('WEB', links), { name: 'web', exact: false }, 'case differs -> fuzzy, not exact');
+  assert.deepEqual(resolveName('wbe', links), { name: 'web', exact: false }, 'typo -> fuzzy');
+  assert.equal(resolveName('', links), null, 'empty query matches nothing');
+  assert.equal(resolveName(' \t', links), null, 'blank query matches nothing');
+  assert.equal(resolveTarget(' /x', links), null, 'blank head matches nothing');
+  assert.equal(resolveName('toString', links), null, 'prototype key is not a shortcut');
+  assert.equal(resolveName('web', {}), null, 'no shortcuts -> null');
+  assert.equal(resolveTarget('', links), null, 'empty target matches nothing');
+  assert.equal(resolveTarget('web/x', {}), null, 'no shortcuts -> null target');
+  assert.deepEqual(resolveTarget('web/', links), { name: 'web', exact: true, sub: '' }, 'trailing slash, no subpath');
+  assert.deepEqual(resolveTarget('web//src', links), { name: 'web', exact: true, sub: 'src' }, 'repeated slashes collapse');
+  assert.deepEqual(resolveTarget('web/src/', links), { name: 'web', exact: true, sub: 'src/' }, 'subpath keeps its trailing slash');
+  assert.deepEqual(resolveTarget('my app/x', links), { name: 'my app', exact: true, sub: 'x' }, 'name with a space');
+  assert.deepEqual(resolveTarget('notes\\\\x', links), { name: 'notes', exact: true, sub: 'x' }, 'repeated backslashes');
+  assert.equal(resolveTarget('zz/src', links), null, 'unknown head -> null');
+  assert.equal(resolveTarget('toString/x', links), null, 'prototype head is not a shortcut');
+});
+
+test('Fuzzy setting from config.json; an unreadable one falls back to normal.', () => {
+  fs.writeFileSync(CONFIG_FILE, JSON.stringify({ fuzzy: 'exact' }));
+  assert.equal(resolveName('wbe', links), null, 'exact: no typos');
+  assert.deepEqual(resolveName('ote', links), { name: 'notes', exact: false }, 'exact: letters in a row still resolve');
+  assert.deepEqual(resolveName('app', { 'myapp-old': {}, app2: {} }), { name: 'app2', exact: false }, 'exact: the earliest match wins');
+  fs.writeFileSync(CONFIG_FILE, '{ broken');
+  assert.deepEqual(resolveName('wbe', links), { name: 'web', exact: false }, 'unreadable config: normal');
+  fs.writeFileSync(CONFIG_FILE, '{}');
+});
+
+test('win32: openers, aliases, missing commands', () => {
   assert.match(run(W, [], {}, 'nope', dir).r.message, /Unknown app "nope"/, 'win: unknown app');
   assert.equal(W.APP_MAP.explorer.displayName, 'Explorer', 'win: explorer name');
 
-  let t = run(W, ['explorer'], {}, 'explorer', dir);
-  assert.deepEqual(t.calls, [['spawn', 'explorer', [dir]]], 'win: explorer spawned without exit-code check');
-  assert.equal(t.opts[0].detached, true, 'win: explorer detached');
-  assert.deepEqual(run(W, ['explorer'], {}, 'explorer', file).calls, [['spawn', 'explorer', ['/select,', file]]], 'win: file is selected');
+  t = run(W, ['explorer'], {}, 'explorer', dir);
+  assert.deepEqual(t.calls, [['spawn', 'explorer', [`"${dir}"`]]], 'win: explorer spawned without exit-code check');
+  assert.ok(t.opts[0].detached && t.opts[0].windowsVerbatimArguments, 'win: explorer detached, its own quoting');
+  assert.deepEqual(run(W, ['explorer'], {}, 'explorer', file).calls, [['spawn', 'explorer', ['/select,', `"${file}"`]]], 'win: file is selected');
+  // Explorer splits a bare argument on commas.
+  const comma = path.join(home, 'a,b');
+  fs.mkdirSync(comma, { recursive: true });
+  assert.deepEqual(run(W, ['explorer'], {}, 'explorer', comma).calls[0][2], [`"${comma}"`], 'win: a comma path is quoted');
+  assert.deepEqual(run(W, ['explorer'], {}, 'explorer', 'C:\\x\\').calls[0][2], ['C:\\x\\'], 'win: a plain path stays bare');
 
-  t = run(W, [], {}, 'open', file);
-  assert.deepEqual(t.calls, [['exec', `start "" "${file}"`]], 'win: start needs no where check');
-  assert.equal(W.checkOpener('open').ok, true, 'win: doctor accepts the start builtin');
+  t = run(W, ['explorer'], {}, 'open', file);
+  assert.deepEqual(t.calls, [['spawn', 'explorer', [`"${file}"`]]], 'win: default app via explorer');
+  assert.ok(t.opts[0].detached && !t.opts[0].shell, 'win: default app detached, no shell (a % stays text)');
+  assert.deepEqual(run(W, ['explorer'], {}, 'open', comma).calls[0][2], [`"${comma}"`], 'win: default app, comma path quoted');
+  assert.equal(W.checkOpener('open').ok, true, 'win: doctor checks explorer for the default app');
 
-  assert.deepEqual(run(W, ['code'], {}, 'vscode', dir).calls, [['exec', `code "${dir}"`]], 'win: vscode');
+  t = run(W, ['code'], {}, 'vscode', dir);
+  assert.deepEqual(t.calls, [['spawn', `code "${dir}"`, []]], 'win: vscode');
+  assert.ok(t.opts[0].detached && t.opts[0].shell && t.opts[0].windowsHide, 'win: vscode detached via a hidden shell, upex does not wait');
+  assert.deepEqual(run(W, ['code'], {}, 'code', 'C:\\a %OS%\\').calls, [['spawn', 'code "C:\\a "^%"OS"^%"\\\\"', []]], 'win: % outside quotes caret-escaped, trailing backslash doubled');
+  assert.deepEqual(run(W, ['code'], {}, 'code', 'C:\\50%\\x').calls[0][1], 'code "C:\\50"^%"\\x"', 'win: backslash after % untouched');
+  // Aliases: the same opener under another name.
+  assert.equal(W.APP_MAP.code, W.APP_MAP.vscode, 'code is vscode');
+  assert.equal(W.APP_MAP.finder.displayName, 'Explorer', 'win: finder is Explorer');
+  assert.deepEqual(['code', 'Finder', 'vscode', 'open', 'nope'].map(W.openerKey), ['vscode', 'explorer', 'vscode', 'open', null], 'win: aliases map to their opener');
+  setConfig({ apps: { code: 'codium' } });
+  assert.equal(W.openerKey('code'), 'code', 'win: a custom opener named code is its own');
+  setConfig();
   assert.equal(run(W, ['Code.CMD'], {}, 'vscode', dir).r.ok, true, 'win: PATHEXT match, any case');
   t = run(W, [], {}, 'vscode', dir);
   assert.equal(t.r.ok, false, 'win: missing command fails');
   assert.match(t.r.message, /Command "code" not found/, 'win: missing command named');
   assert.deepEqual(t.calls, [], 'win: nothing launched when missing');
+});
 
-  // Terminals: separate windows via start, count clamped to 1..9.
+test('win32 terminals: separate windows via start, count clamped to 1..9.', () => {
   t = run(W, ['cmd'], {}, 'cmd', dir, 3);
   assert.deepEqual(t.calls, Array(3).fill(['exec', 'start "" cmd']), 'win: 3 cmd windows');
   assert.equal(t.opts[0].cwd, dir, 'win: cmd window at the folder');
@@ -140,9 +173,9 @@ try {
   t = run(W, ['cmd', 'claude'], {}, 'claude', dir, 1, '--resume');
   assert.deepEqual(t.calls, [['exec', 'start "" cmd /s /k "claude --resume"']], 'win: claude runs inside cmd');
   assert.equal(t.r.message, `Claude (--resume) --> ${dir}`, 'win: claude message');
+});
 
-  // Windows Terminal: one wt call for tabs/panes, one per window otherwise.
-  const tabs = { terminalLayout: 'tabs' };
+test('Windows Terminal: one wt call for tabs/panes, one per window otherwise.', () => {
   t = run(W, ['cmd', 'wt'], tabs, 'cmd', dir, 2);
   assert.deepEqual(t.calls, [['spawnSync', 'wt', [W.wtCommandLine(dir, '', 2, 'tabs')]]], 'win: 2 tabs in one wt call');
   assert.equal(t.opts[0].windowsVerbatimArguments, true, 'win: wt gets its command line verbatim');
@@ -157,19 +190,21 @@ try {
   assert.deepEqual(t.calls, [], 'win: nothing launched for a missing shell');
   assert.deepEqual(run(W, ['cmd', 'pwsh'], { terminalShell: 'pwsh' }, 'cmd', dir).calls, [['exec', 'start "" pwsh']], 'win: pwsh window');
   assert.equal(W.hasWindowsTerminal(), false, 'win: wt checked on PATH');
+});
 
-  // WebStorm: PATH first, then config path (quoted when it has spaces).
-  const ws = path.join(dir, 'webstorm64.exe');
+test('win32 WebStorm: PATH first, then config path (quoted when it has spaces).', () => {
   fs.writeFileSync(ws, '');
   t = run(W, [], { webstormPath: ws }, 'webstorm', dir);
-  assert.deepEqual(t.calls, [['spawn', `"${ws}"`, [`"${dir}"`]]], 'win: webstorm from config path, folder quoted');
-  assert.equal(t.opts[0].shell, true, 'win: webstorm via shell');
-  assert.deepEqual(run(W, ['webstorm'], { webstormPath: ws }, 'webstorm', dir).calls, [['spawn', 'webstorm', [`"${dir}"`]]], 'win: PATH webstorm first');
+  assert.deepEqual(t.calls, [['spawn', `"${ws}" "${dir}"`, []]], 'win: webstorm from config path, folder quoted');
+  assert.ok(t.opts[0].shell && t.opts[0].detached, 'win: webstorm detached via shell');
+  assert.deepEqual(run(W, ['webstorm'], { webstormPath: ws }, 'webstorm', dir).calls, [['spawn', `webstorm "${dir}"`, []]], 'win: PATH webstorm first');
   assert.match(run(W, [], {}, 'webstorm', dir).r.message, /WebStorm not found/, 'win: no webstorm anywhere');
+});
 
-  // Custom opener from config, copy, app shortcuts, URLs.
+test('win32: custom opener from config, copy, app shortcuts, URLs.', () => {
   t = run(W, ['cursor'], { apps: { Cursor: 'cursor' } }, 'cursor', dir);
-  assert.deepEqual(t.calls, [['exec', `cursor "${dir}"`]], 'win: custom opener');
+  assert.deepEqual(t.calls, [['spawn', `cursor "${dir}"`, []]], 'win: custom opener');
+  assert.ok(t.opts[0].detached && t.opts[0].stdio === 'ignore', 'win: custom opener detached, never blocks upex');
   assert.equal(t.r.displayName, 'Cursor', 'win: custom opener name');
   t = run(W, [], {}, 'copy', dir);
   assert.deepEqual(t.calls, [['exec', 'clip']], 'win: copy via clip');
@@ -185,19 +220,31 @@ try {
   calls = [];
   W.launchExecutable('code --new-window');
   assert.equal(calls[0][1], 'code --new-window', 'win: command line left as is');
-  calls = [];
-  W.launchUrl('github.com');
-  assert.equal(calls[0][1], 'start "" "https://github.com"', 'win: url via start');
+  // URLs: parsed, then one argument with no shell.
+  const rundll = href => [['spawn', 'rundll32', ['url.dll,FileProtocolHandler', href]]];
+  t = url(W, 'github.com');
+  assert.deepEqual(t.calls, rundll('https://github.com/'), 'win: url via rundll32');
+  assert.ok(t.r.ok && t.opts[0].detached && !t.opts[0].shell, 'win: url detached, no shell');
+  assert.equal(t.r.url, 'https://github.com', 'win: url shown as stored');
+  assert.deepEqual(url(W, 'https://x.test/"&echo INJECTED&"').calls, rundll('https://x.test/%22&echo%20INJECTED&%22'), 'win: a quote in a url stays text');
+  assert.deepEqual(url(W, 'https://x.test/$(id)?a=%OS%').calls, rundll('https://x.test/$(id)?a=%OS%'), 'win: $( ) and % in a url stay text');
+  assert.deepEqual(url(W, 'obsidian://open?vault=My Vault').calls, rundll('obsidian://open?vault=My%20Vault'), 'win: custom scheme');
+  t = url(W, 'https://exa mple.com');
+  assert.ok(!t.r.ok && /Not a valid URL/.test(t.r.message) && !t.calls.length, 'win: unparsable url refused, nothing launched');
+});
 
-  // -- darwin --
-  const D = await on('darwin');
+test('darwin: Finder, open, Terminal via osascript, pbcopy, urls', () => {
   assert.equal(D.APP_MAP.explorer.displayName, 'Finder', 'mac: explorer is Finder');
   assert.equal(D.hasWindowsTerminal(), null, 'mac: no wt');
   assert.deepEqual(run(D, ['open'], {}, 'explorer', dir).calls, [['exec', `open '${dir}'`]], 'mac: folder in Finder');
   assert.deepEqual(run(D, ['open'], {}, 'explorer', file).calls, [['exec', `open -R '${file}'`]], 'mac: file revealed');
   assert.deepEqual(run(D, ['open'], {}, 'open', file).calls, [['exec', `open '${file}'`]], 'mac: default app');
   assert.deepEqual(run(D, ['open'], {}, 'open', "/d/$(id)'x").calls, [['exec', `open '/d/$(id)'\\''x'`]], 'mac: a $( ) or quote in a name stays text');
-  assert.deepEqual(run(D, ['open'], {}, 'webstorm', dir).calls, [['exec', `open -na "WebStorm" --args '${dir}'`]], 'mac: webstorm via open');
+  assert.deepEqual(run(D, ['open'], {}, 'webstorm', dir).calls, [['exec', `open -na "WebStorm" --args '${dir}'`]], 'mac: webstorm via open (returns at once)');
+  assert.equal(D.APP_MAP.finder.displayName, 'Finder', 'mac: finder alias');
+  t = run(D, ['zed'], { apps: { Zed: 'zed' } }, 'zed', "/d/$(id)'x");
+  assert.deepEqual(t.calls, [['spawn', `zed '/d/$(id)'\\''x'`, []]], 'mac: custom opener, path single-quoted');
+  assert.ok(t.opts[0].detached && t.opts[0].shell, 'mac: custom opener detached, never blocks upex');
   t = run(D, ['open'], tabs, 'cmd', dir, 2, 'npm start');
   const script = `cd '${dir}' && npm start`;
   const osa = ['-e', 'tell application "Terminal" to do script ' + JSON.stringify(script), '-e', 'tell application "Terminal" to activate'];
@@ -205,12 +252,16 @@ try {
   t = run(D, [], {}, 'copy', dir);
   assert.deepEqual(t.calls, [['exec', 'pbcopy']], 'mac: copy via pbcopy');
   assert.equal(t.opts[0].env.LC_CTYPE, 'UTF-8', 'mac: pbcopy in UTF-8');
-  calls = [];
-  D.launchUrl('https://x.org');
-  assert.equal(calls[0][1], 'open "https://x.org"', 'mac: url via open');
+  t = url(D, 'https://x.org');
+  assert.deepEqual(t.calls, [['spawnSync', 'open', ['https://x.org/']]], 'mac: url via open, no shell');
+  assert.ok(t.r.ok && !t.opts[0].shell, 'mac: url opened');
+  assert.deepEqual(url(D, 'https://x.test/$(touch /tmp/p)`id`"').calls[0][2], ['https://x.test/$(touch%20/tmp/p)%60id%60%22'], 'mac: $( ), backticks and quotes stay text');
+  assert.deepEqual(url(D, 'vscode://file/a').calls[0][2], ['vscode://file/a'], 'mac: custom scheme');
+  t = url(D, 'http://[x');
+  assert.ok(!t.r.ok && !t.calls.length, 'mac: unparsable url refused');
+});
 
-  // -- linux --
-  const X = await on('linux');
+test('linux: xdg-open, D-Bus file select, openers, urls', () => {
   assert.equal(X.APP_MAP.explorer.displayName, 'File Manager', 'linux: explorer name');
   t = run(X, ['xdg-open'], {}, 'explorer', dir);
   assert.deepEqual(t.calls, [['spawn', 'xdg-open', [dir]]], 'linux: folder via xdg-open, no shell');
@@ -221,9 +272,18 @@ try {
   assert.deepEqual(t.calls[1], ['spawn', 'xdg-open', [dir]], 'linux: no file manager answers -> its folder');
   assert.deepEqual(run(X, ['xdg-open'], {}, 'open', file).calls, [['spawn', 'xdg-open', [file]]], 'linux: default app');
   assert.equal(run(X, [], {}, 'explorer', dir).r.ok, false, 'linux: no xdg-open fails');
+  assert.equal(X.APP_MAP.finder.displayName, 'File Manager', 'linux: finder alias');
+  t = run(X, ['code'], {}, 'code', dir);
+  assert.deepEqual(t.calls, [['spawn', `code ${X.shQuote(dir)}`, []]], 'linux: vscode');
+  assert.ok(t.opts[0].detached && t.opts[0].shell, 'linux: opener detached, never blocks upex');
+  install(['xdg-open']);
+  t = url(X, 'https://x.test/"$(id)"');
+  assert.deepEqual(t.calls, [['spawn', 'xdg-open', ['https://x.test/%22$(id)%22']]], 'linux: url via xdg-open, no shell');
+  assert.ok(t.r.ok && !t.opts[0].shell, 'linux: url opened');
+  assert.ok(!url(X, 'https://exa mple.com').r.ok, 'linux: unparsable url refused');
+});
 
-  // Terminals: picked from what is installed, opened detached as separate windows.
-  const win = { terminalLayout: 'windows' };
+test('linux terminals: picked from what is installed, opened detached as separate windows.', () => {
   t = run(X, ['xterm'], win, 'cmd', file, 2, 'make');
   const sh = `cd ${X.shQuote(dir)}; trap : INT; make; exec "\${SHELL:-bash}"`;
   assert.deepEqual(t.calls, Array(2).fill(['spawn', 'xterm', ['-e', 'sh', '-c', sh]]), 'linux: xterm runs the command, stays open');
@@ -243,8 +303,9 @@ try {
   t = run(X, ['xterm', 'claude'], win, 'claude', dir, 1, '--resume');
   assert.deepEqual(t.calls[0].slice(1, 2), ['xterm'], 'linux: claude in the terminal');
   assert.ok(t.calls[0][2].at(-1).includes('claude --resume;'), 'linux: claude runs there');
+});
 
-  // Opener row: only what is installed (a 'here' terminal needs no terminal app).
+test('Opener row: only what is installed (a \'here\' terminal needs no terminal app).', () => {
   install(['xdg-open']);
   setConfig({});
   assert.deepEqual(X.getInteractiveAppChoices().map(c => c.key), ['explorer', 'cmd'], 'linux: missing apps hidden');
@@ -254,8 +315,9 @@ try {
   setConfig(win);
   assert.deepEqual(X.getInteractiveAppChoices().map(c => c.key), ['explorer', 'vscode'], 'linux: windows layout without a terminal hides terminal openers');
   assert.equal(W.getInteractiveAppChoices().some(c => c.key === 'webstorm'), false, 'win: missing WebStorm hidden too');
+});
 
-  // WebStorm: Toolbox script, then Toolbox 2 apps dir; detached, no shell.
+test('linux WebStorm: Toolbox script, then Toolbox 2 apps dir; detached, no shell.', () => {
   const toolbox = path.join(home, '.local', 'share', 'JetBrains', 'Toolbox');
   const tb2 = path.join(toolbox, 'apps', 'webstorm', 'bin', 'webstorm.sh');
   fs.mkdirSync(path.dirname(tb2), { recursive: true });
@@ -270,8 +332,9 @@ try {
   assert.equal(run(X, ['webstorm'], {}, 'webstorm', dir).calls[0][1], 'webstorm', 'linux: PATH webstorm before Toolbox');
   fs.rmSync(path.join(home, '.local'), { recursive: true });
   assert.match(run(X, [], {}, 'webstorm', dir).r.message, /WebStorm not found/, 'linux: no webstorm anywhere');
+});
 
-  // Layout 'here': the shell runs in this terminal, only for a TTY caller that allows it.
+test('Layout \'here\': the shell runs in this terminal, only for a TTY caller that allows it.', () => {
   const tty = Object.getOwnPropertyDescriptor(process.stdin, 'isTTY');
   Object.defineProperty(process.stdin, 'isTTY', { value: true, configurable: true });
   try {
@@ -297,7 +360,9 @@ try {
     if (tty) Object.defineProperty(process.stdin, 'isTTY', tty);
     else delete process.stdin.isTTY;
   }
+});
 
+test('copy and paste: the platform\'s clipboard tool, \'\' when it fails or none is installed', async () => {
   const wayland = process.env.WAYLAND_DISPLAY;
   process.env.WAYLAND_DISPLAY = 'wayland-0';
   assert.deepEqual(run(X, ['wl-copy'], {}, 'copy', dir).calls, [['exec', 'wl-copy']], 'linux: wayland copy');
@@ -323,8 +388,9 @@ try {
   assert.deepEqual(await paste(X, ['wl-paste', 'xsel']), ['x', 'xsel'], 'linux: X11 skips wl-paste, xsel works');
   assert.deepEqual(await paste(X, []), [''], 'linux: no paste tool, empty');
   if (wayland !== undefined) process.env.WAYLAND_DISPLAY = wayland;
+});
 
-  // Shell setup: one upex block, replaced in place; a hand-added function is left alone.
+test('Shell setup: one upex block, replaced in place; a hand-added function is left alone.', async () => {
   const { withBlock, installShell, rcFile } = await import('../src/commands/setup.js');
   const once = withBlock('alias x=y\n');
   assert.ok(once.startsWith('alias x=y\n\n# >>> upex') && once.includes('__resolve'), 'setup: block appended');
@@ -336,7 +402,9 @@ try {
   assert.equal(installShell('bash', home).kept, true, 'setup: hand-added function kept');
   assert.ok(fs.readFileSync(installShell('fish', home).file, 'utf-8').startsWith('function upex'), 'setup: fish function file');
   assert.equal(rcFile('fish', home), path.join(home, '.config', 'fish', 'functions', 'upex.fish'), 'setup: fish autoload path');
-  // --dry-run: launches print their command line, nothing spawns.
+});
+
+test('--dry-run: launches print their command line, nothing spawns.', async () => {
   const S = await import('../src/store.js');
   const log = console.log;
   const printed = [];
@@ -346,16 +414,18 @@ try {
     const d = run(W, ['code'], {}, 'code', dir);
     assert.ok(d.r.ok && !d.calls.length, 'dry run: ok, nothing spawned');
     run(W, ['cmd'], {}, 'cmd', dir, 2);
-    assert.deepEqual(printed, [`code "${dir}"`, `start "" cmd   (in ${dir})`, `start "" cmd   (in ${dir})`], 'dry run: command lines');
+    W.launchUrl('https://x.test/"&echo INJECTED&"');
+    D.launchUrl('https://x.test/$(id)');
+    assert.deepEqual(printed, [`code "${dir}"`, `start "" cmd   (in ${dir})`, `start "" cmd   (in ${dir})`,
+      'rundll32 url.dll,FileProtocolHandler https://x.test/%22&echo%20INJECTED&%22', 'open https://x.test/$(id)'], 'dry run: command lines');
   } finally {
     S.setDryRun(false);
     console.log = log;
   }
+});
+
+test('linux: .bat not via cmd.exe', () => {
   calls = [];
   X.launchExecutable('/opt/run.bat');
   assert.deepEqual(calls.map(c => c.slice(0, 3)), [['spawn', '/opt/run.bat', []]], 'linux: .bat not via cmd.exe');
-} finally {
-  fs.rmSync(home, { recursive: true, force: true });
-}
-
-console.log('ok - fuzzy edges + launcher win32/darwin/linux');
+});
