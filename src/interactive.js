@@ -773,7 +773,7 @@ function settingNote(key, s, wt) {
   if (key === 'groups') return 'By tag: Pinned on top, then a #tag heading per tag in the sort order, like folders; two tags show under both, untagged last. Type #tag to filter.';
   if (key === 'narrowPane') return 'Under 140 columns (full screen): Shift+→ opens the pane, Shift+← or Esc closes it, or it always shows. Not under 60.';
   if (key === 'paneWidth') return 'How much of the screen the pane takes: Narrow leaves the list more room, Wide shows more details.';
-  if (key === 'goals') return 'Pane right of the list (full screen): open upgo goals of a folder, up to this many. S-→ picks one to copy, a click copies it, Ctrl+click hands it to Claude. upex ui shows them on one line under the name.';
+  if (key === 'goals') return 'Pane right of the list (full screen): open upgo goals of a folder, up to this many. S-→ picks one, Enter copies it, ^↵ hands it to Claude; a click copies, Ctrl+click hands it to Claude. upex ui shows them on one line under the name.';
   if (key === 'git') return 'Pane right of the list (full screen): branch, ahead/behind, changes and last commit of a folder in git. ^g opens its web page.';
   if (key === 'keyHints') return 'Keys under the list. Short: one row of what the picked row can do now. Full: every key. Off: more room for the list. ? on an empty filter (or ^k) shows every key in any mode. Settings keeps its keys.';
   if (key === 'glyphs') return 'ASCII swaps arrows, pointers, lines and the ellipsis for plain characters, for fonts that show boxes.';
@@ -1273,7 +1273,7 @@ export function renderInteractiveView({
   const openWith = confirming ? chalk.dim(`  open with  ${ui.stripAnsi(openers)}`) : `  ${chalk.dim('open with')}  ${openers}`;
   const foot = isForm ? (hints.length ? pad([formKeys(form, inputRow)]) : [])
     : isScripts ? (hints.length ? [keyHint([['↵', 'run in a terminal'], ['↑↓', 'move'], escKey])] : [])
-    : isGoals ? (hints.length ? [keyHint([['↵', 'copy'], ['↑↓', 'move'], ['esc', 'back']])] : [])
+    : isGoals ? (hints.length ? [keyHint([['↵', 'copy'], !picker && ['^↵', 'claude'], ['↑↓', 'move'], ['esc', 'back']])] : [])
     : [...(isShortcuts ? [openWith, ...(hints.length ? gap : [])] : []), ...hints];
   // No footer rows above it: no blank row under the rule.
   foot.push(...(foot.length ? webRows : webRows.slice(-1)));
@@ -1775,7 +1775,7 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
       finish({ status: 'selected', name: c.name, app: 'cmd', count: 1, start });
     };
 
-    // Ctrl+click on a goal: Claude in the highlighted folder, told to do it.
+    // Ctrl+click or Ctrl+Enter on a goal: Claude in the highlighted folder, told to do it.
     const claudeGoal = (start) => {
       const c = filteredChoices[selectedIndex];
       mode = 'browse';
@@ -2571,12 +2571,15 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
         return;
       }
 
-      // ── Goal picker in the pane: ↑↓ move, Enter copies, Esc / ← back. Pane gone (resize): back too. ──
+      // ── Goal picker in the pane: ↑↓ move, Enter copies, Ctrl+Enter hands it to Claude, Esc / ← back. Pane gone (resize): back too. ──
       if (mode === 'goals') {
         const g = paneGoals()?.next || [];
         goalIndex = Math.min(goalIndex, g.length - 1);
+        // Ctrl+Enter: a line feed on Windows (most others send CR, ^J works there) or CSI u. upex pick copies instead.
+        const ctrlEnter = key.name === 'enter' || key.sequence === '\x1b[13;5u';
         if (!g.length || key.name === 'escape' || key.name === 'left') mode = 'browse';
-        else if (key.name === 'return') { copy(goalText(g[goalIndex]), `copied "${oneLine(g[goalIndex].id ?? g[goalIndex].title)}"`); mode = 'browse'; }
+        else if (ctrlEnter && !picker) { claudeGoal(goalPrompt(g[goalIndex])); return; }
+        else if (ctrlEnter || key.name === 'return') { copy(goalText(g[goalIndex]), `copied "${oneLine(g[goalIndex].id ?? g[goalIndex].title)}"`); mode = 'browse'; }
         else if (key.name === 'up' || key.name === 'down') goalIndex = (goalIndex + (key.name === 'up' ? g.length - 1 : 1)) % g.length;
         redraw();
         return;
