@@ -193,12 +193,13 @@ try {
   const D = await on('darwin');
   assert.equal(D.APP_MAP.explorer.displayName, 'Finder', 'mac: explorer is Finder');
   assert.equal(D.hasWindowsTerminal(), null, 'mac: no wt');
-  assert.deepEqual(run(D, ['open'], {}, 'explorer', dir).calls, [['exec', `open "${dir}"`]], 'mac: folder in Finder');
-  assert.deepEqual(run(D, ['open'], {}, 'explorer', file).calls, [['exec', `open -R "${file}"`]], 'mac: file revealed');
-  assert.deepEqual(run(D, ['open'], {}, 'open', file).calls, [['exec', `open "${file}"`]], 'mac: default app');
-  assert.deepEqual(run(D, ['open'], {}, 'webstorm', dir).calls, [['exec', `open -na "WebStorm" --args "${dir}"`]], 'mac: webstorm via open');
+  assert.deepEqual(run(D, ['open'], {}, 'explorer', dir).calls, [['exec', `open '${dir}'`]], 'mac: folder in Finder');
+  assert.deepEqual(run(D, ['open'], {}, 'explorer', file).calls, [['exec', `open -R '${file}'`]], 'mac: file revealed');
+  assert.deepEqual(run(D, ['open'], {}, 'open', file).calls, [['exec', `open '${file}'`]], 'mac: default app');
+  assert.deepEqual(run(D, ['open'], {}, 'open', "/d/$(id)'x").calls, [['exec', `open '/d/$(id)'\\''x'`]], 'mac: a $( ) or quote in a name stays text');
+  assert.deepEqual(run(D, ['open'], {}, 'webstorm', dir).calls, [['exec', `open -na "WebStorm" --args '${dir}'`]], 'mac: webstorm via open');
   t = run(D, ['open'], tabs, 'cmd', dir, 2, 'npm start');
-  const script = `cd ${JSON.stringify(dir)} && npm start`;
+  const script = `cd '${dir}' && npm start`;
   const osa = ['-e', 'tell application "Terminal" to do script ' + JSON.stringify(script), '-e', 'tell application "Terminal" to activate'];
   assert.deepEqual(t.calls, Array(2).fill(['spawnSync', 'osascript', osa]), 'mac: Terminal via osascript, wt settings ignored');
   t = run(D, [], {}, 'copy', dir);

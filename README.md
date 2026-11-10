@@ -224,10 +224,11 @@ Run `upex` with no arguments to open the interactive selector. It reloads by its
 - `Ctrl+O` -- next sort (most used, A to Z, last opened, recently added), saved like the `sort` setting; a flash names it
 - `Ctrl+Z` -- step back one change to your shortcuts, like `upex undo` (again to go further back, up to 10); a flash says what came back. Workspaces deleted in this session come back first, newest first
 - `Ctrl+S` -- list the selected folder's package.json scripts (in the detail pane when it shows, else in place of the list); Enter runs one in a terminal (like `upex run`), Esc or Left goes back
+- `Ctrl+F` -- list what the selected folder holds as rows, subfolders then files (typing filters them by name); `Ctrl+F` on a subfolder goes deeper, Left or Esc goes back one level. Enter opens a subfolder like `upex name/sub` and a file in its default app (`upex pick` prints its path); marks, add, edit, rename, pin and archive are off there
 - While typing a path or name: `Left` / `Right` move the cursor, `Ctrl+Left` / `Ctrl+Right` jump a word, `Home` / `End`, `Ctrl+Backspace` (or `Ctrl+W`) deletes a word, `Del` deletes forward. `Ctrl+Backspace` also works in the filter
 - `Ctrl+K` -- show every key over the list (handy with `keyHints` short), any key or a click closes it
 - `Ctrl+U` -- start `upex ui` and open it in the browser; the selector stays open and shows the link. `Ctrl+U` again stops it, so does closing the selector
-- `Esc` -- clear the filter, then the marks, then close a detail pane opened with Shift+→ (see `narrowPane`), then quit
+- `Esc` -- clear the filter, then leave `Ctrl+F` subfolders one level, then the marks, then close a detail pane opened with Shift+→ (see `narrowPane`), then quit
 - Mouse (full screen) -- click a tab, opener or setting; click a row to select it, again or double-click to open; right-click a row for a menu (open in each opener, edit, pin, copy path, archive; workspaces: open all, edit, delete), click an item or use ↑↓ Enter, any other click or key closes it; the wheel moves the selection; in the detail pane a click on a goal copies it
 
 ## Web UI

@@ -1397,10 +1397,11 @@
       "title": "Subfolder drill-in in the selector",
       "body": "A key on a folder row lists its direct subfolders as rows (Left goes back). Enter opens or picks that subfolder like upex name/sub, so deep folders need no new shortcut. Reuses resolveTarget.",
       "phase": "maybe",
-      "status": "planned",
+      "status": "done",
       "size": "M",
       "created": "2026-11-09",
-      "updated": "2026-11-09"
+      "updated": "2026-11-10",
+      "note": "^f on a folder row lists its subfolders (A to Z, dot last), ^f deeper, Left/Esc back a level, Enter opens like upex name/sub; edit keys and marks off there"
     },
     {
       "id": "tui-critique-fixes",

@@ -164,12 +164,12 @@ function tokenTest(w, staleDays) {
   return key ? c => IS[key](c, staleDays) : () => false;
 }
 
-// `fuzzy`, `searchIn` and `staleAfter` are the settings of the same name.
-export function filterChoices(choices, query, { fuzzy, searchIn, staleAfter = '60' } = {}) {
+// `fuzzy`, `searchIn` and `staleAfter` are the settings of the same name; `tokens` false searches the text as typed (^f rows).
+export function filterChoices(choices, query, { fuzzy, searchIn, staleAfter = '60', tokens = true } = {}) {
   // Token words (#tag, @opener, is:pinned|missing|stale|app|new|temp) narrow the list; the other words search fuzzy.
   // Also split before each token: Space marks, so "#we#ui" or "apiis:pinned".
-  const words = query.trim().split(/\s+|(?=[#@])|(?=is:)/i);
-  const isToken = w => TOKEN.test(w);
+  const words = tokens ? query.trim().split(/\s+|(?=[#@])|(?=is:)/i) : [query.trim()];
+  const isToken = w => tokens && TOKEN.test(w);
   const tests = words.filter(isToken).map(w => tokenTest(w, Number(staleAfter))).filter(Boolean);
   const pool = tests.length ? choices.filter(c => tests.every(t => t(c))) : choices;
   const trimmed = words.filter(w => !isToken(w)).join(' ');
@@ -547,6 +547,18 @@ export function clipPath(text, exists = fs.existsSync) {
 // A typed or pasted target as an entry: a web address is a url, a program file an app (.exe, .bat, ... on Windows,
 // an executable file elsewhere), anything else a folder path.
 const statOf = p => { try { return fs.statSync(p); } catch { return null; } };
+
+// ^f: what `dir` holds as rows, folders then files, each A to Z with dot ones last. `ref` + "/name" opens one like upex name/sub.
+export function subfolderChoices(dir, ref, opener = null, read = d => fs.readdirSync(d, { withFileTypes: true })) {
+  let ents;
+  try { ents = read(dir); } catch { return []; }
+  // A link counts as what it points to; a broken one is left out.
+  const kind = e => (e.isSymbolicLink() ? statOf(path.join(dir, e.name)) : e);
+  const rows = ents.map(e => ({ name: e.name, k: kind(e) })).filter(x => x.k?.isDirectory() || x.k?.isFile())
+    .map(({ name, k }) => ({ name, isFile: k.isFile() }));
+  return rows.sort((a, b) => a.isFile - b.isFile || (a.name[0] === '.') - (b.name[0] === '.') || a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }))
+    .map(({ name, isFile }) => ({ name, ref: `${ref}/${name}`, path: path.join(dir, name), isDir: !isFile, isFile, exists: true, opener, tags: [], searchText: name }));
+}
 export function targetEntry(text, platform = os.platform(), stat = statOf) {
   const t = String(text ?? '').trim().replace(/^"(.*)"$/, '$1');
   // 2+ letter scheme, so C://x stays a path; parseable, so hostName can't throw.
@@ -567,7 +579,7 @@ export const prefill = (action, choice) => (action === 'rename' ? choice?.name :
 export const staysOpen = (appKey, layout, wt) => isTerminalApp(appKey) && layout === 'tabs' && !!wt();
 
 // Why Enter can't open this folder shortcut, or null. Checks the disk again: the list can be stale.
-export const missingFlash = (c, exists = fs.existsSync) => (c.isApp || c.isUrl || exists(c.path) ? null : 'path missing, ^e to fix');
+export const missingFlash = (c, exists = fs.existsSync) => (c.isApp || c.isUrl || exists(c.path) ? null : c.ref ? 'path missing' : 'path missing, ^e to fix');
 
 // ── Edit form (^e): one row per field, saved as you go ──
 // Shortcut types, named like add --app / --cmd / --url.
@@ -868,7 +880,7 @@ export function goalsOf(dir) {
   }
   return goalCache.get(file).goals;
 }
-const isFolder = c => !!(c && !c.entries && !c.isApp && !c.isUrl && c.path && c.exists !== false);
+const isFolder = c => !!(c && !c.entries && !c.isApp && !c.isUrl && !c.isFile && c.path && c.exists !== false);
 // Goals the detail pane shows for a row, `max` from the goals setting ('off' = none): folder shortcuts only.
 function folderGoals(c, max) {
   const g = Number(max) > 0 && isFolder(c) && goalsOf(c.path);
@@ -926,15 +938,16 @@ export function detailLines(c, pw, appChoices = [], now = Date.now(), { goals = 
   if (!c) return [];
   if (c.entries) return [chalk.bold(clipName(c.name, pw).text), '', ...c.entries.map(describeEntry)].map(l => ui.truncate(l, pw));
   const opener = c.opener && (appChoices.find(a => a.key === c.opener)?.label || c.opener);
-  const stats = [c.uses ? `${c.uses} open${c.uses > 1 ? 's' : ''}` : 'never opened', c.lastUsed && `${ui.span(now - c.lastUsed)} ago`, opener];
+  // A ^f subfolder row has no usage of its own.
+  const stats = c.ref ? [] : [c.uses ? `${c.uses} open${c.uses > 1 ? 's' : ''}` : 'never opened', c.lastUsed && `${ui.span(now - c.lastUsed)} ago`, opener];
   const star = c.pinned ? `${PIN} ` : '';
   // Stats right-aligned beside the name, cut before the name drops under 10 columns.
-  const out = [lr(star + chalk.bold(c.name), [c.exists === false && chalk.red('missing'), chalk.dim(stats.filter(Boolean).join(' · '))].filter(Boolean).join('  '),
+  const out = [lr(star + chalk.bold(c.ref || c.name), [c.exists === false && chalk.red('missing'), chalk.dim(stats.filter(Boolean).join(' · '))].filter(Boolean).join('  '),
     pw, vis(star) + 10)];
   // Local day; a hand-edited bad value is left out (toISOString would throw).
   const added = new Date(c.added || NaN);
   // Not opened (or added, if never opened) in 30+ days, like upex stale.
-  const stale = now - (c.lastUsed || c.added || 0) >= 30 * 86400000;
+  const stale = !c.ref && now - (c.lastUsed || c.added || 0) >= 30 * 86400000;
   // The note, wrapped at spaces (3 lines at most, the last one clipped).
   const note = [];
   for (let s = oneLine(c.note), w = Math.max(1, pw - 2); s; s = s.slice(note.at(-1).length).trimStart()) {
@@ -944,7 +957,7 @@ export function detailLines(c, pw, appChoices = [], now = Date.now(), { goals = 
     if (note.length === 3) break;
   }
   // A dim meta line under the title, then warnings and the note as their own block.
-  out.push(...dotLines([c.isCmd ? 'command' : c.isApp ? 'app' : c.isUrl ? 'url' : 'folder',
+  out.push(...dotLines([c.isCmd ? 'command' : c.isApp ? 'app' : c.isUrl ? 'url' : c.isFile ? 'file' : c.ref ? 'subfolder' : 'folder',
     c.tags?.length && `#${c.tags.join(' #')}`,
     c.aliases?.length && `aka ${c.aliases.join(' ')}`,
     !isNaN(added) && `added ${added.toLocaleDateString('sv-SE')}`,
@@ -1050,6 +1063,7 @@ export function renderInteractiveView({
   offers = [], // no matches: noMatchOffers
   offerIndex = 0,
   suggest = null, // learned folder to offer as a shortcut { name, path }, a row under the list
+  drill = '', // ^f: the folder whose subfolders are the rows ("web/src")
 }) {
   asciiHints = settings.glyphs === 'ascii';
   const isWs = view === 'workspaces';
@@ -1147,7 +1161,7 @@ export function renderInteractiveView({
   } else if (isGoals) {
     lines.push(withRight(`  ${chalk.bold(pick('›'))} ${chalk.dim('copy a goal of')} ${chalk.bold(clipName(currentChoice.name, 24).text)}`));
   } else {
-    const left = `  ${chalk.bold(pick('›'))} ${query ? `${query}${chalk.dim('▏')}` : chalk.dim('▏type to filter')}`;
+    const left = `  ${chalk.bold(pick('›'))} ${drill ? chalk.dim(`${drill}/`) : ''}${query ? `${query}${chalk.dim('▏')}` : chalk.dim('▏type to filter')}`;
     lines.push(withRight(left, !isWs && !isSettings && marks.size ? pick(`● ${marks.size} marked`) : ''));
   }
   lines.push(isSettings ? ruleOf('┴') : ruleOf('┬'));
@@ -1167,7 +1181,7 @@ export function renderInteractiveView({
   // Only Shortcuts shown: Tab there does nothing.
   const tabKey = next !== view && ['tab', VIEWS[next].toLowerCase()];
   const many = !isWs && !isSettings && marks.size;
-  const escKey = ['esc', isScripts ? 'back' : mode !== 'browse' ? 'cancel' : query ? 'clear' : many ? 'unmark' : toggles && pane ? 'hide details' : 'quit'];
+  const escKey = [drill && !query && mode === 'browse' ? '← esc' : 'esc', isScripts || (drill && !query) ? 'back' : mode !== 'browse' ? 'cancel' : query ? 'clear' : many ? 'unmark' : toggles && pane ? 'hide details' : 'quit'];
   const undoKey = undo && ['^z', 'undo'];
   const uiKey = ['^u', webUrl ? 'stop web ui' : 'web ui'];
   const inputRow = keyHint([['↵', !form?.adding ? 'save' : form.field || form.entry.path ? 'add' : 'next'], isForm && formRows(form)[form.field] === 'tags' && ['tab', 'complete'], ['←→', 'cursor'], ['^⌫', 'word'], ['^u', 'clear'], ['esc', 'cancel']]);
@@ -1235,43 +1249,50 @@ export function renderInteractiveView({
   const isShortcuts = view === 'shortcuts';
   const offer = list.length === 0 && mode === 'browse' && offers[offerIndex];
   const openKey = ['↵', offer ? offer.key : picker ? (many || isWs ? 'print paths' : 'print path') : many ? `open ${many} marked` : isShortcuts ? 'open' : isWs ? 'open all' : currentChoice?.isUrl ? 'open in browser' : 'launch app'];
-  const markKey = !isWs && list.length > 0 && ['space', 'mark'];
-  const opener = isShortcuts && ['←→', 'opener'];
+  // ^f rows are folders, not shortcuts: no marks, edits, pins or archive there.
+  const own = !drill;
+  const markKey = own && !isWs && list.length > 0 && ['space', 'mark'];
+  const opener = isShortcuts && !currentChoice?.isFile && [drill ? '→' : '←→', 'opener'];
+  const drillKey = isShortcuts && isFolder(currentChoice) && ['^f', 'subfolders'];
+  const backKey = drill && query && ['←', 'back'];
   const windows = isShortcuts && terminal && ['S-↑↓', 'windows'];
   const scriptsKey = isShortcuts && !picker && ['^s', 'scripts'];
-  const movePin = !isWs && !query?.trim() && currentChoice?.pinned && ['A-↑↓', 'move pin'];
+  const movePin = own && !isWs && !query?.trim() && currentChoice?.pinned && ['A-↑↓', 'move pin'];
   const goalsKey = goals?.next.length && ['S-→', 'goals'];
   const webKey = git?.web && ['^g', hostName(git.web)];
   const paneKey = toggles && (pane ? ['S-←', 'hide details'] : ['S-→', 'details']);
-  const editKeys = [(isShortcuts || isWs) && ['^a', isWs ? 'add marked' : 'add'], list.length > 0 && ['^e', 'edit'], !isWs && list.length > 0 && ['^r', 'rename']];
-  const pinKey = !isWs && list.length > 0 && ['^p', currentChoice?.pinned ? 'unpin' : 'pin'];
+  const editKeys = own ? [(isShortcuts || isWs) && ['^a', isWs ? 'add marked' : 'add'], list.length > 0 && ['^e', 'edit'], !isWs && list.length > 0 && ['^r', 'rename']] : [];
+  const pinKey = own && !isWs && list.length > 0 && ['^p', currentChoice?.pinned ? 'unpin' : 'pin'];
   // Shortcuts are archived, not deleted (^d deletes in Settings > Archived); workspaces have no archive.
-  const dropKey = isWs ? list.length > 0 && ['^d', 'delete'] : (list.length > 0 || many) && ['^x', many ? `archive ${many} marked` : 'archive'];
+  const dropKey = isWs ? list.length > 0 && ['^d', 'delete'] : own && (list.length > 0 || many) && ['^x', many ? `archive ${many} marked` : 'archive'];
   const copyKey = !isWs && list.length > 0 && ['^y', 'copy'];
   const sortKey = !isWs && ['^o', 'sort'];
   // Full: rows of keys, a pair that doesn't fit wraps. Keys that change with the selection, marks, filter or mode
   // count at their widest for the row count, so the list only moves on resize. Esc already saying "hide details" drops the pane key.
   const paneHint = escKey[1] !== paneKey[1] && paneKey;
-  const fullRows = ({ open = openKey, win = windows, esc = escKey, pane: pk = paneHint, pin = movePin, goals: gk = goalsKey, p = pinKey, drop = dropKey, z = undoKey, web = webKey } = {}) => [
-    ...wrapHint([open, ['↑↓', 'move'], opener, win, tabKey, esc, pk, pin, markKey, gk], w),
+  const fullRows = ({ open = openKey, op = opener, win = windows, esc = escKey, back = backKey, pane: pk = paneHint, pin = movePin, goals: gk = goalsKey, p = pinKey, drop = dropKey, z = undoKey, web = webKey, f = drillKey } = {}) => [
+    ...wrapHint([open, ['↑↓', 'move'], op, win, tabKey, esc, back, pk, pin, markKey, f, gk], w),
     ...wrapHint([...editKeys, p, drop, z, uiKey, copyKey, sortKey, scriptsKey, web], w),
   ];
   // Short: one row of what the picked row (or the marks) can do now, every key behind ? at the right end.
   // Esc only when it does something other than quit.
   const helpKey = keyHint([query ? ['^k', 'all keys'] : ['?', 'all keys']]).trimStart();
-  const nowRow = fitHint([(list.length > 0 || offer || many) && openKey, opener, windows, many ? dropKey : markKey, list.length > 0 ? ['^e', 'edit'] : editKeys[0],
-    escKey[1] !== 'quit' && escKey, goalsKey || paneHint], w - vis(helpKey) - 2);
+  const nowRow = fitHint([(list.length > 0 || offer || many) && openKey, opener, windows, many ? dropKey : markKey, own && (list.length > 0 ? ['^e', 'edit'] : editKeys[0]),
+    drillKey, escKey[1] !== 'quit' && escKey, backKey, goalsKey || paneHint], w - vis(helpKey) - 2);
   const shortRow = nowRow + ' '.repeat(Math.max(2, w - vis(nowRow) - vis(helpKey))) + helpKey;
   const most = `${Math.max(many, 9)} marked`;
   const widest = fullRows({
     open: isWs ? openKey : ['↵', isShortcuts ? `open ${most}` : 'open in browser'],
+    op: isShortcuts && [drill ? '→' : '←→', 'opener'],
     win: isShortcuts && ['S-↑↓', 'windows'],
     esc: ['esc', 'cancel'],
+    back: drill && ['←', 'back'],
     pane: paneKey,
-    pin: !isWs && ['A-↑↓', 'move pin'],
+    pin: own && !isWs && ['A-↑↓', 'move pin'],
     goals: isShortcuts && pane && Number(settings.goals) > 0 && ['S-→', 'goals'],
     p: pinKey && ['^p', 'unpin'],
-    drop: isWs ? dropKey : ['^x', `archive ${most}`],
+    drop: isWs || !own ? dropKey : ['^x', `archive ${most}`],
+    f: isShortcuts && ['^f', 'subfolders'],
     z: ['^z', 'undo'],
     web: isShortcuts && pane && settings.git === 'on' && (webKey || ['^g', 'github']),
   });
@@ -1309,8 +1330,9 @@ export function renderInteractiveView({
   if (keysHelp) {
     // ? or ^k: every key of this tab in groups, over the list.
     const groups = [
-      ['Move', [openKey, ['↑↓', 'move'], ['PgUp/Dn Home/End', 'jump'], numbered && ['1-9', 'open row N'], opener, windows, tabKey, escKey, paneHint, markKey, !isWs && ['A-↑↓', 'move pin']]],
-      ['Edit', [...editKeys, !isWs && ['F2', 'rename'], pinKey, dropKey, dropKey && ['Del', dropKey[1]], ['^z', 'undo'], copyKey]],
+      ['Move', [openKey, ['↑↓', 'move'], ['PgUp/Dn Home/End', 'jump'], numbered && ['1-9', 'open row N'], opener, windows, tabKey, escKey, paneHint, markKey, own && !isWs && ['A-↑↓', 'move pin'],
+        isShortcuts && ['^f', 'subfolders'], isShortcuts && ['←', 'back from subfolders']]],
+      ['Edit', [...editKeys, own && !isWs && ['F2', 'rename'], pinKey, dropKey, dropKey && ['Del', dropKey[1]], ['^z', 'undo'], copyKey]],
       ['More', [sortKey, suggest && ['^n', 'add suggested folder'], suggest && ['^l', 'hide suggestion'], scriptsKey, isShortcuts && ['S-→', 'goals'], isShortcuts && (webKey || ['^g', 'git web page']), uiKey, full && settings.mouse !== 'off' && ['right-click', 'row menu']]],
     ];
     const help = groups.flatMap(([name, pairs], i) => [...(i ? [''] : []), `    ${chalk.bold(name)}`, ...wrapHint(pairs, cw).map(r => `  ${r}`)]);
@@ -1323,7 +1345,7 @@ export function renderInteractiveView({
       apps: 'No app or URL shortcuts yet. Add one: upex add <name> <exe> --app',
       shortcuts: 'No folder shortcuts yet. Add one with ^a (uses the current folder)',
     };
-    lines.push(chalk.dim(`    ${query ? 'no matches' : empty[view]}`));
+    lines.push(chalk.dim(`    ${query ? 'no matches' : drill ? `${drill} is empty` : empty[view]}`));
     // What Enter offers instead, as rows; a click runs one. Not while typing a name or confirming.
     const nameWidth = Math.max(...offers.map(o => vis(o.label)));
     if (offer) offers.forEach((o, i) => {
@@ -1358,7 +1380,7 @@ export function renderInteractiveView({
       shownRows++;
       const c = list[i];
       const tags = tagsOn && c.tags?.length ? chalk.dim(`#${c.tags.join(' #')}`) : '';
-      const kind = c.isCmd ? 'cmd' : c.isApp ? 'app' : c.isUrl ? 'url' : '';
+      const kind = c.isCmd ? 'cmd' : c.isApp ? 'app' : c.isUrl ? 'url' : c.isFile ? 'file' : '';
       const badge = !badgesOn ? '' : !c.exists ? chalk.red('missing') : chalk.dim(badgeText([c.pinned && group(c) !== 'Pinned' && PIN, kind, expiryText(c.expires, now)]));
       const via = c.via ? chalk.dim(`via ${c.via}`) : '';
       // Picking in the pane: its rows are the clickable ones.
@@ -1450,7 +1472,13 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
     // Tab cycles 'shortcuts' | 'apps' | 'workspaces'; --app only matters on Shortcuts.
     // No shortcuts yet: Shortcuts, where ^a adds the first.
     let view = preferredApp || !allChoices.length ? 'shortcuts' : startTab(config);
-    let choices = allChoices.filter(inView(view));
+    // ^f: the folders whose subfolders are listed, outermost first: { ref, path, opener, name, query, like } (name, query, like: to go back to).
+    let drill = [];
+    const viewChoices = () => {
+      const d = drill.at(-1);
+      return d ? subfolderChoices(d.path, d.ref, d.opener) : allChoices.filter(inView(view));
+    };
+    let choices = viewChoices();
     let filteredChoices = choices;
     let selectedIndex = 0;
     let wsChoices = buildWorkspaceChoices();
@@ -1485,7 +1513,9 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
     let form = null; // edit form: { name, ws, field, editing, buffer, cursor, kind, history }
     let pending = null; // Confirm many: the open waiting for y
     let suggest = picker ? null : topSuggestion(); // learned folder (upex cd) to offer as a shortcut
-    const tipShown = () => !!suggest && view === 'shortcuts' && mode === 'browse';
+    const tipShown = () => !!suggest && view === 'shortcuts' && mode === 'browse' && !drill.length;
+    // Marks stay hidden while ^f lists subfolders.
+    const marking = () => marks.size > 0 && !drill.length;
     let wt = null;
     const appIndex = (key) => appChoices.findIndex(choice => choice.key === key);
     // A folder's own opener, else the default.
@@ -1567,8 +1597,8 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
         webUrl: web?.url,
         scripts,
         scriptIndex,
-        marks,
-        marked: marks.size ? markedPlan() : [],
+        marks: drill.length ? new Set() : marks,
+        marked: marking() ? markedPlan() : [],
         goalIndex,
         gitFor,
         counts: { shortcuts: allChoices.filter(inView('shortcuts')).length, apps: allChoices.filter(inView('apps')).length, workspaces: wsChoices.length },
@@ -1582,6 +1612,7 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
         offers,
         offerIndex,
         suggest: tipShown() ? suggest : null,
+        drill: drill.at(-1)?.ref,
       });
       // Never taller than the screen, or the top scrolls away and frames stack up.
       let shown = output.split('\n').slice(0, height).map(line => ui.truncate(line, width));
@@ -1604,13 +1635,14 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
     const updateFilter = () => {
       filteredWs = filterChoices(wsChoices, query, settings);
       wsIndex = Math.max(0, Math.min(wsIndex, filteredWs.length - 1));
-      filteredChoices = filterChoices(choices, query, settings);
+      // Subfolder rows search their names only (the parent path would match them all), "@types" or "#x" included.
+      filteredChoices = filterChoices(choices, query, drill.length ? { ...settings, searchIn: 'names', tokens: false } : settings);
       if (!query.trim()) {
         const base = filteredChoices;
         if (settings.groups === 'tags') filteredChoices = withGroups(base, settings.sort === 'name');
         if (settings.recentStrip !== 'off') filteredChoices = withRecent(base, Number(settings.recentStrip), filteredChoices);
       }
-      offers = filteredChoices.length || !query.trim() ? [] : noMatchOffers(query, view, archivedList(loadLinks()));
+      offers = filteredChoices.length || !query.trim() || drill.length ? [] : noMatchOffers(query, view, archivedList(loadLinks()));
       offerIndex = 0;
       if (filteredChoices.length === 0) {
         selectedIndex = 0;
@@ -1634,7 +1666,10 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
     const rebuild = (name, wsName) => {
       const like = filteredChoices[selectedIndex];
       allChoices = buildChoices();
-      choices = allChoices.filter(inView(view));
+      // The ^f shortcut went or moved (^z, an edit elsewhere): its refs would open something else.
+      const root = drill[0];
+      if (root && !allChoices.some(c => c.name === root.name && c.path === root.path)) { query = root.query; drill = []; }
+      choices = viewChoices();
       wsChoices = buildWorkspaceChoices();
       for (const n of marks) if (!allChoices.some(c => c.name === n)) marks.delete(n);
       updateFilter();
@@ -1766,7 +1801,7 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
     const openScripts = () => {
       const c = filteredChoices[selectedIndex];
       if (view !== 'shortcuts' || !c || picker) return;
-      flash = missingFlash(c) || '';
+      flash = missingFlash(c) || (c.isFile ? 'not a folder' : '');
       const found = !flash && readScripts(c.path);
       if (flash) return;
       if (!found) { flash = 'no package.json in this folder'; return; }
@@ -1784,23 +1819,47 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
       const start = `${scripts.pm} run ${scripts.list[scriptIndex].name}`;
       mode = 'browse';
       const tab = tabsOn('cmd');
-      if (tab || stay('cmd')) { openHere([{ shortcut: c.name, app: 'cmd', start }], `running "${start}"${tab ? ' in a new tab' : ''}`, [c.name]); return; }
-      finish({ status: 'selected', name: c.name, app: 'cmd', count: 1, start });
+      if (tab || stay('cmd')) { openHere([{ shortcut: refOf(c), app: 'cmd', start }], `running "${start}"${tab ? ' in a new tab' : ''}`, [c.name]); return; }
+      finish({ status: 'selected', name: refOf(c), app: 'cmd', count: 1, start });
     };
 
+    // What opens a row: a ^f subfolder row opens like upex name/sub.
+    const refOf = c => c.ref || c.name;
     // Ctrl+click or Ctrl+Enter on a goal: Claude in the highlighted folder, told to do it.
     const claudeGoal = (start) => {
       const c = filteredChoices[selectedIndex];
       mode = 'browse';
       const tab = tabsOn('claude');
-      if (tab || stay('claude')) { openHere([{ shortcut: c.name, app: 'claude', start }], `claude ${start}${tab ? ' in a new tab' : ''}`, [c.name]); return; }
-      finish({ status: 'selected', name: c.name, app: 'claude', count: 1, start });
+      if (tab || stay('claude')) { openHere([{ shortcut: refOf(c), app: 'claude', start }], `claude ${start}${tab ? ' in a new tab' : ''}`, [c.name]); return; }
+      finish({ status: 'selected', name: refOf(c), app: 'claude', count: 1, start });
+    };
+
+    // ^f on a folder row: its direct subfolders become the rows, the filter starts empty.
+    const drillIn = () => {
+      const c = filteredChoices[selectedIndex];
+      if (view !== 'shortcuts' || !c) return;
+      if (!isFolder(c)) { flash = missingFlash(c) || 'not a folder'; return; }
+      const ref = refOf(c);
+      if (!subfolderChoices(c.path, ref).length) { flash = statOf(c.path)?.isDirectory() ? `${ref} is empty` : 'not a folder'; return; }
+      drill.push({ ref, path: c.path, opener: c.opener, name: c.name, query, like: { recent: c.recent, group: c.group } });
+      query = '';
+      choices = viewChoices();
+      selectedIndex = 0;
+      updateFilter();
+    };
+    // Left or Esc: one level up, its filter and row back.
+    const drillOut = () => {
+      const d = drill.pop();
+      query = d.query;
+      choices = viewChoices();
+      updateFilter();
+      reselect(d.name, null, d.like);
     };
 
     // Goals the pane shows now (same checks as the render), else null.
     const paneOn = () => view === 'shortcuts' && paneShown(stdout.columns || 80, alt, paneOpen || settings.narrowPane === 'always');
     const toggles = () => view !== 'settings' && paneToggles(stdout.columns || 80, alt, settings);
-    const paneGoals = () => (paneOn() && !marks.size ? folderGoals(filteredChoices[selectedIndex], settings.goals) : null);
+    const paneGoals = () => (paneOn() && !marking() ? folderGoals(filteredChoices[selectedIndex], settings.goals) : null);
     // A git lookup landing redraws, which shows it (and looks up the row selected meanwhile).
     let closed = false;
     const watchers = [];    // live reload, set up last
@@ -1850,13 +1909,15 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
       const c = filteredChoices[selectedIndex];
       const opens = picker ? [{ label: 'print path', run: () => openSelected() }]
         : c.isApp || c.isUrl ? [{ label: c.isUrl ? 'open in browser' : 'launch', run: () => openSelected() }]
-        : appChoices.map(a => ({ label: `open in ${a.label}`, run: () => openSelected(a.key) }));
+        : [...(c.isFile ? [{ label: 'open', run: () => openSelected() }] : []), ...appChoices.map(a => ({ label: `open in ${a.label}`, run: () => openSelected(a.key) }))];
+      const own = !drill.length;
       return [
         ...opens,
-        { label: 'edit', run: ctrl('e') },
-        { label: c.pinned ? 'unpin' : 'pin', run: ctrl('p') },
+        isFolder(c) && { label: 'subfolders', run: ctrl('f') },
+        own && { label: 'edit', run: ctrl('e') },
+        own && { label: c.pinned ? 'unpin' : 'pin', run: ctrl('p') },
         c.path && { label: c.isUrl ? 'copy url' : 'copy path', run: ctrl('y') },
-        { label: 'archive', run: () => askArchive(false) },
+        own && { label: 'archive', run: () => askArchive(false) },
       ].filter(Boolean);
     };
     const runMenu = (item) => {
@@ -2190,7 +2251,8 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
         wt = hasWindowsTerminal();
       }
       view = to;
-      choices = allChoices.filter(inView(view));
+      drill = [];
+      choices = viewChoices();
       selectedIndex = 0;
       updateFilter();
     };
@@ -2323,7 +2385,9 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
     };
 
     // Enter on the selected row, in the picked opener or `picked` (the right-click menu's "open in").
-    const openSelected = (picked = appChoices[selectedAppIndex]?.key) => {
+    // A ^f file row opens in its default app unless the menu picks one.
+    const openSelected = (picked) => {
+      picked ||= filteredChoices[selectedIndex]?.isFile ? 'open' : appChoices[selectedAppIndex]?.key;
       const selected = filteredChoices[selectedIndex];
       if (!selected) return;
       // App and URL shortcuts launch directly, ignore the opener selector.
@@ -2345,10 +2409,10 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
       const n = selected.isCmd ? 1 : count;
       if (tab || stay(selected.isCmd ? 'cmd' : appKey, n)) {
         const where = tab ? (n > 1 ? `${n} new tabs` : 'a new tab') : appKey && (appMap[appKey]?.displayName || appKey);
-        openHere([{ shortcut: selected.name, app: appKey, count: n }], `opened "${selected.name}"${where ? ` in ${where}` : ''}`, [selected.name]);
+        openHere([{ shortcut: refOf(selected), app: appKey, count: n }], `opened "${refOf(selected)}"${where ? ` in ${where}` : ''}`, [selected.name]);
         return;
       }
-      finish({ status: 'selected', name: selected.name, app: appKey, count });
+      finish({ status: 'selected', name: refOf(selected), app: appKey, count });
     };
 
     // Enter or a click on a no-matches offer: add the typed name here, or show matching archived ones in Settings.
@@ -2620,6 +2684,11 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
         redraw();
         return;
       }
+      if (key.name === 'escape' && drill.length) {
+        drillOut();
+        redraw();
+        return;
+      }
       if (key.name === 'escape' && marks.size && view !== 'workspaces' && view !== 'settings') {
         marks.clear();
         redraw();
@@ -2772,6 +2841,14 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
         if ((key.ctrl && key.name !== 'w') || ['left', 'right', 'up', 'down', 'pageup', 'pagedown', 'home', 'end'].includes(key.name)) return;
       }
 
+      if (key.ctrl && key.name === 'f') {
+        drillIn();
+        redraw();
+        return;
+      }
+      // Subfolder rows are not shortcuts: no add, edit, rename, pin, archive, marks or pin moves.
+      if (drill.length && ((key.ctrl && ['a', 'e', 'r', 'p', 'x'].includes(key.name)) || key.name === 'space' || (isAlt(key) && (key.name === 'up' || key.name === 'down')))) return;
+
       // ^o: the next sort, saved like Settings > Sort.
       if (key.ctrl && key.name === 'o') {
         const sorts = settingValues('sort');
@@ -2887,7 +2964,7 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
         runOffer(offers[offerIndex]);
         return;
       }
-      if (key.name === 'return' && marks.size) {
+      if (key.name === 'return' && marking()) {
         const entries = markedPlan().map(({ c, app, count }) => ({ shortcut: c.name, app, count }));
         openMany(entries, () => {
           marks.clear();
@@ -2950,6 +3027,11 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
       // Opener picking only exists on the Shortcuts tab.
       if ((key.name === 'left' || key.name === 'right') && view !== 'shortcuts') return;
 
+      if (key.name === 'left' && drill.length) {
+        drillOut();
+        redraw();
+        return;
+      }
       if (key.name === 'left') {
         appPicked = true;
         selectedAppIndex = selectedAppIndex === 0 ? appChoices.length - 1 : selectedAppIndex - 1;

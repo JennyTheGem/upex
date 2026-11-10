@@ -350,6 +350,8 @@ const terminalArgs = term => LINUX_TERMINALS[path.basename(term)] || ['-e'];
 
 // Single-quote for sh.
 export const shQuote = s => `'${String(s).replace(/'/g, `'\\''`)}'`;
+// A path in a shell command line: sh runs $(...) and backticks inside double quotes, and ^f lists any file name.
+const quotePath = p => (platform === 'win32' ? `"${p}"` : shQuote(p));
 
 // Detached and without a shell: xdg-open, terminals and IDEs can stay in the foreground until closed.
 const launchDetached = (cmd, args, opts = {}) => spawn(cmd, args, { detached: true, stdio: 'ignore', ...opts }).on('error', () => {}).unref();
@@ -715,8 +717,8 @@ export function launchApp(appName, folderPath, count = 1, startCmd = '', { here 
     } else if (isTerminal && platform === 'darwin') {
       // Open Terminal.app at the dir, optionally run a command, keep it open.
       const script = runCmd
-        ? `cd ${JSON.stringify(terminalCwd)} && ${runCmd}`
-        : `cd ${JSON.stringify(terminalCwd)}`;
+        ? `cd ${shQuote(terminalCwd)} && ${runCmd}`
+        : `cd ${shQuote(terminalCwd)}`;
       for (let i = 0; i < repeat; i++) {
         spawnSync('osascript', [
           '-e', 'tell application "Terminal" to do script ' + JSON.stringify(script),
@@ -736,7 +738,7 @@ export function launchApp(appName, folderPath, count = 1, startCmd = '', { here 
       } else if (xdg) {
         launchDetached(cmdBase, [folderPath]);
       } else {
-        execSync(`${cmdBase} "${folderPath}"`, { stdio: 'ignore' });
+        execSync(`${cmdBase} ${quotePath(folderPath)}`, { stdio: 'ignore' });
       }
     } else if (key === 'webstorm' && platform !== 'darwin') {
       // Detached: the IDE would otherwise hold upex until it closes. Windows goes through a shell (PATH command or .cmd).
@@ -748,13 +750,13 @@ export function launchApp(appName, folderPath, count = 1, startCmd = '', { here 
         const args = targetIsFile ? ['/select,', folderPath] : [folderPath];
         spawn('explorer', args, { detached: true, stdio: 'ignore', shell: false }).unref();
       } else if (platform === 'darwin') {
-        execSync(`${cmdBase} ${targetIsFile ? '-R ' : ''}"${folderPath}"`, { stdio: 'ignore' });
+        execSync(`${cmdBase} ${targetIsFile ? '-R ' : ''}${quotePath(folderPath)}`, { stdio: 'ignore' });
       } else if (!targetIsFile || !showItemLinux(folderPath)) {
         // A file whose file manager can't select it: open its folder.
         launchDetached(cmdBase, [targetIsFile ? path.dirname(folderPath) : folderPath]);
       }
     } else {
-      const fullCmd = `${cmdBase} "${folderPath}"`;
+      const fullCmd = `${cmdBase} ${quotePath(folderPath)}`;
       for (let i = 0; i < repeat; i++) execSync(fullCmd, { stdio: 'ignore' });
     }
     return {

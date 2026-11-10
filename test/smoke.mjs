@@ -23,7 +23,7 @@ import { COMMAND_NAMES } from '../src/fast.js';
 import { createProgram } from '../src/index.js';
 import { readScripts, detectPm } from '../src/commands/run.js';
 import { pickedNames, pickedPaths } from '../src/commands/pick.js';
-import { usageText, stepColor, renderInteractiveView, nextView, backTo, accentOf, pathLook, inView, tidyPath, byOrder, optionRow, listRows, readMouse, hitTest, rowClick, undoFlash, clipName, prefill, editLine, kindOf, retyped, setField, fieldWords, completeTag, expiryOptions, formRows, formLines, statLines, doctorLines, inputLine, missingFlash, staysOpen, expandHome, underlineHits, movePinned, sameGroup, withRecent, withGroups, filterChoices, noMatchOffers, expiryText, maxListOf, jumpIndex, isAlt, detailLines, rowOptions, pickedOf, settingsList, goalSummary, goalsOf, goalText, goalPrompt, oneLine, scriptLines, markLines, paneShown, paneToggles, paneWidthOf, withSamePath, archivedList, clipPath, cwdTarget, targetEntry, clipMiddle, asksMany, dotLines, lr, wrapHint, splice, overlayMenu } from '../src/interactive.js';
+import { usageText, stepColor, renderInteractiveView, nextView, backTo, accentOf, pathLook, inView, tidyPath, byOrder, optionRow, listRows, readMouse, hitTest, rowClick, undoFlash, clipName, prefill, editLine, kindOf, retyped, setField, fieldWords, completeTag, expiryOptions, formRows, formLines, statLines, doctorLines, inputLine, missingFlash, staysOpen, expandHome, underlineHits, movePinned, sameGroup, withRecent, withGroups, filterChoices, noMatchOffers, expiryText, maxListOf, jumpIndex, isAlt, detailLines, rowOptions, pickedOf, settingsList, goalSummary, goalsOf, goalText, goalPrompt, oneLine, scriptLines, markLines, paneShown, paneToggles, paneWidthOf, withSamePath, archivedList, clipPath, cwdTarget, targetEntry, clipMiddle, asksMany, dotLines, lr, wrapHint, splice, overlayMenu, subfolderChoices } from '../src/interactive.js';
 import { parseStatus, parseDiff, parseLog, gitOf, stopGit } from '../src/git.js';
 import chalk from 'chalk';
 import { resolveTarget, resolveName, suggestNames } from '../src/fuzzy.js';
@@ -970,6 +970,47 @@ console.log(JSON.stringify(await run));
   assert.deepEqual(pickedPaths(pickedNames({ status: 'workspace', name: 'w' }, { w: [{ shortcut: 'a' }, { shortcut: 'ff' }, { shortcut: 'f/src' }, { shortcut: 'u/x' }] }), links),
     ['x.exe', '/f', path.join('/f', 'src')], 'workspace entries: app command, alias, subpath; no subpath of a url');
   assert.deepEqual(pickedNames({ status: 'cancelled' }), [], 'Esc picks nothing');
+}
+// -- ^f: folders then files, each A to Z, dot ones last; ^f in, ↓, ← back, ^f again, Enter picks "top/A"; a file opens in its default app --
+{
+  const shome = fs.mkdtempSync(path.join(os.tmpdir(), 'upex-drill-'));
+  fs.mkdirSync(path.join(shome, '.upex'), { recursive: true });
+  for (const d of ['b', 'A']) fs.mkdirSync(path.join(shome, d));
+  for (const f of ['c.txt', '.env']) fs.writeFileSync(path.join(shome, f), '');
+  fs.writeFileSync(path.join(shome, '.upex', 'links.json'), JSON.stringify({ top: { path: shome } }));
+  assert.deepEqual(subfolderChoices(shome, 'top').map(c => [c.name, c.ref, c.isFile]),
+    [['A', 'top/A', false], ['b', 'top/b', false], ['.upex', 'top/.upex', false], ['c.txt', 'top/c.txt', true], ['.env', 'top/.env', true]], 'folders then files, sorted, refs');
+  assert.deepEqual(subfolderChoices(path.join(shome, 'gone'), 'x'), [], 'unreadable folder: no rows');
+  const scoped = [{ name: '@types', opener: 'vscode', tags: [] }, { name: 'src', opener: 'vscode', tags: [] }];
+  assert.deepEqual(filterChoices(scoped, '@types', { searchIn: 'names', tokens: false }).map(c => c.name), ['@types'], '^f rows: @ and # are name text, not tokens');
+  const drive = path.join(shome, 'drive.mjs');
+  fs.writeFileSync(drive, String.raw`
+import { PassThrough } from 'node:stream';
+import { runInteractiveMode } from '${new URL('../src/interactive.js', import.meta.url).href}';
+const stdin = Object.assign(new PassThrough(), { isTTY: true, setRawMode() {} });
+const stdout = Object.assign(new PassThrough(), { isTTY: true, columns: 100, rows: 40 });
+stdout.resume();
+const send = async s => { stdin.write(s); await new Promise(r => setTimeout(r, 30)); };
+const run = runInteractiveMode({ stdin, stdout, picker: process.argv[2] === 'pick' });
+if (process.argv[2] === 'pick') { await send('\x06'); await send('\x1b[B'); await send('\x1b[D'); await send('\x06'); }
+else if (process.argv[2] === 'guard') { await send('\x1b[B'); await send('\x06'); await send('\x1b[B'); for (const k of ['\x10', ' ', '\x18', '\x05', '\x12']) await send(k); }
+else { await send('\x06'); await send('c.txt'); }
+await send('\r');
+console.log(JSON.stringify(await run));
+`);
+  const drill = mode => spawnSync(process.execPath, [drive, mode], { encoding: 'utf-8', timeout: 20000, env: { ...process.env, USERPROFILE: shome, HOME: shome } });
+  const r = drill('pick');
+  const res = JSON.parse(r.stdout);
+  assert.deepEqual([r.stderr, res.name], ['', 'top/A'], 'drill in, back, in again, pick the first subfolder');
+  const f = drill('open');
+  assert.deepEqual([f.stderr, JSON.parse(f.stdout).name, JSON.parse(f.stdout).app], ['', 'top/c.txt', 'open'], 'a file row opens in its default app');
+  assert.deepEqual(pickedPaths(pickedNames(res), JSON.parse(fs.readFileSync(path.join(shome, '.upex', 'links.json'), 'utf-8'))), [path.join(shome, 'A')], 'picked subfolder prints its path');
+  // A shortcut "b" shares the subfolder row's name: ^p, Space, ^x, ^e, ^r on that row must leave it alone.
+  const guarded = { b: { path: path.join(shome, 'b') }, top: { path: shome } };
+  fs.writeFileSync(path.join(shome, '.upex', 'links.json'), JSON.stringify(guarded));
+  const g = drill('guard');
+  assert.deepEqual([g.stderr, JSON.parse(g.stdout || '{}').name], ['', 'top/b'], 'drill keys blocked, Enter opens the subfolder row');
+  assert.deepEqual(JSON.parse(fs.readFileSync(path.join(shome, '.upex', 'links.json'), 'utf-8')).b, guarded.b, 'same-named shortcut untouched');
 }
 // -- right-click menu on fake streams: click "pin" on one row, then ↑ (wraps to archive) Enter y on another --
 {
