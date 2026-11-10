@@ -432,7 +432,7 @@ function parseSgr(s) {
   const b = Number(m[1]);
   const wheel = m[4] === 'M' && (b & 0xc2) === 64 ? (b & 1 ? 1 : -1) : 0;
   const up = m[4] === 'm' && (b & 0xe0) === 0;
-  return { x: Number(m[2]), y: Number(m[3]), wheel, click: up && (b & 3) === 0, right: up && (b & 3) === 2 };
+  return { x: Number(m[2]), y: Number(m[3]), wheel, click: up && (b & 3) === 0, right: up && (b & 3) === 2, ctrl: !!(b & 16) };
 }
 
 // `line` with `text` over its columns from `from`; its color codes are re-applied after, so styles carry on.
@@ -768,7 +768,7 @@ function settingNote(key, s, wt) {
   if (key === 'groups') return 'By tag: Pinned on top, then a #tag heading per tag in the sort order, like folders; two tags show under both, untagged last. Type #tag to filter.';
   if (key === 'narrowPane') return 'Under 140 columns (full screen): Shift+→ opens the pane, Shift+← or Esc closes it, or it always shows. Not under 60.';
   if (key === 'paneWidth') return 'How much of the screen the pane takes: Narrow leaves the list more room, Wide shows more details.';
-  if (key === 'goals') return 'Pane right of the list (full screen): open upgo goals of a folder, up to this many. S-→ picks one to copy, a click copies it. upex ui shows them on one line under the name.';
+  if (key === 'goals') return 'Pane right of the list (full screen): open upgo goals of a folder, up to this many. S-→ picks one to copy, a click copies it, Ctrl+click hands it to Claude. upex ui shows them on one line under the name.';
   if (key === 'git') return 'Pane right of the list (full screen): branch, ahead/behind, changes and last commit of a folder in git. ^g opens its web page.';
   if (key === 'keyHints') return 'Key rows under the list. Short: one row of the main keys. ? on an empty filter shows every key (Full and Off too). Off: more room for the list. Settings keeps its keys.';
   if (key === 'glyphs') return 'ASCII swaps arrows, pointers, lines and the ellipsis for plain characters, for fonts that show boxes.';
@@ -862,6 +862,12 @@ const folderGit = (c, on, gitFor) => (on === 'on' && isFolder(c) ? gitFor(c.path
 const hostName = url => new URL(url).hostname.split('.').slice(-2)[0];
 // What Enter copies in the goal picker: "id: title" and the body below.
 export const goalText = g => [[g.id, g.title].filter(Boolean).join(': '), g.body].filter(Boolean).join('\n');
+// Ctrl+click on a goal: the quoted prompt for Claude. Shell-safe characters only, it goes through cmd, PowerShell, sh and wt.
+export const goalPrompt = (g) => {
+  const safe = v => oneLine(v).replace(/[^\w .,:/'+#-]/g, '').replace(/ +/g, ' ').trim();
+  const [id, title] = [safe(g.id), safe(g.title)];
+  return `"do goal ${[id, 'next'].filter(Boolean).join(' ')}${title ? `: ${title}` : ''}"`;
+};
 // goals.json is not ours: one line, control characters (escapes included) dropped.
 // eslint-disable-next-line no-control-regex
 export const oneLine = v => String(v ?? '').replace(/[\s\x00-\x1f\x7f-\x9f]+/g, ' ').trim();
@@ -931,7 +937,7 @@ export function detailLines(c, pw, appChoices = [], now = Date.now(), { goals = 
   if (stale) out.push({ text: lr(chalk.yellow('stale 30+ days'), chalk.dim('^x archive'), pw), archive: true });
   out.push(...note.map(l => `${chalk.dim('▎')} ${l}`));
   if (git) out.push(...gitLines(git, pw, now));
-  // Phase in its own column, once per group. A click copies a goal, like Enter in the picker.
+  // Phase in its own column, once per group. A click copies a goal, like Enter in the picker; Ctrl+click hands it to Claude.
   if (goals) {
     const fill = goals.total ? Math.round((goals.done / goals.total) * 10) : 0;
     const bar = goals.total ? `${chalk.green('▰'.repeat(fill))}${chalk.dim('▱'.repeat(10 - fill))} ` : '';
@@ -940,7 +946,7 @@ export function detailLines(c, pw, appChoices = [], now = Date.now(), { goals = 
       const phase = oneLine(g.phase) !== oneLine(goals.next[i - 1]?.phase) ? oneLine(g.phase).slice(0, 8) : '';
       const title = ui.truncate(oneLine(g.title ?? g.id), Math.max(1, pw - 13));
       const text = IND + chalk.dim(phase.padEnd(9)) + (i === sel ? `${pick('›')} ${chalk.bold(title)}` : `  ${title}`);
-      return { text, copy: goalText(g), msg: `copied "${oneLine(g.id ?? g.title)}"` };
+      return { text, copy: goalText(g), msg: `copied "${oneLine(g.id ?? g.title)}"`, prompt: goalPrompt(g) };
     }));
   }
   return out.filter(l => l !== null).map(l => (l.text != null ? { ...l, text: ui.truncate(l.text, pw) } : ui.truncate(l, pw)));
@@ -1351,7 +1357,7 @@ export function renderInteractiveView({
       if (d?.i != null) hit(i, lw + 3, w, { row: d.i });
       if (d?.web) hit(i, lw + 3, w, { web: true });
       if (d?.archive) hit(i, lw + 3, w, { archive: true });
-      if (d?.copy) hit(i, lw + 3, w, { copy: d.copy, msg: d.msg });
+      if (d?.copy) hit(i, lw + 3, w, { copy: d.copy, msg: d.msg, prompt: d.prompt });
       const l = ui.truncate(lines[i], lw);
       lines[i] = `${l}${' '.repeat(Math.max(0, lw - vis(l)))}${chalk.dim(' │ ')}${d?.text ?? d ?? ''}`;
     }
@@ -1733,6 +1739,15 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
       const tab = tabsOn('cmd');
       if (tab || stay('cmd')) { openHere([{ shortcut: c.name, app: 'cmd', start }], `running "${start}"${tab ? ' in a new tab' : ''}`, [c.name]); return; }
       finish({ status: 'selected', name: c.name, app: 'cmd', count: 1, start });
+    };
+
+    // Ctrl+click on a goal: Claude in the highlighted folder, told to do it.
+    const claudeGoal = (start) => {
+      const c = filteredChoices[selectedIndex];
+      mode = 'browse';
+      const tab = tabsOn('claude');
+      if (tab || stay('claude')) { openHere([{ shortcut: c.name, app: 'claude', start }], `claude ${start}${tab ? ' in a new tab' : ''}`, [c.name]); return; }
+      finish({ status: 'selected', name: c.name, app: 'claude', count: 1, start });
     };
 
     // Goals the pane shows now (same checks as the render), else null.
@@ -2288,7 +2303,7 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
 
     // Mouse is only on in full screen; ignored while typing or confirming.
     // Presses are skipped: the second press of a double-click must not wipe the first one's flash.
-    const handleMouse = ({ x, y, wheel, click, right }) => {
+    const handleMouse = ({ x, y, wheel, click, right, ctrl }) => {
       const picking = mode === 'scripts';
       const goalPick = mode === 'goals';
       if (!alt || (mode !== 'browse' && !picking && !goalPick) || !(wheel || click || right)) return;
@@ -2356,10 +2371,15 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
         handleKey(undefined, { ctrl: true, name: 'n' });
         return;
       } else if (once) {
+        // upex pick only prints paths, so a Ctrl+click copies there.
+        const claude = ctrl && t.prompt && !picker;
         if (t.web) openWeb();
         else if (t.archive) askArchive();
+        else if (claude) claudeGoal(t.prompt);
         else copy(t.copy, t.msg);
         lastClick = { y, at: Date.now(), opened: true };
+        // Claude opened: the selector quit or redraws when it lands.
+        if (claude) return;
       } else if (act) {
         if (arc) settingIndex = t.setting;
         if (act === 'open') handleKey(undefined, { name: 'return' });

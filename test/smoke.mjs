@@ -23,7 +23,7 @@ import { COMMAND_NAMES } from '../src/fast.js';
 import { createProgram } from '../src/index.js';
 import { readScripts, detectPm } from '../src/commands/run.js';
 import { pickedNames, pickedPaths } from '../src/commands/pick.js';
-import { usageText, stepColor, renderInteractiveView, nextView, backTo, accentOf, pathLook, inView, tidyPath, byOrder, optionRow, listRows, readMouse, hitTest, rowClick, undoFlash, clipName, prefill, editLine, kindOf, retyped, setField, fieldWords, completeTag, expiryOptions, formRows, formLines, statLines, doctorLines, inputLine, missingFlash, staysOpen, expandHome, underlineHits, movePinned, sameGroup, withRecent, withGroups, filterChoices, noMatchOffers, expiryText, maxListOf, jumpIndex, isAlt, detailLines, rowOptions, pickedOf, settingsList, goalSummary, goalsOf, goalText, oneLine, scriptLines, markLines, paneShown, paneToggles, paneWidthOf, withSamePath, archivedList, clipPath, clipMiddle, asksMany, dotLines, lr, wrapHint, splice, overlayMenu } from '../src/interactive.js';
+import { usageText, stepColor, renderInteractiveView, nextView, backTo, accentOf, pathLook, inView, tidyPath, byOrder, optionRow, listRows, readMouse, hitTest, rowClick, undoFlash, clipName, prefill, editLine, kindOf, retyped, setField, fieldWords, completeTag, expiryOptions, formRows, formLines, statLines, doctorLines, inputLine, missingFlash, staysOpen, expandHome, underlineHits, movePinned, sameGroup, withRecent, withGroups, filterChoices, noMatchOffers, expiryText, maxListOf, jumpIndex, isAlt, detailLines, rowOptions, pickedOf, settingsList, goalSummary, goalsOf, goalText, goalPrompt, oneLine, scriptLines, markLines, paneShown, paneToggles, paneWidthOf, withSamePath, archivedList, clipPath, clipMiddle, asksMany, dotLines, lr, wrapHint, splice, overlayMenu } from '../src/interactive.js';
 import { parseStatus, parseDiff, parseLog, gitOf, stopGit } from '../src/git.js';
 import chalk from 'chalk';
 import { resolveTarget, resolveName, suggestNames } from '../src/fuzzy.js';
@@ -1345,6 +1345,7 @@ const gs = goalSummary({ items: [{ id: 'a', title: 'A', phase: 'later', status: 
   { id: 'c', title: 'C', phase: 'now', status: 'done' }, { id: 'd', title: 'D', phase: 'next', status: 'planned' }, { id: 'e', title: 'E', phase: 'odd', status: 'planned' }, { id: 'f', title: 'F', phase: 'later', status: 'planned' }, { id: 'g', status: 'dropped' }] });
 assert.deepEqual([gs.open, gs.done, gs.total, gs.next.map(g => g.id)], [5, 1, 6, ['d', 'a', 'f', 'b', 'e']], 'goalSummary counts open, done, total without dropped, next by phase');
 assert.deepEqual([goalText({ id: 'i', title: 'T', body: 'B' }), goalText({ id: 'i', title: 'T' })], ['i: T\nB', 'i: T'], 'goalText: id: title, body below');
+assert.deepEqual([goalPrompt({ id: '3.2', title: 'Fix "x" & %PATH%; $(rm) `id` !! ^|<>\\\n' }), goalPrompt({ title: 'T' })], ['"do goal 3.2 next: Fix x PATH rm id"', '"do goal next: T"'], 'goalPrompt: shell-safe quoted prompt');
 assert.deepEqual([goalSummary({}), goalSummary(null), goalSummary({ items: [null] })], [null, null, { open: 0, done: 0, total: 0, next: [] }], 'goalSummary: not a goals file');
 const gdir = fs.mkdtempSync(path.join(os.tmpdir(), 'upex-goals-'));
 assert.equal(goalsOf(gdir), null, 'no goals.json: nothing');
