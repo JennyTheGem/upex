@@ -109,8 +109,8 @@ export function stripAnsi(str) {
 let segmenter;
 // Emoji and CJK take two terminal columns.
 const WIDE = /\p{Emoji_Presentation}|\uFE0F|[\u1100-\u115F\u2E80-\u303E\u3041-\u33FF\u3400-\u4DBF\u4E00-\u9FFF\uA000-\uA4CF\uAC00-\uD7A3\uF900-\uFAFF\uFE30-\uFE4F\uFF00-\uFF60\uFFE0-\uFFE6\u{20000}-\u{3FFFD}]/u;
-// One column each, never joined: ASCII, Latin, punctuation, arrows, box drawing and shapes the UI uses.
-const NARROW = /^[\x20-\x7e\u00a0-\u02ff\u2010-\u2027\u2030-\u205e\u2190-\u21ff\u2500-\u25fc]*$/;
+// One column each, never joined: ASCII, Latin, punctuation, arrows, box drawing and shapes, the erase key and pin star the UI uses.
+const NARROW = /^[\x20-\x7e\u00a0-\u02ff\u2010-\u2027\u2030-\u205e\u2190-\u21ff\u232b\u2500-\u25fc\u2605]*$/;
 
 /** Characters as { segment, index (UTF-16), w (columns) }. */
 export const graphemes = s => (NARROW.test(s)

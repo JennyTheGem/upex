@@ -10,7 +10,7 @@
 import { loadLinks, setLink, activeLinks } from '../store.js';
 import { resolveName } from '../fuzzy.js';
 import { handleOpen } from './open.js';
-import { printRows } from '../interactive.js';
+import { printRows } from '../rows.js';
 import * as ui from '../ui.js';
 
 function allTags(links) {

@@ -7,7 +7,7 @@
 
 import { loadLinks, setLink } from '../store.js';
 import { exactShortcut } from './remove.js';
-import { oneLine } from '../interactive.js';
+import { oneLine } from '../rows.js';
 import * as ui from '../ui.js';
 
 export function registerNote(program) {

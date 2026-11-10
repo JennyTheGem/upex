@@ -7,7 +7,6 @@ import chalk, { chalkStderr } from 'chalk';
 import { loadLinks, loadWorkspaces } from '../store.js';
 import { resolveTarget } from '../fuzzy.js';
 import { withSub } from '../fast.js';
-import { runInteractiveMode } from '../interactive.js';
 import { runUpdate } from '../update.js';
 import * as ui from '../ui.js';
 
@@ -39,6 +38,7 @@ export function registerPick(program) {
       }
       // Colors follow the terminal the selector draws on, not the pipe.
       chalk.level = chalkStderr.level;
+      const { runInteractiveMode } = await import('../interactive.js');
       const result = await runInteractiveMode({ stdout: process.stderr, picker: true });
       if (result.status === 'update') { await runUpdate(); process.exitCode ||= 1; return; }
       const paths = pickedPaths(pickedNames(result, result.status === 'workspace' ? loadWorkspaces() : {}), loadLinks());

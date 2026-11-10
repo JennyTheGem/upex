@@ -8,7 +8,7 @@
 
 import { loadLinks, setLink, activeLinks, aliasesOf, checkAliases } from '../store.js';
 import { resolveName } from '../fuzzy.js';
-import { printRows } from '../interactive.js';
+import { printRows } from '../rows.js';
 import * as ui from '../ui.js';
 
 export function registerAlias(program) {

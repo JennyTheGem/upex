@@ -294,6 +294,7 @@ export const aliasesOf = (e) => (Array.isArray(e?.aliases) ? e.aliases.filter(a 
 
 // Color label of a shortcut: a palette name, #rrggbb or one emoji.
 export const COLORS = ['red', 'orange', 'yellow', 'green', 'blue', 'purple', 'gray'];
+let segmenter;
 // Typed color -> { color } ('' = none, a bare rrggbb gets its #) or { error }.
 export function parseColor(v) {
   const s = String(v ?? '').trim();
@@ -301,7 +302,7 @@ export function parseColor(v) {
   if (!s || low === 'none') return { color: '' };
   if (COLORS.includes(low)) return { color: low };
   if (/^#?[0-9a-f]{6}$/.test(low)) return { color: `#${low.replace('#', '')}` };
-  const one = [...new Intl.Segmenter().segment(s)].length === 1;
+  const one = [...(segmenter ??= new Intl.Segmenter()).segment(s)].length === 1;
   if (one && /^(\p{Extended_Pictographic}|\p{Regional_Indicator})/u.test(s)) return { color: s };
   return { error: `Color: ${COLORS.join(', ')}, #rrggbb, one emoji or none.` };
 }
@@ -349,6 +350,8 @@ export function aliasClashes(links) {
 // Everything except archived shortcuts (or only those, with archived = true).
 export const activeLinks = (links, archived = false) =>
   Object.fromEntries(Object.entries(links).filter(([, e]) => !!e.archived === archived));
+// Active names and aliases, one per line, for `upex __names` (completion).
+export const completionNames = () => Object.entries(activeLinks(loadLinks())).flatMap(([n, e]) => [n, ...aliasesOf(e)]).join('\n');
 // A restored entry: dropping expires keeps it from being re-archived right away.
 export const unarchived = ({ archived: _a, expires: _e, ...entry }) => entry;
 

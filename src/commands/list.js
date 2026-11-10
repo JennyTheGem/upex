@@ -7,7 +7,7 @@ import fs from 'node:fs';
 import chalk from 'chalk';
 import { loadLinks, activeLinks, aliasesOf } from '../store.js';
 import { gitStatus } from '../git.js';
-import { printRows, tidyPath, showsDetail, PIN, badgeText, expiryText } from '../interactive.js';
+import { printRows, tidyPath, showsDetail, PIN, badgeText, expiryText } from '../rows.js';
 import { setting } from '../launcher.js';
 import * as ui from '../ui.js';
 

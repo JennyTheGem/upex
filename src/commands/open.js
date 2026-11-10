@@ -9,7 +9,7 @@ import path from 'node:path';
 import os from 'node:os';
 import chalk from 'chalk';
 import { loadLinks, recordUse } from '../store.js';
-import { findFolder, withSub, cdTarget, fullPath, isPathArg } from '../fast.js';
+import { findFolder, withSub, cdTarget, fullPath, isPathArg, COMMAND_NAMES } from '../fast.js';
 import { resolveTarget, didYouMean } from '../fuzzy.js';
 import { launchApp, launchExecutable, launchUrl, defaultOpener, openerKey, spawnSync } from '../launcher.js';
 import * as ui from '../ui.js';
@@ -43,8 +43,7 @@ export function registerResolve(program) {
     .action((name) => {
       // Wrappers route every bare arg through here; never let fuzzy matching
       // shadow a real subcommand (e.g. "list" hijacked into a cd).
-      const taken = program.commands.some(c => c.name() === name || c.aliases().includes(name));
-      if (taken) process.exit(1);
+      if (COMMAND_NAMES.includes(name)) process.exit(1);
       resolveToStdout(name);
     });
 }

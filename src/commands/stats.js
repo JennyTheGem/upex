@@ -5,7 +5,7 @@
 
 import chalk from 'chalk';
 import { loadLinks, loadHistory, statsFrom } from '../store.js';
-import { printRows } from '../interactive.js';
+import { printRows } from '../rows.js';
 import * as ui from '../ui.js';
 
 const BARS = '▁▂▃▄▅▆▇█';

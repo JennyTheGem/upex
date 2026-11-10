@@ -19,11 +19,12 @@ import { normalizeUrl, caretEscape, wtCommandLine, setting, shellCommand, defaul
 import { parseTags, parseDuration, defaultName } from '../src/commands/add.js';
 import { truncate, span, width, dimParent, stripAnsi, toAscii } from '../src/ui.js';
 import { applyShortcut, applyOpener, cleanEntries, startServer } from '../src/commands/web.js';
-import { COMMAND_NAMES, isPathArg } from '../src/fast.js';
+import { COMMAND_NAMES, isPathArg, fastPath } from '../src/fast.js';
 import { createProgram } from '../src/index.js';
 import { readScripts, detectPm } from '../src/commands/run.js';
 import { pickedNames, pickedPaths } from '../src/commands/pick.js';
-import { usageText, stepColor, renderInteractiveView, nextView, backTo, accentOf, pathLook, inView, tidyPath, byOrder, optionRow, listRows, readMouse, hitTest, rowClick, undoFlash, clipName, prefill, editLine, kindOf, retyped, setField, fieldWords, completeTag, expiryOptions, formRows, formLines, statLines, doctorLines, inputLine, missingFlash, staysOpen, expandHome, underlineHits, movePinned, sameGroup, withRecent, withGroups, filterChoices, noMatchOffers, expiryText, maxListOf, jumpIndex, isAlt, detailLines, rowOptions, pickedOf, settingsList, goalSummary, goalsOf, goalText, goalPrompt, oneLine, scriptLines, markLines, paneShown, paneToggles, paneWidthOf, withSamePath, archivedList, clipPath, cwdTarget, targetEntry, clipMiddle, asksMany, dotLines, lr, wrapHint, splice, overlayMenu, subfolderChoices } from '../src/interactive.js';
+import { usageText, stepColor, renderInteractiveView, nextView, backTo, accentOf, inView, byOrder, optionRow, listRows, readMouse, hitTest, rowClick, undoFlash, prefill, editLine, kindOf, retyped, setField, fieldWords, completeTag, expiryOptions, formRows, formLines, statLines, doctorLines, inputLine, missingFlash, staysOpen, movePinned, sameGroup, withRecent, withGroups, filterChoices, noMatchOffers, maxListOf, jumpIndex, isAlt, detailLines, rowOptions, pickedOf, settingsList, goalText, goalPrompt, scriptLines, markLines, paneShown, paneToggles, paneWidthOf, withSamePath, archivedList, clipPath, cwdTarget, targetEntry, asksMany, dotLines, lr, wrapHint, splice, overlayMenu, subfolderChoices } from '../src/interactive.js';
+import { pathLook, tidyPath, clipName, expandHome, underlineHits, expiryText, goalSummary, goalsOf, oneLine, clipMiddle } from '../src/rows.js';
 import { parseStatus, parseDiff, parseLog, gitOf, stopGit } from '../src/git.js';
 import { parseRobocopy, parseDu, formatBytes, sizeCommand, sizeOf, stopSize } from '../src/size.js';
 import chalk from 'chalk';
@@ -116,10 +117,12 @@ const cli = fileURLToPath(new URL('../bin/upex.js', import.meta.url));
 const r = spawnSync(process.execPath, [cli, '__resolve', 'list'], { encoding: 'utf-8' });
 assert.equal(r.status, 1, '__resolve refuses subcommand names');
 assert.equal(r.stdout, '', 'no path printed for subcommand names');
+const fastUrl = new URL('../src/fast.js', import.meta.url).href;
+assert.equal(spawnSync(process.execPath, ['--input-type=module', '-e', `import { fastPath } from '${fastUrl}'; fastPath(['__resolve', 'list']); process.exit(7);`]).status, 1, 'fast path refuses subcommand names itself');
 // a lone `upex --help` through a wrapper must fall through, not cd into help text
 const h = spawnSync(process.execPath, [cli, '__resolve', '--help'], { encoding: 'utf-8' });
 assert.equal(h.status, 1, '__resolve refuses --help');
-assert.deepEqual([...COMMAND_NAMES].sort(), createProgram().commands.flatMap(c => [c.name(), ...c.aliases()]).sort(), 'fast path knows every command name');
+assert.deepEqual([...COMMAND_NAMES].sort(), (await createProgram()).commands.flatMap(c => [c.name(), ...c.aliases()]).sort(), 'fast path knows every command name');
 assert.equal(h.stdout, '', 'no help text printed for the wrapper to cd into');
 for (const p of ['.', '..', './x', '..\\x', '~', '~/x', path.resolve('x')]) assert.ok(isPathArg(p), `path arg: ${p}`);
 for (const n of ['web', '.dotfiles', '..x', '~x', 'web/src']) assert.ok(!isPathArg(n), `shortcut name: ${n}`);
@@ -132,6 +135,18 @@ const upexIn = (...args) => spawnSync(process.execPath, [cli, ...args], {
   encoding: 'utf-8',
   env: { ...process.env, USERPROFILE: home, HOME: home },
 });
+
+// -- lazy commands: each name loads its own command; `upex list` loads neither the selector nor the web UI --
+for (const n of COMMAND_NAMES) assert.ok((await createProgram(['node', 'upex', n])).commands.some(c => c.name() === n || c.aliases().includes(n)), `${n} loads its command`);
+{
+  const hook = 'data:text/javascript,' + encodeURIComponent(`import { registerHooks } from 'node:module';
+const seen = [];
+registerHooks({ load: (url, ctx, next) => (seen.push(url), next(url, ctx)) });
+process.on('exit', () => process.stderr.write('\\nloaded ' + seen.join(' ')));`);
+  const r = spawnSync(process.execPath, ['--import', hook, cli, 'list'], { encoding: 'utf-8', env: { ...process.env, USERPROFILE: home, HOME: home } });
+  const loaded = r.stderr.split('\nloaded ').at(-1);
+  assert.ok(r.status === 0 && loaded.includes('/commands/list.js') && !/interactive\.js|commands\/(web|add)\.js/.test(loaded), 'upex list loads only its own command');
+}
 
 // -- go with args: runs the command inside the shortcut folder --
 const target = fs.mkdtempSync(path.join(os.tmpdir(), 'upex-target-'));
@@ -282,6 +297,16 @@ assert.equal(upexIn('add', 'u', 'x.dev', '--url', '--opener', 'vscode').status, 
 assert.equal(upexIn('edit', 't', '--no-opener').status, 0, 'opener cleared');
 assert.equal(stored().t.opener, undefined, 'cleared opener removed from the entry');
 
+// -- doctor: Documents folder from a reg export (wrapped hex(2), non-ASCII, %VAR%) --
+{
+  const { documentsFrom } = await import('../src/commands/doctor.js');
+  const hex = [...Buffer.from('%USERPROFILE%\\Dökumente\0', 'utf16le')].map(b => b.toString(16).padStart(2, '0'));
+  const reg = `\uFEFFWindows Registry Editor Version 5.00\r\n\r\n[HKEY_CURRENT_USER\\X]\r\n"Personal"=hex(2):${hex.slice(0, 20).join(',')},\\\r\n  ${hex.slice(20).join(',')}\r\n"Other"="x"\r\n`;
+  assert.equal(documentsFrom(reg, { USERPROFILE: 'C:\\Users\\jé' }), 'C:\\Users\\jé\\Dökumente', 'documents from hex(2)');
+  assert.equal(documentsFrom('"Personal"="D:\\\\Docs"\r\n'), 'D:\\Docs', 'documents from a plain string');
+  assert.equal(documentsFrom('"Other"="x"\r\n'), null, 'no Personal value');
+}
+
 // -- doctor: healthy store passes, a corrupt one fails --
 const doc = upexIn('doctor');
 assert.equal(doc.status, 0, 'doctor passes on a good store');
@@ -373,6 +398,13 @@ assert.equal(upexIn('rm', 'vel', '--archive').status, 0, 'archive');
 assert.equal(stored().vel.archived, true, 'archived flag stored');
 assert.equal(upexIn('go', 'vd').status, 1, 'archived shortcut no longer resolves');
 assert.ok(!upexIn('__names').stdout.includes('v'), 'archived names and aliases hidden from completion');
+{
+  const names = code => spawnSync(process.execPath, ['--input-type=module', '-e', code], { encoding: 'utf-8', env: { ...process.env, USERPROFILE: home, HOME: home } });
+  const fast = names(`import { fastPath } from '${fastUrl}'; if (!fastPath(['__names'])) process.exit(7);`);
+  const full = names(`import { createProgram } from '${new URL('../src/index.js', import.meta.url).href}'; await (await createProgram()).parseAsync(['node', 'upex', '__names']);`);
+  assert.ok(fast.status === 0 && fast.stdout && fast.stdout === full.stdout, '__names: fast path prints what the command does');
+  assert.equal(fastPath(['__names', '']), false, '__names with an arg (even empty) is left to commander');
+}
 assert.match(upexIn('ls', '--archived').stdout, /vel/, 'ls --archived lists it');
 assert.equal(upexIn('restore', 'v2').status, 0, 'restore via alias');
 assert.equal(upexIn('go', 'vd').stdout, home, 'restored shortcut resolves again');
@@ -1244,7 +1276,7 @@ const Seg = Intl.Segmenter;
 let segs = 0;
 Intl.Segmenter = class extends Seg { constructor(...a) { super(...a); segs++; } };
 const freshUi = await import('../src/ui.js?lazy');
-assert.deepEqual([freshUi.width('› … ─ ▏ ↵ ● × ←'), freshUi.truncate('‹ abc › ──', 6), freshUi.graphemes('a›').length, segs], [15, '‹ abc…\x1B[0m', 2, 0], 'no Segmenter at import or for UI glyphs');
+assert.deepEqual([freshUi.width('› … ─ ▏ ↵ ● × ← ★ ⌫'), freshUi.truncate('‹ abc › ──', 6), freshUi.graphemes('a›').length, segs], [19, '‹ abc…\x1B[0m', 2, 0], 'no Segmenter at import or for UI glyphs');
 Intl.Segmenter = Seg;
 const wideOpt = strip(optionRow(['Explorer', 'x'.repeat(80)], 1, 40));
 assert.ok(wideOpt.endsWith('›') && width(wideOpt) <= 40, 'a long option label clips inside its ‹ ›');
@@ -1785,10 +1817,11 @@ assert.deepEqual(wrap([['a\u00a0b c']], 3), ['a b', 'c'], 'nbsp keeps words toge
 const lvl3 = chalk.level;
 chalk.level = 1;
 for (const total of [20, 40, 80, 120]) {
-  const text = helpLines(createProgram(), total);
+  const program = await createProgram();
+  const text = helpLines(program, total);
   assert.ok(text.every(l => width(l) <= total), `help fits ${total} columns`);
   const plain = text.map(stripAnsi).join('\n');
-  for (const c of createProgram().commands.filter(c => !c._hidden)) assert.match(plain, new RegExp(`^ {4}${c.name()}\\b`, 'm'), `help lists ${c.name()} at ${total}`);
+  for (const c of program.commands.filter(c => !c._hidden)) assert.match(plain, new RegExp(`^ {4}${c.name()}\\b`, 'm'), `help lists ${c.name()} at ${total}`);
 }
 chalk.level = lvl3;
 
@@ -1816,7 +1849,7 @@ const { createProgram } = await import('${new URL('../src/index.js', import.meta
 let err = [];
 console.error = (s) => err.push(String(s));
 const out = [];
-for (const args of ${JSON.stringify(runs)}) { await createProgram().parseAsync(['node', 'upex', ...args]); out.push(err.filter(s => s.includes('update available')).join()); err = []; }
+for (const args of ${JSON.stringify(runs)}) { await (await createProgram()).parseAsync(['node', 'upex', ...args]); out.push(err.filter(s => s.includes('update available')).join()); err = []; }
 process.stdout.write('\\n' + JSON.stringify(out));`], { encoding: 'utf-8', env: { ...process.env, USERPROFILE: uhome, HOME: uhome } });
   assert.deepEqual(JSON.parse(r.stdout.trim().split('\n').at(-1)).map(stripAnsi), [`  update available ${VERSION} -> 99.0.0, run npm i -g @uplift-beyond/upex@latest`, '', '', '', ''], 'notice gating');
   assert.equal(fs.readFileSync(cache, 'utf-8'), before, 'fresh cache: no new check');

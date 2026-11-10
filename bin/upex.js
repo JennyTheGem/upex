@@ -22,7 +22,7 @@ if (!fastPath(argv.slice(2))) {
   const [{ createProgram }, { StoreError }, ui] = await Promise.all([
     import('../src/index.js'), import('../src/store.js'), import('../src/ui.js'),
   ]);
-  createProgram().parseAsync(argv).catch((err) => {
+  (await createProgram(argv)).parseAsync(argv).catch((err) => {
     if (!(err instanceof StoreError)) throw err;
     ui.error(err.message);
     process.exit(1);

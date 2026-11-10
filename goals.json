@@ -1520,6 +1520,17 @@
       "note": "json flag on ls, go (before the name with a cd wrapper; cmd wrapper passes it), tag, doctor"
     },
     {
+      "id": "upex-through-the-cd-wrapper-can-cd-into-a",
+      "section": 4,
+      "title": "upex - through the cd wrapper can cd into a shortcut with a dash in its name instead of reopening the last one",
+      "body": "The wrapper sends a lone - to __resolve, which fuzzy-matches it (my-proj). Treat - like a command name in the __resolve action (src/commands/open.js) and in fastPath.",
+      "phase": "later",
+      "status": "planned",
+      "size": "S",
+      "created": "2026-11-10",
+      "updated": "2026-11-10"
+    },
+    {
       "id": "windows-macos-linux-launch-paths",
       "section": 5,
       "title": "Windows / macOS / Linux launch paths",

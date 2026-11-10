@@ -14,6 +14,7 @@ Closed sections: §2 Opening · §3 Resolution & UX · §5 Platform support · �
 
 ## 4. Shell integration
 
+- `upex-through-the-cd-wrapper-can-cd-into-a` upex - through the cd wrapper can cd into a shortcut with a dash in its name instead of reopening the last one (later)
 - Plus 1 maybe: `upgo list --section 4 --phase maybe`
 
 ## 6. Quality

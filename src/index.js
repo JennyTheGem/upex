@@ -4,40 +4,8 @@
 
 import { Command } from 'commander';
 import chalk from 'chalk';
-import { registerAdd } from './commands/add.js';
-import { registerList } from './commands/list.js';
-import { registerRemove } from './commands/remove.js';
-import { registerRename } from './commands/rename.js';
-import { registerEdit } from './commands/edit.js';
-import { registerCheck } from './commands/check.js';
-import { registerResolve, registerGo, registerCd, handleOpen } from './commands/open.js';
-import { registerLearned } from './commands/learned.js';
-import { registerSetup } from './commands/setup.js';
-import { registerHelp } from './commands/help.js';
-import { registerCopy } from './commands/copy.js';
-import { registerCmd } from './commands/cmd.js';
-import { registerApp } from './commands/app.js';
-import { registerCompletion } from './commands/completion.js';
-import { registerTag, registerOpenGroup } from './commands/tag.js';
-import { registerAlias } from './commands/alias.js';
-import { registerWorkspace, openWorkspace, openEntries } from './commands/workspace.js';
+import { COMMANDS } from './fast.js';
 import { loadWorkspaces, loadLinks, saveLinks, sweepExpired, StoreError } from './store.js';
-import { registerRun } from './commands/run.js';
-import { registerExport, registerImport } from './commands/transfer.js';
-import { registerLast } from './commands/last.js';
-import { registerWeb } from './commands/web.js';
-import { registerWebPage } from './commands/webpage.js';
-import { registerDoctor } from './commands/doctor.js';
-import { registerStale } from './commands/stale.js';
-import { registerStats } from './commands/stats.js';
-import { registerConfig } from './commands/config.js';
-import { registerPin } from './commands/pin.js';
-import { registerUndo } from './commands/undo.js';
-import { registerNote } from './commands/note.js';
-import { registerColor } from './commands/color.js';
-import { registerPick } from './commands/pick.js';
-import { runInteractiveMode } from './interactive.js';
-import { setting } from './launcher.js';
 import { VERSION as version, updateNotice, runUpdate } from './update.js';
 
 const label = `upex v${version}`;
@@ -49,7 +17,19 @@ const BANNER = `
   ${chalk.dim('└' + '─'.repeat(w) + '┘')}
 `;
 
-export function createProgram() {
+// Commands a run needs: just its own for `upex <command>`, none for a shortcut or --version,
+// all for help, completion, the selector and a leading option.
+function needed([first, ...rest]) {
+  if (!rest.length && (first === '-v' || first === '--version')) return [];
+  if (!first || first.startsWith('-') || first === 'help' || first === 'completion') return COMMANDS;
+  return COMMANDS.filter(c => c[0].split(' ').includes(first));
+}
+
+// `argv` (process.argv) loads only the commands it needs; without it, all.
+export async function createProgram(argv) {
+  const cmds = argv ? needed(argv.slice(2)) : COMMANDS;
+  const files = [...new Set(cmds.map(c => c[1]))];
+  const mods = Object.fromEntries(await Promise.all(files.map(async f => [f, await import(`./commands/${f}.js`)])));
   const program = new Command();
 
   program
@@ -63,42 +43,7 @@ export function createProgram() {
     .passThroughOptions()
     .addHelpText('beforeAll', BANNER);
 
-  // Register all sub-commands
-  registerAdd(program);
-  registerList(program);
-  registerRemove(program);
-  registerRename(program);
-  registerEdit(program);
-  registerCheck(program);
-  registerResolve(program);
-  registerGo(program);
-  registerCd(program);
-  registerLearned(program);
-  registerSetup(program);
-  registerHelp(program);
-  registerCopy(program);
-  registerCmd(program);
-  registerApp(program);
-  registerCompletion(program);
-  registerTag(program);
-  registerAlias(program);
-  registerOpenGroup(program);
-  registerWorkspace(program);
-  registerRun(program);
-  registerExport(program);
-  registerImport(program);
-  registerLast(program);
-  registerWeb(program);
-  registerWebPage(program);
-  registerDoctor(program);
-  registerStale(program);
-  registerStats(program);
-  registerConfig(program);
-  registerPin(program);
-  registerUndo(program);
-  registerNote(program);
-  registerColor(program);
-  registerPick(program);
+  for (const [, file, register] of cmds) mods[file][register](program);
 
   // Archive expired temporary shortcuts. Skipped where stdout feeds a shell wrapper.
   program.hook('preAction', (_root, cmd) => {
@@ -116,9 +61,10 @@ export function createProgram() {
   });
 
   // Update notice: not for the selector (no name, pick), wrappers, completion (shell startup), ui (still starting) or non-terminals.
-  program.hook('postAction', (_root, cmd) => {
+  program.hook('postAction', async (_root, cmd) => {
     if (!process.stderr.isTTY || (cmd === program && !cmd.args.length)) return;
     if (cmd.name().startsWith('__') || ['go', 'cd', 'pick', 'ui', 'completion'].includes(cmd.name())) return;
+    const { setting } = await import('./launcher.js');
     try {
       if (setting('updateCheck') === 'off') return;
     } catch { return; }
@@ -137,7 +83,9 @@ export function createProgram() {
       // Only handle if it's the root command (not a sub-command)
       // Commander calls this for sub-commands too, but name will be the subcommand name
       // We need to check if name matches a known sub-command
+      const { handleOpen } = await import('./commands/open.js');
       if (!name) {
+        const [{ runInteractiveMode }, { openEntries, openWorkspace }] = await Promise.all([import('./interactive.js'), import('./commands/workspace.js')]);
         const result = await runInteractiveMode({ preferredApp: program.opts().app });
         if (result.status === 'selected') {
           await handleOpen(result.name, result.app, result.count || 1, result.start);

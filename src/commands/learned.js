@@ -4,7 +4,7 @@
  */
 
 import { loadLinks, loadVisits, learnedFolders, clearVisits } from '../store.js';
-import { printRows, tidyPath } from '../interactive.js';
+import { printRows, tidyPath } from '../rows.js';
 import * as ui from '../ui.js';
 
 export const visitsText = n => `${n || 0} visit${n === 1 ? '' : 's'}`;

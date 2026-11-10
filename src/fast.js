@@ -1,18 +1,31 @@
 /**
- * fast.js -- Hot path for the cd wrappers (`go <name>`, `cd <path>`, `__resolve <name>`) without commander or the commands.
+ * fast.js -- Hot path for the cd wrappers (`go <name>`, `cd <path>`, `__resolve <name>`) and completion (`__names`) without commander or the commands.
  * Anything it can't answer falls through to the full CLI.
  */
 
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { loadLinks, recordUse, sweepExpired, StoreError, loadVisits, learnedFolders, recordVisit } from './store.js';
+import { loadLinks, recordUse, sweepExpired, StoreError, loadVisits, learnedFolders, recordVisit, completionNames } from './store.js';
 import { resolveTarget } from './fuzzy.js';
 
+// Every sub-command in registration order: [names and aliases, file in commands/, register function]. index.js loads only the file it needs.
+export const COMMANDS = [
+  ['add', 'add', 'registerAdd'], ['list ls', 'list', 'registerList'], ['remove rm restore', 'remove', 'registerRemove'],
+  ['rename', 'rename', 'registerRename'], ['edit', 'edit', 'registerEdit'], ['check', 'check', 'registerCheck'],
+  ['__resolve', 'open', 'registerResolve'], ['go', 'open', 'registerGo'], ['cd', 'open', 'registerCd'],
+  ['learned', 'learned', 'registerLearned'], ['setup', 'setup', 'registerSetup'], ['help', 'help', 'registerHelp'],
+  ['copy', 'copy', 'registerCopy'], ['cmd', 'cmd', 'registerCmd'], ['app', 'app', 'registerApp'],
+  ['__names completion', 'completion', 'registerCompletion'], ['tag', 'tag', 'registerTag'], ['alias', 'alias', 'registerAlias'],
+  ['open', 'tag', 'registerOpenGroup'], ['ws workspace', 'workspace', 'registerWorkspace'], ['run', 'run', 'registerRun'],
+  ['export', 'transfer', 'registerExport'], ['import', 'transfer', 'registerImport'], ['last', 'last', 'registerLast'],
+  ['ui', 'web', 'registerWeb'], ['web', 'webpage', 'registerWebPage'], ['doctor', 'doctor', 'registerDoctor'],
+  ['stale', 'stale', 'registerStale'], ['stats', 'stats', 'registerStats'], ['config', 'config', 'registerConfig'],
+  ['pin unpin', 'pin', 'registerPin'], ['undo', 'undo', 'registerUndo'], ['note', 'note', 'registerNote'],
+  ['color', 'color', 'registerColor'], ['pick', 'pick', 'registerPick'],
+];
 // Every sub-command name and alias. __resolve must not cd into a shortcut that shadows one; smoke.mjs checks this list.
-export const COMMAND_NAMES = ['add', 'list', 'ls', 'remove', 'rm', 'restore', 'rename', 'edit', 'check', '__resolve', 'go',
-  'setup', 'help', 'copy', 'cmd', 'app', '__names', 'completion', 'tag', 'alias', 'open', 'ws', 'workspace', 'run',
-  'cd', 'learned', 'export', 'import', 'last', 'ui', 'web', 'doctor', 'stale', 'stats', 'config', 'pin', 'unpin', 'undo', 'note', 'pick', 'color'];
+export const COMMAND_NAMES = COMMANDS.flatMap(c => c[0].split(' '));
 
 // Folder path of a shortcut plus an optional subpath ("web/src").
 export const withSub = (entry, sub) => (entry.path && sub ? path.join(entry.path, sub) : entry.path);
@@ -46,13 +59,19 @@ export function cdTarget(query) {
   return r;
 }
 
-// Handle `go <name>` / `__resolve <name>` if possible. Returns true when done.
+// Handle `go <name>` / `__resolve <name>` / `__names` if possible. Returns true when done.
 export function fastPath([cmd, name, ...rest]) {
+  if (cmd === '__names' && name === undefined) {
+    try { process.stdout.write(completionNames()); } catch (err) {
+      if (err instanceof StoreError) return false;
+      throw err;
+    }
+    return true;
+  }
   const quiet = cmd === '__resolve';
   if ((!quiet && cmd !== 'go' && cmd !== 'cd') || !name || name.startsWith('-') || rest.length) return false;
-  if (quiet && COMMAND_NAMES.includes(name)) return false;
-  // A lone path (upex .) opens; the wrapper must not fuzzy-cd it into a shortcut.
-  if (quiet && isPathArg(name)) process.exit(1);
+  // A command name or a lone path (upex .) is never a cd: the wrapper runs or opens it.
+  if (quiet && (COMMAND_NAMES.includes(name) || isPathArg(name))) process.exit(1);
   let r;
   try { r = cmd === 'cd' ? cdTarget(name) : findFolder(name); } catch (err) {
     if (err instanceof StoreError) return false;

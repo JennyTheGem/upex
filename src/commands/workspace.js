@@ -13,7 +13,7 @@
 import { loadWorkspaces, saveWorkspaces, removeWorkspace, loadLinks, nameError } from '../store.js';
 import { resolveTarget } from '../fuzzy.js';
 import { handleOpen } from './open.js';
-import { printRows } from '../interactive.js';
+import { printRows } from '../rows.js';
 import * as ui from '../ui.js';
 
 // Human-readable one-liner for an entry: "shortcut:app x2 (start cmd)".

@@ -18,6 +18,32 @@ const platform = os.platform();
 const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
 const readText = (f) => { try { return fs.readFileSync(f, 'utf-8'); } catch { return ''; } };
 
+const SHELL_FOLDERS = String.raw`HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\User Shell Folders`;
+
+// Documents folder from a `reg export` of SHELL_FOLDERS, %VARS% expanded; null without one.
+// hex(2) is UTF-16, so a non-ASCII path survives (reg query's piped output would not).
+export function documentsFrom(regText, env = process.env) {
+  const m = regText.replace(/\\\r?\n\s*/g, '').match(/^"Personal"=(?:hex\(2\):([0-9a-f,]*)|"(.*)")\s*$/mi);
+  if (!m) return null;
+  const raw = m[1] === undefined ? m[2].replace(/\\(.)/g, '$1')
+    : Buffer.from(m[1].split(',').filter(Boolean).map(h => parseInt(h, 16))).toString('utf16le').replace(/\0+$/, '');
+  return raw.replace(/%([^%]+)%/g, (all, v) => env[v] ?? all) || null;
+}
+
+// Ask Windows: Documents is often moved into OneDrive. reg is ~20ms where PowerShell took ~330.
+function windowsDocuments() {
+  const tmp = path.join(os.tmpdir(), `upex-docs-${process.pid}.reg`);
+  try {
+    spawnSync('reg', ['export', SHELL_FOLDERS, tmp, '/y'], { stdio: 'ignore', timeout: 5000, windowsHide: true });
+    return documentsFrom(fs.readFileSync(tmp, 'utf16le'));
+  } catch {
+    return null;
+  } finally {
+    // A locked temp file (antivirus) must not fail doctor.
+    try { fs.rmSync(tmp, { force: true }); } catch { /* left in tmp */ }
+  }
+}
+
 // Shell profiles that could hold the cd wrapper or completion.
 function profileFiles() {
   const home = os.homedir();
@@ -28,14 +54,7 @@ function profileFiles() {
     path.join(path.dirname(path.dirname(rcFile('fish'))), 'config.fish'),
     rcFile('fish'),
   ];
-  let docs = null;
-  if (platform === 'win32') {
-    // Ask Windows: Documents is often moved into OneDrive.
-    // UTF-8 so a non-ASCII Documents path survives the pipe.
-    const ps = '[Console]::OutputEncoding=[Text.Encoding]::UTF8; [Environment]::GetFolderPath("MyDocuments")';
-    const r = spawnSync('powershell.exe', ['-NoProfile', '-Command', ps], { encoding: 'utf-8', timeout: 5000 });
-    docs = r.stdout?.trim() || path.join(home, 'Documents');
-  }
+  const docs = platform === 'win32' ? windowsDocuments() || path.join(home, 'Documents') : null;
   for (const dir of docs ? ['PowerShell', 'WindowsPowerShell'] : ['powershell']) {
     for (const name of ['Microsoft.PowerShell_profile.ps1', 'profile.ps1']) {
       files.push(path.join(docs || path.join(home, '.config'), dir, name));

@@ -3,11 +3,11 @@
  * Binds to 127.0.0.1 only; every API call needs the per-run token baked into the page.
  */
 
-import http from 'node:http';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import crypto from 'node:crypto';
+import { createRequire } from 'node:module';
 import { loadLinks, saveLinks, loadWorkspaces, saveWorkspaces, pruneBroken, targetField, nameError, takenError, checkAliases, aliasesOf, frecency, parseColor, colorOf, loadConfig, saveConfig, withPinned, undoLast, topSuggestion, hideVisit, loadHistory, statsFrom, LINKS_FILE } from '../store.js';
 import { getInteractiveAppChoices, launchUrl, openerKey, isTerminalApp, checkSettings, readSettings, resetSettings, startTab, SETTING_KEYS, hasWindowsTerminal, configApps, getAppMap } from '../launcher.js';
 import { handleOpen, isFile } from './open.js';
@@ -17,9 +17,12 @@ import { readScripts, detectPm, scriptLine } from './run.js';
 import { bundleOf, importBundle } from './transfer.js';
 import { runChecks } from './doctor.js';
 import { TOP, allTime } from './stats.js';
-import { oneLine, goalsOf } from '../interactive.js';
+import { oneLine, goalsOf } from '../rows.js';
 import { VERSION, PKG, cachedLatest, isNewer, updateNotice } from '../update.js';
 import * as ui from '../ui.js';
+
+// Not imported: the ESM node:http loads undici (~20ms) for every command.
+const require = createRequire(import.meta.url);
 
 const PAGE = new URL('../web/index.html', import.meta.url);
 const readText = f => { try { return fs.readFileSync(f, 'utf-8'); } catch { return ''; } };
@@ -412,7 +415,7 @@ export function startServer({ port = DEFAULT_PORT, open = true, onReady, onError
   let hosts = new Set();
 
   // One try around everything: a throw here would be an unhandled rejection and kill the server.
-  const server = http.createServer(async (req, res) => {
+  const server = require('node:http').createServer(async (req, res) => {
     try {
       // Host check blocks DNS rebinding (an outside site resolving to 127.0.0.1).
       if (!hosts.has(req.headers.host)) return sendJson(res, 403, { error: 'Forbidden host.' });

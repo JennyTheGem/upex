@@ -6,7 +6,7 @@
 import readline from 'node:readline/promises';
 import chalk from 'chalk';
 import { loadLinks, saveLinks, staleLinks } from '../store.js';
-import { printRows, tidyPath } from '../interactive.js';
+import { printRows, tidyPath } from '../rows.js';
 import { setting } from '../launcher.js';
 import * as ui from '../ui.js';
 
