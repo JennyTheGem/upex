@@ -28,9 +28,15 @@ export function findFolder(query) {
   return { name: resolved.name, path: p };
 }
 
+// Absolute path, ~ expanded.
+export const fullPath = (q) => path.resolve(q.replace(/^~(?=$|[\\/])/, os.homedir()));
+
+// An explicit path (., .., ./x, ~/x or absolute), never a shortcut name.
+export const isPathArg = (s) => /^(~|\.\.?)([\\/]|$)/.test(s) || path.isAbsolute(s);
+
 // Folder for `upex cd`: an existing path (~ expanded), else a shortcut, else the most used learned folder of that name. A file gives its folder.
 export function cdTarget(query) {
-  const p = path.resolve(query.replace(/^~(?=$|[\\/])/, os.homedir()));
+  const p = fullPath(query);
   let r = fs.existsSync(p) ? { path: p } : findFolder(query);
   if (r.error?.startsWith('Shortcut not found')) {
     const [hit] = learnedFolders(loadVisits(), {}, { query });
@@ -45,6 +51,8 @@ export function fastPath([cmd, name, ...rest]) {
   const quiet = cmd === '__resolve';
   if ((!quiet && cmd !== 'go' && cmd !== 'cd') || !name || name.startsWith('-') || rest.length) return false;
   if (quiet && COMMAND_NAMES.includes(name)) return false;
+  // A lone path (upex .) opens; the wrapper must not fuzzy-cd it into a shortcut.
+  if (quiet && isPathArg(name)) process.exit(1);
   let r;
   try { r = cmd === 'cd' ? cdTarget(name) : findFolder(name); } catch (err) {
     if (err instanceof StoreError) return false;

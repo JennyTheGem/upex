@@ -130,7 +130,7 @@ export function createProgram() {
   // Commander doesn't support a default positional command well,
   // so we handle unknown commands manually.
   program
-    .argument('[name]', 'Shortcut name to open')
+    .argument('[name]', 'Shortcut name, or a path (., ~/x, C:\\x) to open')
     .argument('[app]', 'App to open the folder in (e.g. vscode, webstorm)')
     .argument('[count]', 'How many windows to open (cmd only)')
     .action(async (name, app, count) => {

@@ -582,6 +582,16 @@
       "note": "src/commands/open.js registerCd + cdTarget in fast.js (fast path), wrappers for bash/zsh, fish, PowerShell, cmd in setup.js"
     },
     {
+      "id": "upex-path-opener-open-x-or-an-absolute-path",
+      "section": 2,
+      "title": "upex <path> [opener]: open ., .., ~/x or an absolute path without a shortcut (upex . claude)",
+      "phase": "later",
+      "status": "done",
+      "created": "2026-11-10",
+      "updated": "2026-11-10",
+      "note": "isPathArg + fullPath in fast.js, handled at the top of handleOpen; cd shares openIn/showOpened"
+    },
+    {
       "id": "exact-then-fuzzy-name-resolution-fuse-js",
       "section": 3,
       "title": "Exact-then-fuzzy name resolution (fuse.js)",

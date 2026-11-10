@@ -9,7 +9,7 @@ import path from 'node:path';
 import os from 'node:os';
 import chalk from 'chalk';
 import { loadLinks, recordUse } from '../store.js';
-import { findFolder, withSub, cdTarget } from '../fast.js';
+import { findFolder, withSub, cdTarget, fullPath, isPathArg } from '../fast.js';
 import { resolveTarget, didYouMean } from '../fuzzy.js';
 import { launchApp, launchExecutable, launchUrl, defaultOpener, openerKey, spawnSync } from '../launcher.js';
 import * as ui from '../ui.js';
@@ -91,16 +91,24 @@ export function registerCd(program) {
         ui.error(r.error);
         process.exit(1);
       }
-      const result = opener && launchApp(opener, r.path, Number(count) || 1, '', { here: true });
-      if (result && !result.ok) {
-        ui.error(result.message);
-        process.exit(1);
-      }
+      const result = opener && openIn(opener, r.path, Number(count) || 1);
       if (r.name) recordUse(r.name, opener ? openerKey(opener) : 'cd');
       if (!opener) return process.stdout.write(r.path);
-      ui.card(r.name || path.basename(r.path) || r.path, [['app', chalk.bold(result.displayName || opener)], ['path', ui.dimParent(r.path, chalk.bold)]]);
-      runHere(result);
+      showOpened(r.name || path.basename(r.path) || r.path, opener, r.path, result);
     });
+}
+
+// Launch p in an opener; on failure prints why and exits (batch: returns nothing).
+function openIn(appKey, p, count, startCmd = '', batch = false) {
+  const result = launchApp(appKey, p, count, startCmd, { here: !batch });
+  if (result.ok) return result;
+  ui.error(result.message);
+  if (!batch) process.exit(1);
+}
+
+function showOpened(label, appKey, p, result) {
+  ui.card(label, [['app', chalk.bold(result.displayName || appKey)], ['path', ui.dimParent(p, chalk.bold)]]);
+  runHere(result);
 }
 
 // Terminal layout 'here': the shell takes over this terminal until it exits.
@@ -119,6 +127,19 @@ export async function handleOpen(name, app, count = 1, startCmd = '', { batch = 
   const bail = (fn) => { fn(); if (batch) return true; process.exit(1); };
 
   const links = loadLinks();
+
+  // `upex . claude`: a path opens without a shortcut (a shortcut of that exact name still wins).
+  if (isPathArg(name) && !Object.hasOwn(links, name)) {
+    const p = fullPath(name);
+    if (!fs.existsSync(p)) {
+      if (bail(() => ui.error(`No such file or folder: ${name}`))) return false;
+    }
+    const appKey = app || (isFile(p) ? 'open' : defaultOpener());
+    const result = openIn(appKey, p, count, startCmd, batch);
+    if (result) showOpened(path.basename(p) || p, appKey, p, result);
+    return !!result;
+  }
+
   const resolved = resolveTarget(name, links);
 
   if (!resolved) {
@@ -193,11 +214,8 @@ export async function handleOpen(name, app, count = 1, startCmd = '', { batch = 
 
   // No opener given: the shortcut's own, else a file opens in its default app and a folder in the default opener.
   const appKey = app || entry.opener || (isFile(targetPath) ? 'open' : defaultOpener());
-  const result = launchApp(appKey, targetPath, count, startCmd, { here: !batch });
-
-  if (!result.ok) {
-    if (bail(() => ui.error(result.message))) return false;
-  }
+  const result = openIn(appKey, targetPath, count, startCmd, batch);
+  if (!result) return false;
 
   recordUse(shortcutName, openerKey(appKey) || appKey);
 
@@ -206,7 +224,6 @@ export async function handleOpen(name, app, count = 1, startCmd = '', { batch = 
     ui.dim(`matched "${name}" --> "${shortcutName}"`);
   }
 
-  ui.card(shortcutName, [['app', chalk.bold(result.displayName || appKey)], ['path', ui.dimParent(targetPath, chalk.bold)]]);
-  runHere(result);
+  showOpened(shortcutName, appKey, targetPath, result);
   return true;
 }

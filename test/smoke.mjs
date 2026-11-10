@@ -19,7 +19,7 @@ import { normalizeUrl, caretEscape, wtCommandLine, setting, shellCommand, defaul
 import { parseTags, parseDuration, defaultName } from '../src/commands/add.js';
 import { truncate, span, width, dimParent, stripAnsi, toAscii } from '../src/ui.js';
 import { applyShortcut, applyOpener, cleanEntries, startServer } from '../src/commands/web.js';
-import { COMMAND_NAMES } from '../src/fast.js';
+import { COMMAND_NAMES, isPathArg } from '../src/fast.js';
 import { createProgram } from '../src/index.js';
 import { readScripts, detectPm } from '../src/commands/run.js';
 import { pickedNames, pickedPaths } from '../src/commands/pick.js';
@@ -121,6 +121,8 @@ const h = spawnSync(process.execPath, [cli, '__resolve', '--help'], { encoding: 
 assert.equal(h.status, 1, '__resolve refuses --help');
 assert.deepEqual([...COMMAND_NAMES].sort(), createProgram().commands.flatMap(c => [c.name(), ...c.aliases()]).sort(), 'fast path knows every command name');
 assert.equal(h.stdout, '', 'no help text printed for the wrapper to cd into');
+for (const p of ['.', '..', './x', '..\\x', '~', '~/x', path.resolve('x')]) assert.ok(isPathArg(p), `path arg: ${p}`);
+for (const n of ['web', '.dotfiles', '..x', '~x', 'web/src']) assert.ok(!isPathArg(n), `shortcut name: ${n}`);
 
 // Run the CLI against a throwaway home holding the given links.json content.
 const home = fs.mkdtempSync(path.join(os.tmpdir(), 'upex-home-'));
@@ -170,6 +172,18 @@ assert.equal(cdMiss.status, 1, 'cd on nothing fails');
 assert.match(cdMiss.stderr, /No such folder or shortcut/, 'cd says what is missing');
 assert.match(upexIn('cd', 't', 'nope-opener').stderr, /Unknown app/, 'cd rejects an unknown opener');
 assert.ok(!loadHistory(path.join(home, '.upex', 'history.jsonl')).some(h => h.opener === 'nope-opener'), 'a failed cd open is not logged');
+
+// -- upex <path>: opens without a shortcut; a lone path never cds through a wrapper --
+{
+  const keep = fs.readFileSync(linksFile, 'utf-8');
+  fs.writeFileSync(linksFile, JSON.stringify({ '.dotfiles': { path: target } }));
+  const res = upexIn('__resolve', '.');
+  assert.equal(res.status, 1, '__resolve . does not fuzzy-match .dotfiles');
+  assert.equal(res.stdout, '', 'no path for the wrapper to cd into');
+  assert.match(upexIn(path.join(target, 'nope')).stderr, /No such file or folder/, 'a missing path fails');
+  assert.match(upexIn(target, 'nope-opener').stderr, /Unknown app/, 'a path rejects an unknown opener');
+  fs.writeFileSync(linksFile, keep);
+}
 
 // -- learned folders: cd on a plain path counts a visit, cd <name> jumps to the most used one --
 {
