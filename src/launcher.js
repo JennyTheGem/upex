@@ -816,11 +816,13 @@ export function launchExecutable(exePath) {
       // .bat/.cmd files must run via cmd.exe with cwd set to the batch file's
       // own directory so that relative paths inside the script resolve correctly.
       // windowsHide suppresses the intermediate cmd.exe console window.
-      child = spawn('cmd.exe', ['/c', exePath], {
+      // Quoted twice for /s, so a path with spaces plus ( ) or & still runs.
+      child = spawn('cmd.exe', ['/d', '/s', '/c', `""${exePath}""`], {
         detached: true,
         stdio: 'ignore',
         shell: false,
         windowsHide: true,
+        windowsVerbatimArguments: true,
         cwd: path.dirname(exePath),
       });
     } else {

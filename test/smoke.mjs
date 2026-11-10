@@ -23,7 +23,7 @@ import { COMMAND_NAMES } from '../src/fast.js';
 import { createProgram } from '../src/index.js';
 import { readScripts, detectPm } from '../src/commands/run.js';
 import { pickedNames, pickedPaths } from '../src/commands/pick.js';
-import { usageText, stepColor, renderInteractiveView, nextView, backTo, accentOf, pathLook, inView, tidyPath, byOrder, optionRow, listRows, readMouse, hitTest, rowClick, undoFlash, clipName, prefill, editLine, kindOf, retyped, setField, fieldWords, completeTag, expiryOptions, formRows, formLines, statLines, doctorLines, inputLine, missingFlash, staysOpen, expandHome, underlineHits, movePinned, sameGroup, withRecent, withGroups, filterChoices, noMatchOffers, expiryText, maxListOf, jumpIndex, isAlt, detailLines, rowOptions, pickedOf, settingsList, goalSummary, goalsOf, goalText, goalPrompt, oneLine, scriptLines, markLines, paneShown, paneToggles, paneWidthOf, withSamePath, archivedList, clipPath, cwdTarget, clipMiddle, asksMany, dotLines, lr, wrapHint, splice, overlayMenu } from '../src/interactive.js';
+import { usageText, stepColor, renderInteractiveView, nextView, backTo, accentOf, pathLook, inView, tidyPath, byOrder, optionRow, listRows, readMouse, hitTest, rowClick, undoFlash, clipName, prefill, editLine, kindOf, retyped, setField, fieldWords, completeTag, expiryOptions, formRows, formLines, statLines, doctorLines, inputLine, missingFlash, staysOpen, expandHome, underlineHits, movePinned, sameGroup, withRecent, withGroups, filterChoices, noMatchOffers, expiryText, maxListOf, jumpIndex, isAlt, detailLines, rowOptions, pickedOf, settingsList, goalSummary, goalsOf, goalText, goalPrompt, oneLine, scriptLines, markLines, paneShown, paneToggles, paneWidthOf, withSamePath, archivedList, clipPath, cwdTarget, targetEntry, clipMiddle, asksMany, dotLines, lr, wrapHint, splice, overlayMenu } from '../src/interactive.js';
 import { parseStatus, parseDiff, parseLog, gitOf, stopGit } from '../src/git.js';
 import chalk from 'chalk';
 import { resolveTarget, resolveName, suggestNames } from '../src/fuzzy.js';
@@ -1106,7 +1106,7 @@ console.log(out.replace(/\x1b\[[\d;?<]*[A-Za-z]/g, ''));
   const r = spawnSync(process.execPath, [drive], { encoding: 'utf-8', cwd: path.join(process.env.SystemRoot || 'C:\\Windows', 'System32'), env: { ...process.env, USERPROFILE: shome, HOME: shome } });
   const left = JSON.parse(fs.readFileSync(file, 'utf-8'));
   assert.deepEqual([r.stderr, left.qqq?.path], ['', shome], 'System32: name, then the typed folder is added');
-  assert.ok(['its folder next', 'type a folder path', 'path not found', 'added "qqq"'].every(s => r.stdout.includes(s)), 'System32: no cwd offered, empty and missing folder flashed');
+  assert.ok(['its target next', 'type a folder, program or url', 'path not found', 'added "qqq"'].every(s => r.stdout.includes(s)), 'System32: no cwd offered, empty and missing folder flashed');
 }
 const zs = new PassThrough();
 readline.emitKeypressEvents(zs);
@@ -1131,9 +1131,17 @@ ${home}`, yes), clipPath(home, () => false), clipPath('', yes)],
   assert.ok(adding.includes('› new shortcut') && adding.includes('› name       proj▏') && /target\s+~[\\/]proj/.test(adding) && adding.includes('↵ add') && !adding.includes('open with'), 'add screen: name typed, clipboard path as target');
   assert.ok(v({ mode: 'input', action: 'add', height: 30 }).includes(path.basename(cwdTarget()) || 'none'), 'add screen without one: cwd');
   assert.deepEqual([cwdTarget('C:\\WINDOWS\\system32\\', 'win32', 'C:\\Windows'), cwdTarget('C:\\Windows\\System32', 'linux', 'C:\\Windows'), cwdTarget('C:\\dev', 'win32', 'C:\\Windows')], ['', 'C:\\Windows\\System32', 'C:\\dev'], 'System32 is no target');
+  const st = (file, mode = 0o644) => () => ({ isFile: () => file, mode });
+  const exe = path.resolve('C:\\t\\a.EXE');
+  assert.deepEqual([targetEntry(' https://x.dev/a ', 'win32'), targetEntry(`"${exe}"`, 'win32', st(true)), targetEntry(exe, 'win32', () => null), targetEntry('C:\\t\\a.txt', 'win32', st(true)).app,
+    targetEntry('/opt/run', 'linux', st(true, 0o755)).app, targetEntry('/opt/run', 'linux', st(true)).app, targetEntry('/opt', 'linux', st(false, 0o755)).app, targetEntry(''),
+    targetEntry('http://a:b:c', 'linux', () => null).url, targetEntry('C://x', 'win32', () => null).url],
+    [{ url: 'https://x.dev/a' }, { app: exe }, { path: exe }, undefined, path.resolve('/opt/run'), undefined, undefined, { path: '' }, undefined, undefined], 'target type: url, program file (quoted ok), missing or other file or folder = path, bad url or C:// a path');
+  const typed = b => v({ mode: 'input', action: 'addTarget', inputName: 'n', inputBuffer: b, height: 30 });
+  assert.ok(typed('https://x.dev').includes('‹ url ›') && (process.platform !== 'win32' || typed(process.execPath).includes('‹ app ›')), 'typed url or program: type row follows');
   const asks = v({ mode: 'input', action: 'addTarget', inputName: 'proj', inputBuffer: '~/p', height: 30 });
   assert.ok(asks.includes('› target     ~/p▏') && asks.includes('  name       proj') && asks.includes('↵ add'), 'no folder: asked after the name');
-  assert.ok(formLines({ name: '', entry: { path: '' }, field: 0, editing: true, buffer: 'x', cursor: 1, adding: true }, 60).map(strip).some(l => l.includes('folder next')), 'empty target: name note says so');
+  assert.ok(formLines({ name: '', entry: { path: '' }, field: 0, editing: true, buffer: 'x', cursor: 1, adding: true }, 60).map(strip).some(l => l.includes('target next')), 'empty target: name note says so');
 }
 assert.deepEqual([asksMany(6, '5'), asksMany(5, '5'), asksMany(50, 'off'), setting('confirmMany', {})], [true, false, false, '5'], 'confirm many: over the limit asks, off never, 5 by default');
 assert.ok(v({ height: 30 }).includes('^o sort') && !v({ view: 'workspaces', workspaces: [], height: 30 }).includes('^o sort'), '^o sort key, not on workspaces');
@@ -1339,7 +1347,7 @@ assert.deepEqual([offerKinds('foo', 'shortcuts'), offerKinds('FOO', 'apps'), off
 assert.deepEqual([noMatchOffers(' foo ', 'shortcuts', arch, '/cwd')[0].name, noMatchOffers('foo', 'shortcuts', arch, '/cwd')[1].text], ['foo', '2 match'], 'offer name trimmed, archived count');
 const noMatchFrame = renderInteractiveView({ query: 'foo', choices: [], selectedIndex: 0, appChoices: [], selectedAppIndex: 0, cmdCount: 1, offers: noMatchOffers('foo', 'shortcuts', arch, '/cwd'), offerIndex: 1 });
 assert.ok(noMatchFrame.includes('add "foo" here') && noMatchFrame.includes('search archived') && noMatchFrame.includes('2 match'), 'no-match offers render');
-assert.deepEqual(noMatchOffers('foo', 'shortcuts', [], ''), [{ kind: 'add', name: 'foo', label: 'add "foo"', text: 'its folder next', key: 'add' }], 'no cwd target (System32): no path offered');
+assert.deepEqual(noMatchOffers('foo', 'shortcuts', [], ''), [{ kind: 'add', name: 'foo', label: 'add "foo"', text: 'its target next', key: 'add' }], 'no cwd target (System32): no path offered');
 assert.deepEqual([expiryText(Date.now() + 2 * 86400000 - 5000), expiryText(Date.now() - 1), expiryText(undefined), expiryText(Date.now() + 90 * 60000)], ['2d left', '', '', '2h left'], 'expiry badge text');
 assert.deepEqual(movePinned([{ name: 'a', tags: ['web'] }, { name: 'b', tags: ['vel'] }, { name: 'c', tags: ['web'] }], 'a', 1, sameGroup({ group: '#web' })), ['c', 'b', 'a'], 'groups: a pin moves past the next pin of its tag group');
 assert.deepEqual([maxListOf('12'), maxListOf(undefined)], [12, 8], 'max rows setting');

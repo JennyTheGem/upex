@@ -177,7 +177,7 @@ try {
   const bat = path.join(dir, 'run.bat');
   calls = [];
   W.launchExecutable(bat);
-  assert.deepEqual(calls.map(c => c.slice(0, 3)), [['spawn', 'cmd.exe', ['/c', bat]]], 'win: .bat via cmd.exe');
+  assert.deepEqual(calls.map(c => c.slice(0, 3)), [['spawn', 'cmd.exe', ['/d', '/s', '/c', `""${bat}""`]]], 'win: .bat via cmd.exe, quoted for /s');
   assert.equal(calls[0][3].cwd, dir, 'win: .bat runs in its folder');
   calls = [];
   W.launchExecutable(ws);

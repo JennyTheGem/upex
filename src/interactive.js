@@ -206,7 +206,7 @@ export function noMatchOffers(query, view, archived = [], cwd = cwdTarget()) {
   const n = archived.filter(a => `${a.name} ${a.path}`.toLowerCase().includes(q.toLowerCase())).length;
   return [
     view === 'shortcuts' && !/[#@]|is:/i.test(q) && (cwd ? { kind: 'add', name: q, label: `add "${q}" here`, text: tidyPath(cwd), key: 'add here' }
-      : { kind: 'add', name: q, label: `add "${q}"`, text: 'its folder next', key: 'add' }),
+      : { kind: 'add', name: q, label: `add "${q}"`, text: 'its target next', key: 'add' }),
     n > 0 && { kind: 'archived', label: 'search archived', text: `${n} match`, key: 'search archived' },
   ].filter(Boolean);
 }
@@ -544,6 +544,19 @@ export function clipPath(text, exists = fs.existsSync) {
   return t && !/[\r\n]/.test(t) && path.isAbsolute(p) && exists(p) ? path.resolve(p) : null;
 }
 
+// A typed or pasted target as an entry: a web address is a url, a program file an app (.exe, .bat, ... on Windows,
+// an executable file elsewhere), anything else a folder path.
+const statOf = p => { try { return fs.statSync(p); } catch { return null; } };
+export function targetEntry(text, platform = os.platform(), stat = statOf) {
+  const t = String(text ?? '').trim().replace(/^"(.*)"$/, '$1');
+  // 2+ letter scheme, so C://x stays a path; parseable, so hostName can't throw.
+  if (/^[a-z][a-z\d+.-]+:\/\/\S+$/i.test(t) && URL.canParse(t)) return { url: t };
+  const p = t && path.resolve(expandHome(t));
+  const s = p ? stat(p) : null;
+  const prog = s?.isFile() && (platform === 'win32' ? /\.(exe|bat|cmd|com|lnk)$/i.test(p) : (s.mode & 0o111) !== 0);
+  return prog ? { app: p } : { path: p };
+}
+
 // Confirm many setting: does opening `n` windows ask first?
 export const asksMany = (n, limit) => Number(limit) > 0 && n > Number(limit);
 
@@ -606,11 +619,11 @@ function formNote(f, form) {
   if (form.ws) return f === 'name' ? 'Unique, no spaces.' : '←→ picks its opener, ↵ sets a start command (runs in a terminal), ^d removes it.';
   const kind = form.kind || kindOf(form.entry);
   if (form.adding) {
-    if (f === 'target') return 'Folder path, ~ works. ↵ adds it, then the other rows can be changed.';
-    return targetOf(form.entry) ? 'Unique, no spaces. ↵ adds it with this target, then the other rows can be changed.' : 'Unique, no spaces. ↵ asks for its folder next.';
+    if (f === 'target') return 'Folder, program or web address (the type follows), ~ works. ↵ adds it, then the other rows can be changed.';
+    return targetOf(form.entry) ? 'Unique, no spaces. ↵ adds it with this target, then the other rows can be changed.' : 'Unique, no spaces. ↵ asks for its target next.';
   }
   if (f === 'name') return 'Unique, no spaces.';
-  if (f === 'target') return { folder: 'Folder path, ~ works, empty = the current folder.', app: 'Program or command to launch.', cmd: 'Command line, runs in a terminal.', url: 'Web address, opens in the browser.' }[kind];
+  if (f === 'target') return { folder: 'Folder path, ~ works, empty = the current folder. A program or web address changes the type.', app: 'Program or command to launch.', cmd: 'Command line, runs in a terminal.', url: 'Web address, opens in the browser.' }[kind];
   if (f === 'type') return form.kind ? '↵ asks for its new target, esc keeps the type.' : '←→ picks another type, then ↵ asks for its target.';
   if (f === 'opener') return 'Opens it when no opener is picked. Default: Settings > Default opener.';
   if (f === 'tags') return 'Space between tags, tab completes one you use. Type #tag in the filter to find them.';
@@ -1042,10 +1055,10 @@ export function renderInteractiveView({
   const isWs = view === 'workspaces';
   const isSettings = view === 'settings';
   const isScripts = mode === 'scripts' && !!scripts;
-  // ^a: the new shortcut as a form, its name typed first (then its folder, when it has none); ↵ adds it and goes on to the edit form.
+  // ^a: the new shortcut as a form, its name typed first (then its target, when it has none); ↵ adds it and goes on to the edit form.
   if (mode === 'input' && (action === 'add' || action === 'addTarget')) {
     const named = action === 'addTarget';
-    form = { name: named ? inputName : '', entry: { path: named ? '' : inputName || cwdTarget() }, field: named ? 1 : 0, editing: true, buffer: inputBuffer, cursor: inputCursor, adding: true };
+    form = { name: named ? inputName : '', entry: targetEntry(named ? inputBuffer : inputName || cwdTarget()), field: named ? 1 : 0, editing: true, buffer: inputBuffer, cursor: inputCursor, adding: true };
   }
   const isForm = !!form && (mode === 'form' || !!form.adding);
   const currentChoice = (isWs ? workspaces : choices)[isWs ? wsIndex : selectedIndex];
@@ -1944,11 +1957,13 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
         return true;
       }
       if (f === 'target') {
-        const kind = form.kind || kindOf(cur);
-        const t = kind === 'folder' ? (buf ? path.resolve(expandHome(buf)) : process.cwd()) : buf;
+        let kind = form.kind || kindOf(cur);
+        let t = kind === 'folder' ? (buf ? path.resolve(expandHome(buf)) : process.cwd()) : buf;
+        // A folder typed as a web address or a program file takes that type.
+        if (kind === 'folder' && !form.kind && buf) { const e = targetEntry(buf); kind = kindOf(e); t = targetOf(e); }
         if (kind === 'folder' && !fs.existsSync(t)) return nameFlash('path not found');
         if (!t) return nameFlash(`${KIND_NAMES[kind]} can't be empty`);
-        const next = form.kind ? retyped(cur, kind, t) : { ...cur, [KIND_FIELD[kind]]: t };
+        const next = kind !== kindOf(cur) ? retyped(cur, kind, t) : { ...cur, [KIND_FIELD[kind]]: t };
         form.kind = null;
         saveShortcut(next, `target saved${kindOf(cur) !== kind ? `, now ${KIND_NAMES[kind]}` : ''}`);
         return true;
@@ -2055,9 +2070,9 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
       }
     };
 
-    // Adds a folder shortcut, then straight on to its type, target, tags and the rest.
-    const addLink = (name, p, field) => {
-      setLink(name, { path: p, added: Date.now() });
+    // Adds a shortcut (`e` from targetEntry), then straight on to its type, target, tags and the rest.
+    const addLink = (name, e, field) => {
+      setLink(name, { ...e, added: Date.now() });
       rebuild(name);
       done(`added "${name}"`);
       openForm(name, false, field);
@@ -2074,18 +2089,18 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
         const taken = takenError(loadLinks(), buf);
         if (taken) { flash = taken.replace(/\.$/, ''); return false; }
         const p = inputName || cwdTarget();
-        // No folder yet (System32): ask it next.
+        // No target yet (System32): ask it next.
         if (!p) { startAction('addTarget', '', buf); return false; }
-        return addLink(buf, p, 'target');
+        return addLink(buf, targetEntry(p), 'target');
       }
 
       if (action === 'addTarget') {
-        if (!buf) return nameFlash('type a folder path');
-        const p = path.resolve(expandHome(buf));
-        if (!fs.existsSync(p)) return nameFlash('path not found');
+        if (!buf) return nameFlash('type a folder, program or url');
+        const e = targetEntry(buf);
+        if (e.path && !fs.existsSync(e.path)) return nameFlash('path not found');
         const taken = takenError(loadLinks(), inputName);
         if (taken) return nameFlash(taken);
-        return addLink(inputName, p, 'type');
+        return addLink(inputName, e, 'type');
       }
 
       if (action === 'wsadd') {
@@ -2795,11 +2810,12 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
         if (view !== 'shortcuts') return;
         startAction('add');
         redraw();
-        // An existing path on the clipboard becomes its path, named after it, unless a name is typed meanwhile.
+        // An existing path or a web address on the clipboard becomes its target, named after it, unless a name is typed meanwhile.
         readClipboard().then(guard((text) => {
-          const p = clipPath(text);
+          const p = clipPath(text) || targetEntry(text).url;
           if (!p || closed || mode !== 'input' || action !== 'add' || inputBuffer) return;
-          startAction('add', defaultName(p), p);
+          const e = targetEntry(p);
+          startAction('add', e.url ? hostName(p) : e.app ? defaultName(p).replace(/\.[^.]+$/, '') : defaultName(p), p);
           redraw();
         }));
         return;

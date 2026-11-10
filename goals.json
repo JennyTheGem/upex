@@ -2357,6 +2357,17 @@
       "size": "M",
       "created": "2026-11-09",
       "updated": "2026-11-09"
+    },
+    {
+      "id": "add-auto-type",
+      "section": 10,
+      "title": "^a picks the type from the target: url, program file = app, else folder",
+      "phase": "later",
+      "status": "done",
+      "size": "S",
+      "created": "2026-11-10",
+      "updated": "2026-11-10",
+      "note": "targetEntry in interactive.js; ^a clipboard, System32 target step, live type row, ^e folder retarget"
     }
   ]
 }
