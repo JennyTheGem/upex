@@ -14,4 +14,9 @@ jobs:
         with:
           node-version: ${{ matrix.node }}
       - run: npm ci
-      - run: npm test
+      - run: npm test 2>&1 | tee test.log; exit ${PIPESTATUS[0]}
+        shell: bash
+      # Failures as an annotation on the run page (readable without opening the log).
+      - if: failure()
+        shell: bash
+        run: node -e "const s=require('fs').readFileSync('test.log','utf8');const i=s.lastIndexOf('failing tests:');console.log('::error title=failing tests::'+(i<0?s.slice(-3000):s.slice(i,i+6000)).replace(/%/g,'%25').replace(/\r/g,'').replace(/\n/g,'%0A'))"

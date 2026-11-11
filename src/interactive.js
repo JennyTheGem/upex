@@ -260,7 +260,7 @@ const nextStop = (t, i) => stops(t).find(s => s > i) ?? t.length;
 // Windows Node before 22.17 / 24.2 (no VT input) has the two swapped.
 const [nodeMajor, nodeMinor] = process.versions.node.split('.').map(Number);
 const swapped = os.platform() === 'win32' && (nodeMajor < 22 || nodeMajor === 23 || (nodeMajor === 22 && nodeMinor < 17) || (nodeMajor === 24 && nodeMinor < 2));
-const CTRL_BACKSPACE = swapped ? '\x7f' : '\b';
+export const CTRL_BACKSPACE = swapped ? '\x7f' : '\b';
 const isWordBackspace = key => (key.ctrl && key.name === 'w') || (key.name === 'backspace' && (key.ctrl || key.meta || key.sequence === CTRL_BACKSPACE));
 // Alt: a modifier code (\x1b[1;3A), or an Esc prefix (\x1b\x1b[A, older Windows Node and some terminals) readline leaves unflagged.
 export const isAlt = key => !!key.meta || (key.sequence || '').startsWith('\x1b\x1b');
