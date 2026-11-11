@@ -1390,10 +1390,11 @@ const busy = () => Boolean(S.adding || S.editing || S.newWs || S.editWs || S.ren
   document.querySelector('main :is(input, select):focus'));
 window.addEventListener('focus', () => { if (!busy()) load(busy); });
 document.getElementById('q').addEventListener('input', e => { S.q = e.target.value; render(); });
-// Search: Enter opens the top row, Down goes into the list. Rows: Up/Down move, Up from the first goes back to search.
+// Search: Enter opens the top row, Down goes into the list, Up to its last row. Rows: Up/Down move,
+// Up from the first goes back to search, Down from the last wraps to the first.
 document.getElementById('q').addEventListener('keydown', e => {
   if (e.key === 'Enter') { e.preventDefault(); rows().find(r => r.open && !r.matches('.broken'))?.open(); }
-  else if (e.key === 'ArrowDown' && rows().length) { e.preventDefault(); rows()[0].focus(); }
+  else if (['ArrowDown', 'ArrowUp'].includes(e.key) && rows().length) { e.preventDefault(); rows().at(e.key === 'ArrowDown' ? 0 : -1).focus(); }
 });
 document.getElementById('main').addEventListener('keydown', e => {
   if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(e.key) || !e.target.matches('.item[data-name]')) return;
@@ -1402,7 +1403,7 @@ document.getElementById('main').addEventListener('keydown', e => {
   const i = all.indexOf(e.target);
   const to = { ArrowDown: i + 1, ArrowUp: i - 1, Home: 0, End: all.length - 1 }[e.key];
   if (to < 0) document.getElementById('q').focus();
-  else all[Math.min(to, all.length - 1)].focus();
+  else all[to % all.length].focus();
 });
 document.addEventListener('keydown', e => {
   const typing = /^(INPUT|SELECT|TEXTAREA)$/.test(document.activeElement?.tagName);

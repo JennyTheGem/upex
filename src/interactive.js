@@ -2360,11 +2360,13 @@ export async function runInteractiveMode({ preferredApp, stdin = process.stdin, 
       }
       if (wheel) {
         flash = '';
-        if (picking) scriptIndex = clamp(scriptIndex + wheel, scripts.list.length);
-        else if (goalPick) goalIndex = clamp(goalIndex + wheel, paneGoals()?.next.length || 1);
-        else if (view === 'settings') settingIndex = clamp(settingIndex + wheel, settingCount());
-        else if (view === 'workspaces') wsIndex = clamp(wsIndex + wheel, filteredWs.length);
-        else selectedIndex = clamp(selectedIndex + wheel, filteredChoices.length);
+        // Past either end wraps to the other, like the arrow keys.
+        const wrap = (i, n) => (n ? (i + n) % n : 0);
+        if (picking) scriptIndex = wrap(scriptIndex + wheel, scripts.list.length);
+        else if (goalPick) goalIndex = wrap(goalIndex + wheel, paneGoals()?.next.length || 1);
+        else if (view === 'settings') settingIndex = wrap(settingIndex + wheel, settingCount());
+        else if (view === 'workspaces') wsIndex = wrap(wsIndex + wheel, filteredWs.length);
+        else selectedIndex = wrap(selectedIndex + wheel, filteredChoices.length);
         redraw();
         return;
       }
