@@ -398,7 +398,7 @@ test('Shell setup: one upex block, replaced in place; a hand-added function is l
   assert.equal(withBlock(`${once}export A=1\n`), `${once}export A=1\n`, 'setup: text after the block kept');
   assert.equal(installShell('zsh', home).file, path.join(home, '.zshrc'), 'setup: zsh -> ~/.zshrc');
   assert.equal(installShell('zsh', home).kept, undefined, 'setup: rerun updates its own block');
-  fs.writeFileSync(path.join(home, '.bashrc'), 'upex() { command upex __resolve "$1"; }\n');
+  fs.writeFileSync(rcFile('bash', home),'upex() { command upex __resolve "$1"; }\n');
   assert.equal(installShell('bash', home).kept, true, 'setup: hand-added function kept');
   assert.ok(fs.readFileSync(installShell('fish', home).file, 'utf-8').startsWith('function upex'), 'setup: fish function file');
   assert.equal(rcFile('fish', home), path.join(home, '.config', 'fish', 'functions', 'upex.fish'), 'setup: fish autoload path');
