@@ -708,7 +708,7 @@ function settingNote(key, s, wt) {
   if (key === 'paneWidth') return 'How much of the screen the pane takes: Narrow leaves the list more room, Wide shows more details.';
   if (key === 'goals') return 'Pane right of the list (full screen): open upgo goals of a folder, up to this many. S-→ picks one, Enter copies it, ^↵ hands it to Claude; a click copies, Ctrl+click hands it to Claude. upex ui shows them on one line under the name.';
   if (key === 'size') return 'Pane right of the list (full screen): size and file count of a folder, looked up in the background (robocopy on Windows, du elsewhere).';
-  if (key === 'git') return 'Pane right of the list (full screen): branch, ahead/behind, changes and last commit of a folder in git. ^g opens its web page.';
+  if (key === 'git') return 'Pane right of the list (full screen): branch, ahead/behind, changes, commit count and last commit of a folder in git. ^g opens its web page.';
   if (key === 'keyHints') return 'Keys under the list. Short: one row of what the picked row can do now. Full: every key. Off: more room for the list. ? on an empty filter (or ^k) shows every key in any mode. Settings keeps its keys.';
   if (key === 'glyphs') return 'ASCII swaps arrows, pointers, lines and the ellipsis for plain characters, for fonts that show boxes.';
   if (key === 'theme') return 'Colors of upex ui. The terminal keeps its own.';
@@ -810,8 +810,9 @@ export function gitLines(g, pw, now = Date.now()) {
   const iw = pw - IND.length;
   const ab = [g.ahead && `↑${g.ahead}`, g.behind && `↓${g.behind}`].filter(Boolean).join(' ');
   const lines = [g.added && chalk.green(`+${g.added}`), g.deleted && chalk.red(`-${g.deleted}`)].filter(Boolean).join(' ');
+  const commits = g.commits ? chalk.dim(` · ${g.commits.toLocaleString('en-US')} commit${g.commits > 1 ? 's' : ''}`) : '';
   const out = [...section('GIT', `${oneLine(g.branch) || '?'}${ab ? `  ${ab}` : ''}`, pw),
-    IND + (g.changed ? lr(`${g.changed} file${g.changed > 1 ? 's' : ''} changed`, lines, iw) : chalk.dim('clean'))];
+    IND + (g.changed ? lr(`${g.changed} file${g.changed > 1 ? 's' : ''} changed${commits}`, lines, iw) : chalk.dim('clean') + commits)];
   // The subject clips first, so the age stays.
   if (g.last) out.push(IND + lr(oneLine(g.last.subject), chalk.dim(`${ui.span(now - g.last.time)} ago`), iw));
   if (g.web) out.push({ text: IND + lr(g.web.replace(/^https:\/\//, ''), chalk.dim('^g'), iw), web: true });

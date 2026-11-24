@@ -1537,6 +1537,7 @@ assert.deepEqual([parseLog('1700000000 fix it'), parseLog(''), parseLog(null)], 
   assert.ok(y >= 0 && targets.some(t => t.web && t.line === y) && on.some(l => l.includes('^g github')), 'web line clickable, ^g hint');
   assert.ok(!strip(renderInteractiveView({ ...gargs, settings: {} })).includes('│ GIT'), 'git off by default');
   assert.ok(strip(detailLines(det, 60, [], Date.now(), { git: { branch: 'm', changed: 0 } }).join('|')).includes('|  clean'), 'clean repo, no web line');
+  assert.ok(strip(detailLines(det, 60, [], Date.now(), { git: { branch: 'm', changed: 0, commits: 1234 } }).join('|')).includes('|  clean · 1,234 commits'), 'commit count');
   const alias = strip(renderInteractiveView({ ...gargs, gitFor: () => ({ ...g, web: 'https://gh-work/o/r' }), settings: { git: 'on' } }));
   assert.ok(alias.includes('^g gh-work') && !alias.includes('undefined'), 'one-label host hint');
 }
