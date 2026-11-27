@@ -23,10 +23,10 @@ export function registerApp(program) {
       if (!alias) {
         const entries = Object.entries(apps);
         if (entries.length === 0) {
-          ui.info('No custom apps. Add one: upex app <alias> <command>');
+          ui.info('No custom openers. Add one: upex app <alias> <command>');
           return;
         }
-        ui.heading('Custom Apps');
+        ui.heading('Custom openers');
         ui.table(
           [[chalk.bold('ALIAS'), chalk.bold('COMMAND')], ...entries.map(([a, c]) => [chalk.bold(a), c])],
           { header: true },

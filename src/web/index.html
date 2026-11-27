@@ -60,31 +60,34 @@ input, select { caret-color: var(--accent); accent-color: var(--accent); }
   position: sticky; top: 0; height: 100vh; overflow-y: auto; display: flex; flex-direction: column; gap: 16px;
   padding: 14px 10px; background: var(--panel); border-right: 1px solid var(--line);
 }
-.brand { font-weight: 700; font-size: 16px; letter-spacing: -.01em; display: flex; align-items: center; gap: 8px; padding: 4px 10px; }
-.brand::before { content: ""; width: 8px; height: 8px; border-radius: 2px; background: var(--accent); }
+.brand { font-weight: 700; font-size: 16px; letter-spacing: -.01em; padding: 4px 10px; }
 .side nav { display: grid; gap: 2px; }
 .tab {
   background: none; border: 0; padding: 7px 10px; border-radius: var(--r); width: 100%; text-align: left;
   color: var(--muted); cursor: pointer; display: flex; gap: 10px; align-items: center;
 }
-.tab:hover { color: var(--text); background: var(--raise); }
+@media (hover: hover) { .tab:hover { color: var(--text); background: var(--raise); } }
 .tab[aria-current="page"] { color: var(--text); background: var(--raise); font-weight: 600; }
 .tab[aria-current="page"] .i { color: var(--accent); }
 .tab .n { margin-left: auto; font-size: 12px; font-weight: 400; color: var(--muted); font-variant-numeric: tabular-nums; }
 .sub { display: grid; gap: 1px; margin: 2px 0 4px 26px; padding-left: 10px; border-left: 1px solid var(--line); }
 .sub a { color: var(--muted); text-decoration: none; padding: 4px 8px; border-radius: 4px; font-size: 13px; }
-.sub a:hover { color: var(--text); background: var(--raise); }
+@media (hover: hover) { .sub a:hover { color: var(--text); background: var(--raise); } }
 /* Version at the sidebar's foot; a newer one on npm adds its install command */
 .ver { margin-top: auto; padding: 4px 10px; font-size: 12px; color: var(--muted); display: grid; gap: 6px; justify-items: start; }
 .ver .upd { color: var(--warn); }
-.ver button { all: unset; cursor: pointer; font: 11.5px/1.5 var(--mono); color: var(--text); background: var(--warn-soft); border-radius: 4px; padding: 3px 6px; overflow-wrap: anywhere; }
-.ver button:hover { outline: 1px solid var(--warn); }
+.ver button { all: unset; cursor: pointer; font: 11.5px/1.5 var(--mono); color: var(--text); background: var(--warn-soft); border-radius: 4px; padding: 3px 6px; min-height: 24px; box-sizing: border-box; overflow-wrap: anywhere; }
+@media (hover: hover) { .ver button:hover { outline: 1px solid var(--warn); } }
 .ver button:focus-visible { outline: 2px solid var(--accent); }
 header {
   position: sticky; top: 0; z-index: 2;
   background: color-mix(in srgb, var(--bg) 92%, transparent);
   backdrop-filter: blur(8px);
   border-bottom: 1px solid var(--line);
+}
+@supports (animation-timeline: scroll()) {
+  header { border-bottom-color: transparent; animation: edge linear both; animation-timeline: scroll(); animation-range: 0 24px; }
+  @keyframes edge { to { border-bottom-color: var(--line); box-shadow: 0 6px 12px -10px rgba(0, 0, 0, .35); } }
 }
 .bar { max-width: 1600px; padding: 12px 32px; display: flex; align-items: center; gap: 16px; min-height: 57px; }
 h1 { font-size: 18px; letter-spacing: -.015em; margin: 0; }
@@ -109,25 +112,29 @@ input[type="text"], input[type="number"], input[type="search"], select {
   padding: 6px 9px; min-width: 0; height: var(--h);
 }
 input::placeholder { color: var(--muted); opacity: .8; }
-input:hover, select:hover { border-color: var(--muted); }
+@media (hover: hover) { input:hover, select:hover { border-color: var(--muted); } }
 input[aria-invalid="true"] { border-color: var(--danger); }
 .btn {
   display: inline-flex; align-items: center; justify-content: center; gap: 6px;
   height: var(--h); padding: 0 12px; border-radius: var(--r); cursor: pointer; white-space: nowrap;
   background: var(--raise); border: 1px solid var(--line-strong);
-  transition: background-color .15s ease-out, border-color .15s ease-out, color .15s ease-out;
+  transition: background-color .15s ease-out, border-color .15s ease-out, color .15s ease-out, transform .15s ease-out;
 }
-.btn:hover { border-color: var(--muted); }
+@media (hover: hover) { .btn:hover { border-color: var(--muted); } }
 .btn:disabled, .btn[aria-disabled="true"] { opacity: .5; cursor: default; }
 .btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); font-weight: 600; }
-.btn.primary:hover { filter: brightness(1.08); }
+@media (hover: hover) { .btn.primary:hover { filter: brightness(1.08); } }
 .btn.danger { color: var(--danger); }
 .btn.danger.solid { background: var(--danger); border-color: var(--danger); color: var(--bg); font-weight: 600; }
 .btn.ghost { background: none; border-color: transparent; color: var(--muted); }
-.btn.ghost:hover { color: var(--text); background: var(--raise); }
+@media (hover: hover) { .btn.ghost:hover { color: var(--text); background: var(--raise); } }
 .btn.icon { width: var(--h); padding: 0; }
 .btn.icon[aria-pressed="true"] { color: var(--accent); }
-.btn.ghost.danger:hover { color: var(--danger); background: var(--danger-soft); }
+@media (hover: hover) { .btn.ghost.danger:hover { color: var(--danger); background: var(--danger-soft); } }
+/* Feedback on press, not on release */
+.btn:active:not(:disabled, [aria-disabled="true"]), .chip:active, .tab:active, .seg label:active, .custom-accent:active { transform: scale(.97); transition-duration: 60ms; }
+.menu > button:active, .sub a:active { background: var(--raise); }
+.chip, .tab { transition: transform .15s ease-out; }
 
 main { max-width: 1600px; padding: 20px 32px 96px; }
 .set-main { max-width: 980px; }
@@ -139,9 +146,9 @@ main { max-width: 1600px; padding: 20px 32px 96px; }
 .chips { display: flex; gap: 6px; flex-wrap: wrap; }
 .chip {
   border: 1px solid var(--line-strong); background: none; border-radius: 99px;
-  padding: 2px 10px; font-size: 12.5px; color: var(--muted); cursor: pointer;
+  min-height: 26px; padding: 0 10px; font-size: 12.5px; color: var(--muted); cursor: pointer;
 }
-.chip:hover { color: var(--text); }
+@media (hover: hover) { .chip:hover { color: var(--text); } }
 .chip[aria-pressed="true"] { background: var(--accent-soft); border-color: var(--accent); color: var(--text); }
 
 /* Notice for broken paths */
@@ -174,7 +181,7 @@ main { max-width: 1600px; padding: 20px 32px 96px; }
 .fld.full { grid-column: 1 / -1; }
 .seg { display: inline-flex; flex-wrap: wrap; background: var(--raise); border: 1px solid var(--line); border-radius: var(--r); padding: 2px; gap: 2px; }
 .seg label { display: flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 4px; cursor: pointer; color: var(--muted); transition: background-color .15s ease-out, color .15s ease-out; }
-.seg label:hover { color: var(--text); }
+@media (hover: hover) { .seg label:hover { color: var(--text); } }
 .seg input { position: absolute; opacity: 0; pointer-events: none; }
 .seg input:checked + label { background: var(--panel); color: var(--text); box-shadow: 0 0 0 1px var(--line-strong), 0 1px 2px rgba(0, 0, 0, .12); }
 .seg input:focus-visible + label { outline: 2px solid var(--accent); }
@@ -208,7 +215,7 @@ main { max-width: 1600px; padding: 20px 32px 96px; }
 .weeks span.z { background: var(--line-strong); }
 .dr-row { display: grid; grid-template-columns: 44px minmax(100px, 160px) minmax(0, 1fr); gap: 12px; align-items: baseline; }
 .dr-row .detail { color: var(--muted); overflow-wrap: anywhere; font-size: 13px; }
-.dr-s { font: 11.5px var(--mono); text-transform: uppercase; color: var(--muted); }
+.dr-s { font-size: 13px; font-weight: 600; color: var(--muted); }
 .dr-s.ok { color: var(--accent); } .dr-s.warn { color: var(--warn); } .dr-s.fail { color: var(--danger); }
 
 /* Shortcut list */
@@ -220,19 +227,23 @@ main { max-width: 1600px; padding: 20px 32px 96px; }
 .item:first-child, .group:first-child { border-top: 0; }
 .group .n { margin-left: 8px; opacity: .7; font-variant-numeric: tabular-nums; }
 .group { padding: 6px 12px; font-size: 12px; color: var(--muted); border-top: 1px solid var(--line); background: var(--raise); }
-.item:hover { background: color-mix(in srgb, var(--raise) 55%, transparent); }
+@media (hover: hover) { .item:hover { background: color-mix(in srgb, var(--raise) 55%, transparent); } }
 .item:focus { outline: none; }
 .item:focus-visible { background: var(--accent-soft); outline: 2px solid var(--accent); outline-offset: -2px; }
 .name > button { all: unset; cursor: pointer; }
-.name > button:hover { text-decoration: underline; text-underline-offset: 3px; }
+@media (hover: hover) { .name > button:hover { text-decoration: underline; text-underline-offset: 3px; } }
 .name > button:disabled { cursor: default; text-decoration: none; }
 .name > .i { color: var(--accent); vertical-align: -2px; margin-right: 4px; width: 14px; height: 14px; }
 /* Row "More" menu (native popover, placed by JS under its button) */
 .menu {
   inset: auto; margin: 0; min-width: 210px; padding: 4px;
   background: var(--panel); color: var(--text); border: 1px solid var(--line-strong); border-radius: var(--r);
-  box-shadow: 0 8px 28px rgba(0, 0, 0, .22);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, .12), 0 10px 28px rgba(0, 0, 0, .2);
+  transition: opacity .16s ease-out, transform .16s cubic-bezier(.23, 1, .32, 1), display .16s allow-discrete, overlay .16s allow-discrete;
 }
+/* Grows out of its button (origin set by place), leaves faster */
+.menu:not(:popover-open) { opacity: 0; transform: scale(.97); transition-duration: .1s; pointer-events: none; }
+@starting-style { .menu:popover-open { opacity: 0; transform: scale(.97); } }
 .menu-open { display: flex; flex-wrap: wrap; gap: 6px; padding: 6px 6px 8px; border-bottom: 1px solid var(--line); margin-bottom: 4px; }
 .menu-open select { flex: 1 1 100%; }
 .menu-open input.count { width: 64px; }
@@ -241,11 +252,12 @@ main { max-width: 1600px; padding: 20px 32px 96px; }
   display: flex; width: 100%; align-items: center; gap: 10px; padding: 6px 8px; border: 0; border-radius: 4px;
   background: none; cursor: pointer; text-align: left;
 }
-.menu > button:hover, .menu > button:focus-visible { background: var(--raise); outline: none; }
+.menu > button:focus-visible { background: var(--raise); outline: none; }
+@media (hover: hover) { .menu > button:hover { background: var(--raise); } }
 .menu > button kbd { margin-left: auto; font: 11px var(--mono); color: var(--muted); }
 .menu > button.danger { color: var(--danger); }
 .menu > hr { border: 0; border-top: 1px solid var(--line); margin: 4px 0; }
-.menu { max-height: calc(100vh - 16px); overflow-y: auto; }
+.menu { max-height: min(360px, calc(100vh - 16px)); max-width: min(320px, calc(100vw - 16px)); overflow-y: auto; overscroll-behavior: contain; }
 .menu-h { padding: 4px 8px 2px; font-size: 12px; color: var(--muted); }
 .menu > button.mono { font-size: 12.5px; }
 /* Open upgo goals of a folder, one line under the name */
@@ -267,7 +279,7 @@ main { max-width: 1600px; padding: 20px 32px 96px; }
   display: inline-flex; align-items: center; gap: 6px; height: var(--h); padding: 0 10px 0 4px; cursor: pointer;
   color: var(--muted); border: 1px solid var(--line-strong); border-radius: var(--r); font-family: var(--mono); font-size: 12.5px;
 }
-.custom-accent:hover { color: var(--text); }
+@media (hover: hover) { .custom-accent:hover { color: var(--text); } }
 .custom-accent.on { color: var(--text); border-color: var(--accent); background: var(--accent-soft); }
 .custom-accent input { width: 22px; height: 22px; padding: 0; border: 0; background: none; cursor: pointer; }
 .dot { margin-right: 6px; font-weight: 400; }
@@ -344,7 +356,13 @@ main { max-width: 1600px; padding: 20px 32px 96px; }
   .dr-row .detail { grid-column: 2; }
 }
 @media (prefers-reduced-motion: no-preference) { html { scroll-behavior: smooth; } }
-@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+@media (prefers-reduced-motion: reduce) {
+  .menu, .menu:not(:popover-open), .btn:active, .chip:active, .tab:active, .seg label:active, .custom-accent:active { transform: none !important; }
+  #status { transform: translate(-50%, 0); }
+  ::view-transition-group(*) { animation-duration: .15s; }
+}
+@media (prefers-reduced-transparency: reduce) { header { background: var(--bg); backdrop-filter: none; } }
+@media (prefers-contrast: more) { :root { --line: var(--line-strong); --muted: var(--text); } }
 </style>
 </head>
 <body>
@@ -832,9 +850,11 @@ function moreMenu(name, items) {
 function place(anchor, pop) {
   requestAnimationFrame(() => {
     const a = anchor.getBoundingClientRect();
-    const p = pop.getBoundingClientRect();
+    const p = { width: pop.offsetWidth, height: pop.offsetHeight };
     pop.style.left = Math.max(8, Math.min(a.right - p.width, innerWidth - p.width - 8)) + 'px';
-    pop.style.top = (a.bottom + 4 + p.height > innerHeight - 8 ? Math.max(8, a.top - 4 - p.height) : a.bottom + 4) + 'px';
+    const up = a.bottom + 4 + p.height > innerHeight - 8;
+    pop.style.top = (up ? Math.max(8, a.top - 4 - p.height) : a.bottom + 4) + 'px';
+    pop.style.transformOrigin = (up ? 'bottom' : 'top') + ' right';
   });
 }
 
@@ -1081,12 +1101,12 @@ function settingsView() {
   // A settings row: name and one help line on the left, the control on the right.
   const setRow = (key, title, help, ...ctl) => h('div', { class: 'set-row' },
     h('div', null, h(key === 'defaultOpener' ? 'label' : 'span', { class: 'set-name', id: 'lbl-' + key, for: key === 'defaultOpener' ? 'set-opener' : null }, title),
-      h('span', { class: 'set-help', id: 'help-' + key }, help)),
+      help && h('span', { class: 'set-help', id: 'help-' + key }, help)),
     h('div', { class: 'set-ctl' }, ctl));
   // One labelled radio group per setting; saves on change and keeps focus on the picked option.
   // `deco(k)` adds something before an option's label (the accent swatches), `extra` goes after the group.
   const seg = (key, title, help, msg, deco, extra) => setRow(key, title, help,
-    h('div', { class: 'seg', role: 'radiogroup', 'aria-labelledby': 'lbl-' + key, 'aria-describedby': 'help-' + key },
+    h('div', { class: 'seg', role: 'radiogroup', 'aria-labelledby': 'lbl-' + key, 'aria-describedby': help ? 'help-' + key : null },
       // Off Windows (wt null) there are no tabs or panes.
       (Array.isArray(SETTING_OPTS[key]) ? SETTING_OPTS[key] : Object.entries(SETTING_OPTS[key])).filter(([k]) => S.wt !== null || key !== 'terminalLayout' || k === 'here' || k === 'windows').map(([k, label]) => [
         h('input', { type: 'radio', name: key, id: `${key}-${k}`, checked: s[key] === k, onchange: () =>
@@ -1125,7 +1145,7 @@ function settingsView() {
       seg('staleAfter', 'Stale after', 'Not opened for this long counts as stale (is:stale).', l => `is:stale: not opened in ${l}`)),
     sec('set-list', 'List', 'How shortcut lists are ordered and what each row shows, here and in the selector.',
       ['sort', 'pinned', 'groups', 'paths', 'rowDetails', 'usage', 'goals'],
-      seg('sort', 'Sort', 'Order of the list.', l => `Sorted: ${l}`),
+      seg('sort', 'Sort', '', l => `Sorted: ${l}`),
       seg('pinned', 'Pinned', 'Pinned shortcuts on top, or under their own heading.', l => `Pinned: ${l}`),
       seg('groups', 'Groups', 'Headings per tag while not searching.', l => `Groups: ${l}`),
       seg('paths', 'Paths', 'How a row shows its folder path.', l => `Paths: ${l}`),
@@ -1133,9 +1153,9 @@ function settingsView() {
       seg('usage', 'Usage', 'Last opened or open count at the right of a row.', l => `Usage: ${l}`),
       seg('goals', 'Goals', 'Open upgo goals of a folder with a goals.json, up to this many, on one line under its name.', l => `Goals: ${l}`)),
     sec('set-look', 'Look', 'Theme is this page only. Accent and density also apply to the selector.', ['theme', 'accent', 'density'],
-      seg('theme', 'Theme', 'Light or dark for this page.', l => `Theme: ${l}`),
-      seg('accent', 'Accent', 'Highlight color.', l => `Accent: ${l}`, k => h('span', { class: 'swatch ac-' + k, 'aria-hidden': 'true' }), customAccent),
-      seg('density', 'Density', 'Row spacing.', l => `Density: ${l}`)),
+      seg('theme', 'Theme', '', l => `Theme: ${l}`),
+      seg('accent', 'Accent', '', l => `Accent: ${l}`, k => h('span', { class: 'swatch ac-' + k, 'aria-hidden': 'true' }), customAccent),
+      seg('density', 'Density', '', l => `Density: ${l}`)),
     sec('set-open', 'Opening', 'What a folder shortcut opens in when it has no opener of its own.', ['defaultOpener'],
       setRow('defaultOpener', 'Default opener', 'Files still open in their default app.',
         h('select', { id: 'set-opener', 'aria-describedby': 'help-defaultOpener', onchange: pickOpener },
@@ -1227,7 +1247,7 @@ function insightsBody() {
         h('span', { class: 'st-n', 'aria-label': opens(t.count) }, String(t.count)),
         h('span', { class: 'when' }, t.note))),
       s.more > 0 && h('p', null, `+ ${s.more} more, see upex stats`),
-      s.openers.length > 0 && h('p', null, 'Opened with ', s.openers.slice(0, 5).map(o => `${o.name} ${o.count}`).join(' · ')),
+      s.openers.length > 0 && h('p', null, 'Opened with ', s.openers.slice(0, 5).map(o => `${o.name} ${o.count}`).join(', ')),
     ];
   const weeks = s?.perWeek && peak > 0 && h('div', { class: 'ins' }, h('h3', null, `Opens per week, last ${s.perWeek.length} weeks (peak ${peak})`),
     h('div', { class: 'weeks', role: 'img', 'aria-label': s.perWeek.join(', ') + ' opens per week, oldest first' },
@@ -1238,7 +1258,7 @@ function insightsBody() {
       h('span', { class: 'dr-s ' + r.status }, r.status),
       h('span', { class: 'set-name' }, r.check),
       h('span', { class: 'detail' }, r.detail))),
-    h('p', null, warns ? `${warns} to look at, everything else is fine.` : 'All good.'),
+    h('p', null, warns ? `${warns} need${warns === 1 ? 's' : ''} a look.` : 'No problems found.'),
   ];
   return [
     h('div', { class: 'ins' }, h('h3', null, s?.total ? `Top shortcuts, ${opens(s.total)} in 30 days` : 'Top shortcuts'), statsPart),
@@ -1312,7 +1332,13 @@ function openerAdd() {
 // Appearance onto <html>. A hex accent goes on as inline vars, with black or white ink, whichever reads on it.
 function applyLook() {
   const root = document.documentElement;
-  for (const k of LOOK) if (S.settings[k]) root.dataset[k] = S.settings[k];
+  // A theme change cross-fades instead of jumping in brightness.
+  const theme = S.settings.theme;
+  if (theme && root.dataset.theme !== theme) {
+    const set = () => { root.dataset.theme = theme; };
+    document.startViewTransition ? document.startViewTransition(set) : set();
+  }
+  for (const k of LOOK) if (k !== 'theme' && S.settings[k]) root.dataset[k] = S.settings[k];
   const hex = isHex(root.dataset.accent) && root.dataset.accent;
   if (!hex) { root.style.removeProperty('--accent'); root.style.removeProperty('--accent-ink'); return; }
   const [r, g, b] = [1, 3, 5].map(i => parseInt(hex.slice(i, i + 2), 16));

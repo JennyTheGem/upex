@@ -154,8 +154,8 @@ export function registerDoctor(program) {
       const warns = rows.filter(r => r[0] === 'warn').length;
       const fails = rows.filter(r => r[0] === 'fail').length;
       if (fails) ui.error(`${plural(fails, 'problem')} found.`);
-      else if (warns) ui.warn(`${plural(warns, 'warning')}, everything else is fine.`);
-      else ui.success('All good.');
+      else if (warns) ui.warn(`${plural(warns, 'check')} need${warns === 1 ? 's' : ''} a look.`);
+      else ui.success('No problems found.');
       ui.blank();
       if (fails) process.exit(1);
     });

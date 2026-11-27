@@ -48,4 +48,5 @@ ESM Node CLI (`"type": "module"`) built on `commander`. Entry is `bin/upex.js` â
 - Cross-platform is a hard requirement: any launch/path logic must branch on `os.platform()` and be considered for all three platforms.
 - Preserve backward compatibility of the on-disk format (the legacy-string migration exists for this reason).
 - Non-trivial pure logic that could regress belongs in `test/smoke.mjs` as a plain `assert` (no framework).
+- UI copy and headings (README, `ui.heading`, `upex ui`) are sentence case ("Shell integration"). Labels stay plain, no uppercase or tracked micro-labels. A settings help line says something the label doesn't ("Not opened for this long counts as stale"), else leave it out. Controls give feedback on press (`:active`) and are at least 24px tall.
 - Keep the upex skill (`skill/SKILL.md`, linked into `~/.claude/skills/upex`) in sync: any added, renamed or removed command, option or behavior updates its Rules and Commands table in the same change.

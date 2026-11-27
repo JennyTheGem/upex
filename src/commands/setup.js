@@ -232,7 +232,7 @@ export function registerSetup(program) {
         return;
       }
 
-      ui.heading('Shell Integration');
+      ui.heading('Shell integration');
 
       ui.dim('A wrapper function is required for cd behavior.');
       ui.dim('Node.js cannot change the parent shell directory directly.');

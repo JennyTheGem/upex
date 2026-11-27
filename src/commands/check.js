@@ -22,7 +22,7 @@ export function registerCheck(program) {
         return;
       }
 
-      ui.heading('Health Check');
+      ui.heading('Health check');
 
       let brokenCount = 0;
 

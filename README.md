@@ -1,6 +1,6 @@
-# ⚡ upex: Personal File Shortcut Manager
+# upex
 
-A professional Node.js CLI tool that lets you register named aliases for folder paths and instantly open them in the file explorer or a specified IDE/app.
+I wrote upex to stop typing long paths. Give a folder, app, command or URL a short name, then `upex <name>` opens it in your file manager, VS Code, a terminal or any app you add, and `upex` alone opens a selector to pick one.
 
 ## Installation
 
@@ -62,7 +62,7 @@ npm link
 | `upex setup [bash\|zsh\|fish\|cmd]` | Shell integration; `setup bash`/`zsh`/`fish` adds the cd function to your shell, `setup cmd` installs the cmd.exe wrapper |
 | `upex help` | Commands by section plus current settings, wrapped to the window width |
 
-## Supported Apps
+## Openers
 
 | Alias | App |
 |---|---|
@@ -81,7 +81,7 @@ Add your own openers with `upex app`:
 ```bash
 upex app cursor cursor          # register "cursor" -> the cursor command
 upex webapp cursor              # open a shortcut in Cursor
-upex app                        # list custom apps
+upex app                        # list custom openers
 upex app cursor --remove        # remove one
 ```
 
@@ -144,7 +144,7 @@ upex list
 upex check
 ```
 
-## Tags & Groups
+## Tags and groups
 
 Attach tags to organize shortcuts, filter the list, and open a whole group at once.
 
@@ -177,7 +177,7 @@ upex ws add dev webapp cmd claude --model sonnet   # terminal running claude
 upex ws add dev webapp cmd 2 npm run dev           # two terminals running "npm run dev"
 ```
 
-## URL Shortcuts, run & last
+## URLs, scripts and last
 
 ```bash
 upex add gh github.com --url       # bare hosts get https:// automatically
@@ -189,7 +189,7 @@ upex run webapp dev                # open a terminal running "<pm> run dev" at w
 upex -                             # reopen the most recently used shortcut (alias: upex last)
 ```
 
-## Backup & Sync
+## Backup and sync
 
 `export` writes a JSON bundle of your shortcuts and config; `import` merges it back (or `--replace`).
 
@@ -201,35 +201,35 @@ upex import backup.json --replace  # replace everything
 
 `upex list --git` adds a column with each folder's current git branch (yellow `branch*` when the working tree is dirty, `--` when it isn't a repo). It's off by default.
 
-## Interactive Mode
+## Selector
 
 Run `upex` with no arguments to open the interactive selector. It reloads by itself when `upex ui` or another shell changes your shortcuts or workspaces, and a long path loses middle folders first (`E:\Downloads\…\Assets\upex`) so the last folder stays readable. Pinned shortcuts (`upex pin`) come first, then the rest by frecency (most-used and most-recent first), or A to Z, last opened or recently added with the `sort` setting. It opens on the `startView` tab (Shortcuts with `--app`, or with no shortcuts yet, so `Ctrl+A` adds the first).
 
-- `Up` / `Down` -- move through shortcuts
-- `PgUp` / `PgDn` -- move a screen of rows, `Home` / `End` -- first / last row (every tab, Settings too)
-- `Left` / `Right` -- change the selected app (starts on the shortcut's default opener)
-- `Shift+Up` / `Shift+Down` (or `Ctrl`) -- terminal count when a terminal opener (cmd, claude) is selected
-- `Tab` -- cycle the Shortcuts (folders), Apps (app + URL shortcuts) and Workspaces views (Enter opens the whole workspace, `Ctrl+D` deletes it (`Ctrl+Z` undoes), `Ctrl+A` puts the marked shortcuts into a new or existing one, `Ctrl+E` edits one: its name, and per entry the opener (Left/Right), start command (Enter) or `Ctrl+D` to remove it). The `views` setting hides Apps and/or Workspaces
-- `Shift+Tab` -- jump to Settings (Left/Right changes a setting, saved right away), again to go back. Settings are grouped General, Search, Terminals, Opening, List, Rows, Look and Detail pane; a dim tag right of each row says where it applies (`tui` this selector, `web` upex ui, `cli` commands, `all`). Typing filters the rows by label, option and note (also the openers, maintenance and archived rows), Esc clears it. Below the settings: Openers (custom ones, Enter edits the command, `Ctrl+D` removes, "+ add opener"), Maintenance (prune broken paths, archive stale shortcuts, `Ctrl+Z` undoes; stats, doctor, updates (Enter checks npm now), export, import) and Archived (Enter restores one, `Ctrl+D` deletes one for good after `y`, `Ctrl+Z` brings it back still archived)
-- `Enter` -- open the selected shortcut in the selected app, then quit (or stay open with the `enter` setting on `stay`)
-- `Space` -- mark or unmark the selected shortcut (Shortcuts and Apps tabs) and move down; `Enter` then opens every marked one (folders in the picked opener, else their own; more windows than the `confirmMany` setting asks `y` / `n` first) and `Ctrl+X` archives them all (one `Ctrl+Z` or `upex undo` brings them back)
-- Type -- fuzzy-filter the list (Space marks instead of typing); `#vel` keeps shortcuts with a tag starting with vel, `#vel#web` needs both tags, `api#vel` also searches api fuzzy; `@vs` keeps folders whose default opener starts with vs (vscode), `is:pinned`, `is:missing`, `is:stale` (not opened in the `staleAfter` days, 60 by default), `is:app`, `is:new` (added in the last 7 days) and `is:temp` (has an `add --ttl` expiry) (any prefix, `is:p`) chain the same way. The `upex ui` search takes the same tokens. A row the filter hit through an alias, not its name, shows a dim `via <alias>`. With no matches, Enter (or a click) on `add "<text>" here` adds the typed text as a folder shortcut on the current directory and opens the edit form (Shortcuts tab, no tokens typed); Up/Down picks `search archived` when archived shortcuts have the text in their name or path, which opens Settings filtered to them
-- `Ctrl+A` -- add a shortcut for the current directory: a new shortcut screen asks its name (Enter adds it), then goes on as the edit form below. Started in System32 (Win+R) it has no target and asks the folder after the name, the "add" offer on no matches too. When the clipboard holds an existing folder or file path (copied in Explorer, "Copy as path" or as text), that path is used instead and the name starts as its folder or file name
-- `Ctrl+E` -- edit the selected shortcut in a form (in the detail pane when it shows): name, target, type (folder, app, command or URL), opener, tags (Tab completes one), aliases, note and expiry. Up/Down picks a row, Enter edits a text row and Enter saves it, Left/Right changes a choice row and saves it, `Ctrl+Z` undoes the form's last save, Esc closes it
-- Badges -- a shortcut from `add --ttl` shows a dim `2d left` on its row (also in `upex ls`)
-- `Ctrl+R` -- rename the selected shortcut (starts filled in)
-- `Ctrl+P` -- pin or unpin the selected shortcut; `Alt+Up` / `Alt+Down` moves a pinned one among the pinned (saved, `upex ui` uses the same order)
-- `Ctrl+X` -- archive the selected shortcut, or all marked ones (confirm with `y`, any other key cancels; the key row shows just `y` and `n` meanwhile; `Ctrl+Z` undoes it, `upex restore <name>` later); a click on the detail pane's stale row archives the selected one. The selector never deletes a shortcut from its tab: delete an archived one in Settings > Archived
-- `Ctrl+Y` -- copy the selected shortcut's path (or app / URL) to the clipboard
-- `Ctrl+O` -- next sort (most used, A to Z, last opened, recently added), saved like the `sort` setting; a flash names it
-- `Ctrl+Z` -- step back one change to your shortcuts, like `upex undo` (again to go further back, up to 10); a flash says what came back. Workspaces deleted in this session come back first, newest first
-- `Ctrl+S` -- list the selected folder's package.json scripts (in the detail pane when it shows, else in place of the list); Enter runs one in a terminal (like `upex run`), Esc or Left goes back
-- `Ctrl+F` -- list what the selected folder holds as rows, subfolders then files (typing filters them by name); `Ctrl+F` on a subfolder goes deeper, Left or Esc goes back one level. Enter opens a subfolder like `upex name/sub` and a file in its default app (`upex pick` prints its path); marks, add, edit, rename, pin and archive are off there
+- `Up` / `Down`: move through shortcuts
+- `PgUp` / `PgDn`: move a screen of rows, `Home` / `End` first / last row (every tab, Settings too)
+- `Left` / `Right`: change the selected app (starts on the shortcut's default opener)
+- `Shift+Up` / `Shift+Down` (or `Ctrl`): terminal count when a terminal opener (cmd, claude) is selected
+- `Tab`: cycle the Shortcuts (folders), Apps (app + URL shortcuts) and Workspaces views (Enter opens the whole workspace, `Ctrl+D` deletes it (`Ctrl+Z` undoes), `Ctrl+A` puts the marked shortcuts into a new or existing one, `Ctrl+E` edits one: its name, and per entry the opener (Left/Right), start command (Enter) or `Ctrl+D` to remove it). The `views` setting hides Apps and/or Workspaces
+- `Shift+Tab`: jump to Settings (Left/Right changes a setting, saved right away), again to go back. Settings are grouped General, Search, Terminals, Opening, List, Rows, Look and Detail pane; a dim tag right of each row says where it applies (`tui` this selector, `web` upex ui, `cli` commands, `all`). Typing filters the rows by label, option and note (also the openers, maintenance and archived rows), Esc clears it. Below the settings: Openers (custom ones, Enter edits the command, `Ctrl+D` removes, "+ add opener"), Maintenance (prune broken paths, archive stale shortcuts, `Ctrl+Z` undoes; stats, doctor, updates (Enter checks npm now), export, import) and Archived (Enter restores one, `Ctrl+D` deletes one for good after `y`, `Ctrl+Z` brings it back still archived)
+- `Enter`: open the selected shortcut in the selected app, then quit (or stay open with the `enter` setting on `stay`)
+- `Space`: mark or unmark the selected shortcut (Shortcuts and Apps tabs) and move down; `Enter` then opens every marked one (folders in the picked opener, else their own; more windows than the `confirmMany` setting asks `y` / `n` first) and `Ctrl+X` archives them all (one `Ctrl+Z` or `upex undo` brings them back)
+- Type: fuzzy-filter the list (Space marks instead of typing); `#vel` keeps shortcuts with a tag starting with vel, `#vel#web` needs both tags, `api#vel` also searches api fuzzy; `@vs` keeps folders whose default opener starts with vs (vscode), `is:pinned`, `is:missing`, `is:stale` (not opened in the `staleAfter` days, 60 by default), `is:app`, `is:new` (added in the last 7 days) and `is:temp` (has an `add --ttl` expiry) (any prefix, `is:p`) chain the same way. The `upex ui` search takes the same tokens. A row the filter hit through an alias, not its name, shows a dim `via <alias>`. With no matches, Enter (or a click) on `add "<text>" here` adds the typed text as a folder shortcut on the current directory and opens the edit form (Shortcuts tab, no tokens typed); Up/Down picks `search archived` when archived shortcuts have the text in their name or path, which opens Settings filtered to them
+- `Ctrl+A`: add a shortcut for the current directory: a new shortcut screen asks its name (Enter adds it), then goes on as the edit form below. Started in System32 (Win+R) it has no target and asks the folder after the name, the "add" offer on no matches too. When the clipboard holds an existing folder or file path (copied in Explorer, "Copy as path" or as text), that path is used instead and the name starts as its folder or file name
+- `Ctrl+E`: edit the selected shortcut in a form (in the detail pane when it shows): name, target, type (folder, app, command or URL), opener, tags (Tab completes one), aliases, note and expiry. Up/Down picks a row, Enter edits a text row and Enter saves it, Left/Right changes a choice row and saves it, `Ctrl+Z` undoes the form's last save, Esc closes it
+- Badges: a shortcut from `add --ttl` shows a dim `2d left` on its row (also in `upex ls`)
+- `Ctrl+R`: rename the selected shortcut (starts filled in)
+- `Ctrl+P`: pin or unpin the selected shortcut; `Alt+Up` / `Alt+Down` moves a pinned one among the pinned (saved, `upex ui` uses the same order)
+- `Ctrl+X`: archive the selected shortcut, or all marked ones (confirm with `y`, any other key cancels; the key row shows just `y` and `n` meanwhile; `Ctrl+Z` undoes it, `upex restore <name>` later); a click on the detail pane's stale row archives the selected one. The selector never deletes a shortcut from its tab: delete an archived one in Settings > Archived
+- `Ctrl+Y`: copy the selected shortcut's path (or app / URL) to the clipboard
+- `Ctrl+O`: next sort (most used, A to Z, last opened, recently added), saved like the `sort` setting; a flash names it
+- `Ctrl+Z`: step back one change to your shortcuts, like `upex undo` (again to go further back, up to 10); a flash says what came back. Workspaces deleted in this session come back first, newest first
+- `Ctrl+S`: list the selected folder's package.json scripts (in the detail pane when it shows, else in place of the list); Enter runs one in a terminal (like `upex run`), Esc or Left goes back
+- `Ctrl+F`: list what the selected folder holds as rows, subfolders then files (typing filters them by name); `Ctrl+F` on a subfolder goes deeper, Left or Esc goes back one level. Enter opens a subfolder like `upex name/sub` and a file in its default app (`upex pick` prints its path); marks, add, edit, rename, pin and archive are off there
 - While typing a path or name: `Left` / `Right` move the cursor, `Ctrl+Left` / `Ctrl+Right` jump a word, `Home` / `End`, `Ctrl+Backspace` (or `Ctrl+W`) deletes a word, `Del` deletes forward. `Ctrl+Backspace` also works in the filter
-- `Ctrl+K` -- show every key over the list (handy with `keyHints` short), any key or a click closes it
-- `Ctrl+U` -- start `upex ui` and open it in the browser; the selector stays open and shows the link. `Ctrl+U` again stops it, so does closing the selector
-- `Esc` -- clear the filter, then leave `Ctrl+F` subfolders one level, then the marks, then close a detail pane opened with Shift+→ (see `narrowPane`), then quit
-- Mouse (full screen) -- click a tab, opener or setting; click a row to select it, again or double-click to open; right-click a row for a menu (open in each opener, edit, pin, copy path, archive; workspaces: open all, edit, delete), click an item or use ↑↓ Enter, any other click or key closes it; the wheel moves the selection, past either end it wraps to the other like ↑↓; in the detail pane a click on a goal copies it
+- `Ctrl+K`: show every key over the list (handy with `keyHints` short), any key or a click closes it
+- `Ctrl+U`: start `upex ui` and open it in the browser; the selector stays open and shows the link. `Ctrl+U` again stops it, so does closing the selector
+- `Esc`: clear the filter, then leave `Ctrl+F` subfolders one level, then the marks, then close a detail pane opened with Shift+→ (see `narrowPane`), then quit
+- Mouse (full screen): click a tab, opener or setting; click a row to select it, again or double-click to open; right-click a row for a menu (open in each opener, edit, pin, copy path, archive; workspaces: open all, edit, delete), click an item or use ↑↓ Enter, any other click or key closes it; the wheel moves the selection, past either end it wraps to the other like ↑↓; in the detail pane a click on a goal copies it
 
 ## Web UI
 
@@ -237,7 +237,7 @@ Run `upex ui` to open a local page (default `http://127.0.0.1:4545`, a free port
 
 It only listens on 127.0.0.1 and every request needs a token that is new each run, so other sites can't use it. With `--no-open`, open the link it prints (it carries the token).
 
-## Shell Completion
+## Shell completion
 
 Enable tab-completion of command and shortcut names:
 
@@ -249,7 +249,7 @@ eval "$(upex completion bash)"
 upex completion powershell | Out-String | Invoke-Expression
 ```
 
-## Shell Integration (cd support)
+## cd support
 
 Because a Node.js process can't change your shell's directory, add this wrapper function for instant `cd` behavior:
 
@@ -274,7 +274,7 @@ upex() {
 }
 ```
 
-### Command Prompt (cmd.exe)
+### cmd.exe
 
 ```cmd
 upex setup cmd
